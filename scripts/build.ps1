@@ -1,0 +1,66 @@
+# banmo_tag Extension Build & Package Script (ASCII-only for PowerShell 5.1 compatibility)
+# Layout: extension/ (runtime files) - tests/ (test runner) - docs/ (CHANGELOG etc.) - dist/ (build output, git-ignored)
+$ErrorActionPreference = "Stop"
+
+$scriptDir = $PSScriptRoot
+if (-not $scriptDir) {
+    $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+$rootDir = Split-Path -Parent $scriptDir
+
+$extDir = Join-Path $rootDir "extension"
+$testRunner = Join-Path $rootDir "tests\run-tests.ps1"
+$changelogPath = Join-Path $rootDir "docs\CHANGELOG.md"
+$distDir = Join-Path $rootDir "dist"
+
+Write-Host "[0/2] Verifying version consistency between manifest.json and CHANGELOG.md..." -ForegroundColor Cyan
+$manifestJson = Get-Content -Path (Join-Path $extDir "manifest.json") -Raw -Encoding UTF8 | ConvertFrom-Json
+$changelogText = Get-Content -Path $changelogPath -Raw -Encoding UTF8
+$verMatch = [regex]::Match($changelogText, '## \[v([0-9]+\.[0-9]+\.[0-9]+)\]')
+if (-not $verMatch.Success -or $verMatch.Groups[1].Value -ne $manifestJson.version) {
+    Write-Host "[ERROR] Version mismatch! manifest.json=$($manifestJson.version), CHANGELOG.md=$($verMatch.Groups[1].Value)" -ForegroundColor Red
+    exit 1
+}
+Write-Host "  Verified version v$($manifestJson.version)" -ForegroundColor Green
+
+Write-Host "[1/2] Running automated unit tests..." -ForegroundColor Cyan
+& powershell -ExecutionPolicy Bypass -File $testRunner
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Build aborted because unit tests failed." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "[2/2] Packaging runtime extension files..." -ForegroundColor Cyan
+$runtimeItems = @(
+    "manifest.json",
+    "shared.js",
+    "content.js",
+    "background.js",
+    "popup.html",
+    "popup.js",
+    "styles.css",
+    "icons"
+)
+
+$pathsToZip = @()
+foreach ($item in $runtimeItems) {
+    $p = Join-Path $extDir $item
+    if (-not (Test-Path $p)) {
+        Write-Host "[ERROR] Missing required runtime item: $p" -ForegroundColor Red
+        exit 1
+    }
+    $pathsToZip += $p
+}
+
+if (-not (Test-Path $distDir)) {
+    New-Item -ItemType Directory -Path $distDir | Out-Null
+}
+$zipName = "banmo_tag-v$($manifestJson.version).zip"
+$zipPath = Join-Path $distDir $zipName
+if (Test-Path $zipPath) {
+    Remove-Item -Force $zipPath
+}
+Compress-Archive -Path $pathsToZip -DestinationPath $zipPath -Force
+
+Write-Host "SUCCESS: Packaged runtime files and icons to dist\$zipName" -ForegroundColor Green
+exit 0

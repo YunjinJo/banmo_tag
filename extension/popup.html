@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>banmo_tag 설정</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      width: 330px;
+      padding: 16px;
+      background-color: #15202b;
+      color: #ffffff;
+      margin: 0;
+      box-sizing: border-box;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #38444d;
+      padding-bottom: 8px;
+      margin-bottom: 12px;
+    }
+    .header h1 {
+      margin: 0;
+      border: none;
+      font-size: 1.15rem;
+      color: #1d9bf0;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .actions-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .sync-tab-btn {
+      width: 100%;
+      background: #1d9bf0;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: background 0.2s;
+    }
+    .sync-tab-btn:hover {
+      background: #1a8cd8;
+    }
+    .sync-status {
+      padding: 6px 10px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      line-height: 1.3;
+      text-align: center;
+      margin-bottom: 8px;
+    }
+    .sync-status.success {
+      background: rgba(0, 186, 124, 0.2);
+      color: #00ba7c;
+      border: 1px solid #00ba7c;
+    }
+    .sync-status.error {
+      background: rgba(244, 33, 46, 0.2);
+      color: #f4212e;
+      border: 1px solid #f4212e;
+    }
+    .manual-toggle-btn {
+      width: 100%;
+      background: #22303c;
+      color: #8899a6;
+      border: 1px dashed #38444d;
+      padding: 6px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .manual-toggle-btn:hover {
+      background: #2c3e50;
+      color: #fff;
+    }
+    .manual-form {
+      background: #192734;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .manual-form input[type="text"],
+    .manual-form textarea {
+      width: 100%;
+      background: #22303c;
+      border: 1px solid #38444d;
+      color: white;
+      padding: 6px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      box-sizing: border-box;
+      outline: none;
+    }
+    .manual-form textarea {
+      height: 54px;
+      resize: vertical;
+    }
+    .manual-form input[type="text"]:focus,
+    .manual-form textarea:focus {
+      border-color: #1d9bf0;
+    }
+    .manual-form-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .list-wrapper {
+      margin-bottom: 10px;
+      background: #192734;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .list-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px;
+      gap: 8px;
+    }
+    .list-item:hover {
+      background: #22303c;
+    }
+    .list-toggle {
+      flex: 1;
+      background: none;
+      border: none;
+      color: inherit;
+      text-align: left;
+      padding: 0;
+      cursor: pointer;
+      font: inherit;
+      min-width: 0;
+    }
+    .list-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+    .list-name {
+      font-weight: bold;
+      font-size: 0.9rem;
+      word-break: break-word;
+    }
+    .list-info {
+      font-size: 0.75rem;
+      color: #8899a6;
+      margin-top: 2px;
+    }
+    .color-picker {
+      border: none;
+      width: 26px;
+      height: 26px;
+      border-radius: 4px;
+      cursor: pointer;
+      padding: 0;
+      background: none;
+    }
+    .color-picker::-webkit-color-swatch-wrapper {
+      padding: 0;
+    }
+    .color-picker::-webkit-color-swatch {
+      border: none;
+      border-radius: 4px;
+    }
+    .members-list {
+      display: none;
+      padding: 10px;
+      border-top: 1px solid #38444d;
+      font-size: 0.8rem;
+      color: #8899a6;
+      max-height: 140px;
+      overflow-y: auto;
+    }
+    .members-list.show {
+      display: block;
+    }
+    .member-handle {
+      display: inline-flex;
+      align-items: center;
+      margin-right: 6px;
+      margin-bottom: 4px;
+      background: #22303c;
+      padding: 2px 6px;
+      border-radius: 4px;
+      color: #1d9bf0;
+      font-size: 0.75rem;
+    }
+    .remove-member-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      margin-left: 4px;
+      cursor: pointer;
+      color: #8899a6;
+      font-weight: bold;
+      font-size: 0.8rem;
+      line-height: 1;
+    }
+    .remove-member-btn:hover {
+      color: #f4212e;
+    }
+    .empty-state {
+      text-align: center;
+      color: #8899a6;
+      font-size: 0.85rem;
+      margin: 16px 0;
+      line-height: 1.5;
+    }
+    .guide {
+      font-size: 0.78rem;
+      color: #8899a6;
+      margin-top: 14px;
+      line-height: 1.4;
+      background: #192734;
+      padding: 10px;
+      border-radius: 8px;
+    }
+    .reset-btn {
+      background: #e0245e;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .reset-btn:hover {
+      background: #c91e50;
+    }
+    .util-btn {
+      background: #1d9bf0;
+      color: white;
+      border: none;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .util-btn:hover {
+      background: #1a8cd8;
+    }
+    .sync-tab-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+    .import-choice {
+      display: none;
+      flex-direction: column;
+      gap: 6px;
+      background: #192734;
+      border: 1px solid #38444d;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 10px;
+      font-size: 0.8rem;
+    }
+    .import-choice-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .mode-select {
+      background: #22303c;
+      color: white;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      padding: 2px 4px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .delete-list-btn {
+      background: none;
+      color: #8899a6;
+      border: none;
+      cursor: pointer;
+      font-size: 1.2rem;
+      padding: 0 4px;
+      line-height: 1;
+    }
+    .delete-list-btn:hover {
+      color: #e0245e;
+    }
+    .settings-section {
+      background: #192734;
+      border-radius: 8px;
+      padding: 10px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    .settings-header {
+      font-size: 0.85rem;
+      font-weight: bold;
+      color: #8899a6;
+      margin-bottom: 8px;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .settings-header:hover {
+      color: #fff;
+    }
+    .settings-body {
+      display: none;
+    }
+    .settings-body.show {
+      display: block;
+    }
+    .setting-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .setting-label {
+      font-size: 0.8rem;
+      color: #8899a6;
+    }
+    .setting-control {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .setting-control select,
+    .setting-control input[type="number"] {
+      background: #22303c;
+      color: white;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 0.8rem;
+      outline: none;
+    }
+    .setting-control input[type="number"] {
+      width: 50px;
+    }
+    .setting-control select {
+      min-width: 100px;
+    }
+    .badge-preview {
+      display: inline-block;
+      padding: 2px 6px;
+      border-radius: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      letter-spacing: 0.3px;
+      margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1><img src="icons/icon32.png" alt="" width="20" height="20" style="border-radius: 4px;"> banmo_tag</h1>
+    <div style="display: flex; gap: 4px;">
+      <button id="export-btn" class="util-btn" title="설정 내보내기" aria-label="설정 내보내기">📤</button>
+      <button id="import-btn" class="util-btn" title="설정 가져오기" aria-label="설정 가져오기">📥</button>
+      <button id="reset-btn" class="reset-btn" title="데이터 초기화" aria-label="데이터 초기화">🗑️</button>
+      <input type="file" id="import-file" accept=".json" style="display:none;">
+    </div>
+  </div>
+
+  <div id="import-choice" class="import-choice">
+    <div id="import-choice-text">파일을 가져올 방식을 선택하세요.</div>
+    <div class="import-choice-actions">
+      <button id="import-merge-btn" type="button" class="util-btn">병합</button>
+      <button id="import-replace-btn" type="button" class="reset-btn">덮어쓰기</button>
+      <button id="import-cancel-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">취소</button>
+    </div>
+  </div>
+
+  <div id="confirm-box" class="import-choice" role="alertdialog" aria-labelledby="confirm-text">
+    <div id="confirm-text"></div>
+    <div class="import-choice-actions">
+      <button id="confirm-ok-btn" type="button" class="reset-btn">확인</button>
+      <button id="confirm-cancel-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">취소</button>
+    </div>
+  </div>
+
+  <div class="actions-bar">
+    <button id="sync-current-tab-btn" class="sync-tab-btn">⚡ 현재 열린 트위터 리스트 가져오기</button>
+    <div id="sync-status" class="sync-status" style="display:none;"></div>
+    <button id="toggle-manual-add-btn" class="manual-toggle-btn" aria-expanded="false">+ 직접 리스트 추가</button>
+  </div>
+
+  <div id="manual-add-form" class="manual-form" style="display:none;">
+    <input type="text" id="manual-name" placeholder="리스트 이름 (예: 주요 인물)">
+    <textarea id="manual-members" placeholder="멤버 핸들 입력 (@elonmusk, @openai 등 쉼표나 줄바꿈으로 구분)"></textarea>
+    <div class="manual-form-row">
+      <div style="display: flex; align-items: center; gap: 6px;">
+        <input type="color" id="manual-color" class="color-picker" value="#1d9bf0">
+        <select id="manual-mode" class="mode-select">
+          <option value="normal">기본</option>
+          <option value="highlight">강조</option>
+          <option value="dim">흐리게</option>
+        </select>
+      </div>
+      <button id="manual-save-btn" class="util-btn" style="padding: 6px 12px;">추가 저장</button>
+    </div>
+  </div>
+
+  <div id="list-container">
+    <div class="empty-state">로딩 중...</div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-header" id="toggle-badge-settings" role="button" aria-expanded="false">
+      <span>🎨 배지 스타일 설정</span>
+      <span id="settings-arrow">▶</span>
+    </div>
+    <div class="settings-body" id="badge-settings-body">
+      <div class="setting-row">
+        <span class="setting-label">글자 색상</span>
+        <div class="setting-control">
+          <input type="color" id="badge-text-color" class="color-picker" value="#ffffff">
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">글자 크기</span>
+        <div class="setting-control">
+          <input type="number" id="badge-font-size" min="8" max="20" value="11"> px
+        </div>
+      </div>
+      <div class="setting-row">
+        <span class="setting-label">폰트</span>
+        <div class="setting-control">
+          <select id="badge-font-family">
+            <option value="system">시스템 기본</option>
+            <option value="'Arial', sans-serif">Arial</option>
+            <option value="'Roboto', sans-serif">Roboto</option>
+            <option value="'Noto Sans KR', sans-serif">Noto Sans KR</option>
+            <option value="'Pretendard', sans-serif">Pretendard</option>
+            <option value="monospace">Monospace</option>
+            <option value="'Georgia', serif">Georgia</option>
+          </select>
+        </div>
+      </div>
+      <div class="setting-row" style="align-items: center;">
+        <div>
+          <span class="setting-label">미리보기: </span>
+          <div id="badge-preview" class="badge-preview" style="background-color: #1d9bf0; color: white; font-size: 11px;">SAMPLE</div>
+        </div>
+        <button id="badge-reset-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">기본값</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="guide">
+    <strong>💡 사용 안내:</strong><br>
+    • X(Twitter) 리스트의 <strong>멤버(구성원) 화면</strong>을 열면 자동으로 멤버를 수집합니다.<br>
+    • 상단의 <strong>[⚡ 현재 열린 트위터 리스트 가져오기]</strong> 버튼을 누르면 현재 탭에서 즉시 수집합니다.<br>
+    • 필요 시 <strong>[+ 직접 리스트 추가]</strong>로 핸들을 직접 입력할 수도 있습니다.
+  </div>
+
+  <script src="shared.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

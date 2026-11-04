@@ -1,0 +1,37 @@
+/* styles.css */
+/* 뱃지들을 한 줄로 담는 래퍼 컨테이너 */
+.ag-badges-wrapper {
+  display: inline-flex !important;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap !important; /* 창 크기가 작을 때 줄바꿈 허용 여부 */
+  gap: 4px !important; /* 뱃지 간 간격 */
+  margin-left: 6px !important;
+}
+
+/* 타임라인에 주입될 뱃지 스타일
+   CSS 커스텀 속성(--ag-badge-*)과 인라인 !important(shared.js applyBadgeStyle)를 함께 지원합니다. */
+.ag-list-badge {
+  display: inline-block !important;
+  width: max-content; /* 글자 길이에 딱 맞춤 */
+  white-space: nowrap !important; /* 줄바꿈 방지 */
+  padding: 2px 6px !important;
+  border-radius: 12px !important;
+  font-size: var(--ag-badge-fs, 11px) !important;
+  font-weight: 700 !important;
+  color: var(--ag-badge-fg, #ffffff) !important;
+  background-color: var(--ag-badge-bg, #1d9bf0) !important;
+  vertical-align: middle !important;
+  line-height: 1.2 !important;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  letter-spacing: 0.3px;
+  text-shadow: 0 0 1px rgba(0,0,0,0.3), 0 0 2px rgba(0,0,0,0.15) !important;
+}
+
+/* 인용/스레드 등을 위한 미니 뱃지 */
+.ag-list-badge.mini-badge {
+  font-size: var(--ag-badge-fs, 9px) !important;
+  padding: 1px 4px !important;
+  opacity: 0.85;
+}
+

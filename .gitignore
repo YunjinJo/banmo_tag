@@ -1,0 +1,19 @@
+# 빌드 결과물 (배포 파일은 GitHub Release 에 첨부)
+dist/
+*.zip
+
+# 예전 폴더 구조 (Chrome 이 아직 이 폴더를 로드 중. 데이터를 옮긴 뒤 삭제)
+antigravity-extension/
+
+# 아이콘 원본 이미지 (용량이 커서 제외)
+Gemini_Generated_Image_*.png
+
+# 개인 리스트 데이터가 들어 있을 수 있는 백업 파일
+banmo_tag_backup_*.json
+
+# OS / 에디터
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

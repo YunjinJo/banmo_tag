@@ -1,0 +1,1077 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>banmo_tag 확장 프로그램 테스트 러너 (Test Suite)</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: #0f1419;
+      color: #f7f9f9;
+      margin: 0;
+      padding: 24px;
+    }
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid #2f3336;
+      padding-bottom: 16px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.5rem;
+      color: #1d9bf0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .card {
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 12px;
+      padding: 16px;
+      text-align: center;
+    }
+    .card-num {
+      font-size: 1.8rem;
+      font-weight: 800;
+      margin-top: 4px;
+    }
+    .card-label {
+      font-size: 0.85rem;
+      color: #71767b;
+    }
+    .passed { color: #00ba7c; }
+    .failed { color: #f4212e; }
+    .total { color: #1d9bf0; }
+    .time { color: #ffd400; }
+    
+    .btn {
+      background: #1d9bf0;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 9999px;
+      font-weight: 700;
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn:hover { background: #1a8cd8; }
+
+    .test-suite {
+      background: #16181c;
+      border: 1px solid #2f3336;
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .suite-header {
+      background: #202327;
+      padding: 12px 16px;
+      font-weight: 700;
+      font-size: 1rem;
+      border-bottom: 1px solid #2f3336;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .test-item {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(47, 51, 54, 0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.9rem;
+    }
+    .test-item:last-child {
+      border-bottom: none;
+    }
+    .test-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .badge {
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+    }
+    .badge-pass {
+      background: rgba(0, 186, 124, 0.15);
+      color: #00ba7c;
+      border: 1px solid #00ba7c;
+    }
+    .badge-fail {
+      background: rgba(244, 33, 46, 0.15);
+      color: #f4212e;
+      border: 1px solid #f4212e;
+    }
+    .test-detail {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #71767b;
+      margin-left: 60px;
+      word-break: break-all;
+    }
+    .test-error {
+      color: #f4212e;
+      font-weight: 600;
+    }
+    /* Hidden sandbox area for DOM test cases */
+    #sandbox {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1><span>⚡</span> banmo_tag v1.4.1 자동화 테스트 러너</h1>
+      <button id="run-btn" class="btn" onclick="runAllTests()">테스트 다시 실행</button>
+    </header>
+
+    <div class="summary-cards">
+      <div class="card">
+        <div class="card-label">전체 테스트</div>
+        <div id="stat-total" class="card-num total">0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">통과 (Pass)</div>
+        <div id="stat-passed" class="card-num passed">0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">실패 (Fail)</div>
+        <div id="stat-failed" class="card-num failed">0</div>
+      </div>
+      <div class="card">
+        <div class="card-label">소요 시간</div>
+        <div id="stat-time" class="card-num time">0ms</div>
+      </div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <!-- 테스트용 가상 DOM 샌드박스 -->
+  <div id="sandbox"></div>
+
+  <script src="../extension/shared.js"></script>
+  <script>
+    // =========================================================================
+    // 초경량 테스트 프레임워크 (Lightweight Test Framework)
+    // =========================================================================
+
+    const testSuites = [];
+    let currentSuite = null;
+
+    function describe(suiteName, fn) {
+      currentSuite = { name: suiteName, tests: [] };
+      testSuites.push(currentSuite);
+      fn();
+    }
+
+    function it(testName, fn) {
+      currentSuite.tests.push({ name: testName, fn });
+    }
+
+    function assert(condition, message) {
+      if (!condition) {
+        throw new Error(message || 'Assertion failed');
+      }
+    }
+
+    function assertEqual(actual, expected, message) {
+      if (actual !== expected) {
+        throw new Error((message ? message + ': ' : '') + `Expected [${expected}] but got [${actual}]`);
+      }
+    }
+
+    function assertDeepEqual(actual, expected, message) {
+      const actualJson = JSON.stringify(actual);
+      const expectedJson = JSON.stringify(expected);
+      if (actualJson !== expectedJson) {
+        throw new Error((message ? message + ': ' : '') + `Expected ${expectedJson} but got ${actualJson}`);
+      }
+    }
+
+    // =========================================================================
+    // 테스트 케이스 정의
+    // =========================================================================
+
+    // SUITE 1: cleanListName 테스트
+    describe('1. 리스트 이름 태그 제거 (cleanListName)', () => {
+      it('브라우저 타이틀에 붙은 (@내태그) 제거 확인', () => {
+        const input = '내 친구들 (@black_tag) / X';
+        assertEqual(cleanListName(input), '내 친구들');
+      });
+
+      it('구분 기호(·)와 함께 붙은 태그 제거 확인', () => {
+        const input = '코인 뉴스 · @developer';
+        assertEqual(cleanListName(input), '코인 뉴스');
+      });
+
+      it('대시(-)와 함께 붙은 태그 제거 확인', () => {
+        const input = 'IT 주요 소식 - @my_handle';
+        assertEqual(cleanListName(input), 'IT 주요 소식');
+      });
+
+      it('앞쪽에 붙은 태그 및 슬래시(@tag/list) 제거 확인', () => {
+        const input = '@author/react-devs / X';
+        assertEqual(cleanListName(input), 'react-devs');
+      });
+
+      it('by @tag 형태의 제작자 표기 제거 확인', () => {
+        const input = '주식 고수들 by @trader_pro';
+        assertEqual(cleanListName(input), '주식 고수들');
+      });
+
+      it('리스트 ID만 있는 경우 괄호 보존 확인 (ID는 태그가 아님)', () => {
+        const input = '리스트 (21045591795666661778)';
+        assertEqual(cleanListName(input), '리스트 (21045591795666661778)');
+      });
+
+      it('시스템 접두사(리스트 멤버 - ) 제거 및 순수 이름 추출 확인', () => {
+        const input = '리스트 멤버 - 글로벌 뉴스 (@media) / Twitter';
+        assertEqual(cleanListName(input), '글로벌 뉴스');
+      });
+
+      it('단독 시스템 단어 "리스트"는 cleanListName으로도 제거되지 않음 (별도 검증 필요)', () => {
+        // cleanListName은 "리스트"를 그대로 반환 (이름 정제 함수)
+        // 실제 차단은 getListNameFromPage의 isValidListName에서 수행됨
+        assertEqual(cleanListName('리스트'), '리스트');
+        assertEqual(cleanListName('Lists'), 'Lists');
+      });
+
+      it('브라우저 탭 알림 카운트 (3) 및 작성자 태그가 결합된 리스트명 완벽 정제', () => {
+        const input = '(3) @YunjinJo98/10일페 일요일 만날 사람~';
+        assertEqual(cleanListName(input), '10일페 일요일 만날 사람~');
+      });
+
+      it('대괄호 알림 카운트 [99+] 및 콜론 태그 정제', () => {
+        const input = '[99+] @developer: AI 연구 모임 / X';
+        assertEqual(cleanListName(input), 'AI 연구 모임');
+      });
+    });
+
+    // SUITE 1-B: 시스템/네비게이션 단어 차단 테스트
+    describe('1-B. 시스템 단어 리스트 이름 차단 (isValidListName)', () => {
+      it('"리스트" 단독 단어는 유효한 리스트 이름으로 거부 (시스템 네비게이션 텍스트)', () => {
+        assertEqual(isValidListName('리스트'), false);
+        assertEqual(isValidListName('Lists'), false);
+        assertEqual(isValidListName('목록'), false);
+      });
+
+      it('"멤버 관리", "구성원 관리", "Manage members" 등 관리 화면 텍스트는 거부', () => {
+        assertEqual(isValidListName('멤버 관리'), false);
+        assertEqual(isValidListName('구성원 관리'), false);
+        assertEqual(isValidListName('Manage members'), false);
+        assertEqual(isValidListName('List members'), false);
+        assertEqual(isValidListName('Members'), false);
+        assertEqual(isValidListName('구성원'), false);
+        assertEqual(isValidListName('멤버'), false);
+      });
+
+      it('"리스트"를 포함하되 실제 이름인 경우는 허용', () => {
+        assertEqual(isValidListName('리스트 (12345)'), true);
+        assertEqual(isValidListName('내 리스트'), true);
+        assertEqual(isValidListName('코인 리스트 모음'), true);
+      });
+
+      it('기타 시스템 단어(홈, 탐색하기, 알림 등)도 거부', () => {
+        assertEqual(isValidListName('홈'), false);
+        assertEqual(isValidListName('Home'), false);
+        assertEqual(isValidListName('Explore'), false);
+        assertEqual(isValidListName('알림'), false);
+      });
+
+      it('일반 리스트 이름은 정상 허용', () => {
+        assertEqual(isValidListName('코인 뉴스'), true);
+        assertEqual(isValidListName('IT 주요 소식'), true);
+        assertEqual(isValidListName('AI 연구자'), true);
+      });
+    });
+
+    // SUITE 2: sanitizeListsObject 테스트
+    describe('2. 기존 저장 데이터 자동 마이그레이션 (sanitizeListsObject)', () => {
+      it('태그가 붙어있던 기존 리스트 키를 순수한 이름으로 변경 및 마이그레이션', () => {
+        const oldLists = {
+          '친구들 (@my_id)': { color: '#1d9bf0', mode: 'normal', members: ['@user1', '@user2'] },
+          '개발자': { color: '#00ba7c', mode: 'highlight', members: ['@dev1'] }
+        };
+        const { newLists, modified } = sanitizeListsObject(oldLists);
+        assertEqual(modified, true);
+        assert(newLists['친구들'] !== undefined, '친구들 키가 생성되어야 함');
+        assert(newLists['친구들 (@my_id)'] === undefined, '구버전 키는 삭제되어야 함');
+        assertEqual(newLists['친구들'].members.length, 2);
+      });
+
+      it('태그 제거 후 키가 중복되는 경우 멤버 목록 자동 병합 및 중복 제거', () => {
+        const oldLists = {
+          '테크': { color: '#1d9bf0', mode: 'normal', members: ['@apple', '@google'] },
+          '테크 (@my_id)': { color: '#1d9bf0', mode: 'normal', members: ['@google', '@meta'] }
+        };
+        const { newLists, modified } = sanitizeListsObject(oldLists);
+        assertEqual(modified, true);
+        assertEqual(Object.keys(newLists).length, 1);
+        assertEqual(newLists['테크'].members.length, 3); // apple, google, meta
+      });
+
+      it('수정할 내역이 없는 순수 데이터는 modified: false 반환', () => {
+        const cleanLists = {
+          '테크': { color: '#1d9bf0', mode: 'normal', members: ['@apple'] }
+        };
+        const { modified } = sanitizeListsObject(cleanLists);
+        assertEqual(modified, false);
+      });
+
+      it('스토리지 내 "멤버 관리" 등 시스템 단어 리스트 자동 삭제', () => {
+        const oldLists = {
+          '멤버 관리': { color: '#1d9bf0', mode: 'normal', members: ['@u1', '@u2'] },
+          '정상 리스트': { color: '#1d9bf0', mode: 'normal', members: ['@u3'] }
+        };
+        const { newLists, modified } = sanitizeListsObject(oldLists);
+        assertEqual(modified, true);
+        assertEqual(newLists['멤버 관리'], undefined);
+        assert(newLists['정상 리스트'] !== undefined, '정상 리스트는 유지되어야 함');
+      });
+
+      it('스토리지 내 (3) @tag/ 리스트 키가 순수 리스트명으로 자동 마이그레이션', () => {
+        const oldLists = {
+          '(3) @YunjinJo98/10일페 일요일 만날 사람~': { color: '#1d9bf0', mode: 'normal', members: ['@u1', '@u2'] }
+        };
+        const { newLists, modified } = sanitizeListsObject(oldLists);
+        assertEqual(modified, true);
+        assertEqual(newLists['(3) @YunjinJo98/10일페 일요일 만날 사람~'], undefined);
+        assert(newLists['10일페 일요일 만날 사람~'] !== undefined);
+        assertEqual(newLists['10일페 일요일 만날 사람~'].members.length, 2);
+      });
+    });
+
+    // SUITE 3: isExcludedUserCell 및 모달 창 격리 테스트
+    describe('3. 팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('모달 창(dialog) 내부의 정상 멤버 셀은 포함(false) 판정', () => {
+        sandbox.innerHTML = `
+          <div role="dialog">
+            <div data-testid="UserCell" id="cell-inside-dialog">
+              <a href="/member_user">@member_user</a>
+            </div>
+          </div>
+        `;
+        const dialog = sandbox.querySelector('div[role="dialog"]');
+        const cell = sandbox.querySelector('#cell-inside-dialog');
+        assertEqual(isExcludedUserCell(cell, dialog), false);
+      });
+
+      it('모달 창이 열렸을 때, 창 뒤쪽 배경의 유저 셀은 100% 차단(true) 판정', () => {
+        sandbox.innerHTML = `
+          <div id="background-page">
+            <div data-testid="UserCell" id="cell-behind-dialog">
+              <a href="/recommended_user">@recommended_user</a>
+            </div>
+          </div>
+          <div role="dialog">
+            <h2>멤버 목록</h2>
+          </div>
+        `;
+        const dialog = sandbox.querySelector('div[role="dialog"]');
+        const cell = sandbox.querySelector('#cell-behind-dialog');
+        assertEqual(isExcludedUserCell(cell, dialog), true);
+      });
+
+      it('사이드바(sidebarColumn, aside) 내부의 팔로우 추천 셀 차단 판정', () => {
+        sandbox.innerHTML = `
+          <div data-testid="sidebarColumn">
+            <aside>
+              <div data-testid="UserCell" id="cell-in-sidebar">
+                <a href="/sidebar_reco">@sidebar_reco</a>
+              </div>
+            </aside>
+          </div>
+        `;
+        const cell = sandbox.querySelector('#cell-in-sidebar');
+        assertEqual(isExcludedUserCell(cell, null), true);
+      });
+
+      it('aria-label="팔로우 추천" 컨테이너 내부 셀 차단 판정', () => {
+        sandbox.innerHTML = `
+          <div aria-label="팔로우 추천">
+            <div data-testid="UserCell" id="cell-reco-label">
+              <a href="/who_to_follow">@who_to_follow</a>
+            </div>
+          </div>
+        `;
+        const cell = sandbox.querySelector('#cell-reco-label');
+        assertEqual(isExcludedUserCell(cell, null), true);
+      });
+
+      it('모달 내부라도 "추천" 탭 활성화 시 셀 차단 판정', () => {
+        sandbox.innerHTML = `
+          <div role="dialog">
+            <div role="tab" aria-selected="true">추천</div>
+            <div data-testid="UserCell" id="cell-reco-tab">
+              <a href="/suggested_user">@suggested_user</a>
+            </div>
+          </div>
+        `;
+        const dialog = sandbox.querySelector('div[role="dialog"]');
+        const cell = sandbox.querySelector('#cell-reco-tab');
+        assertEqual(isExcludedUserCell(cell, dialog), true);
+      });
+    });
+
+    // SUITE 4: extractMembersFromContainer 테스트
+    describe('4. 순수 멤버 유저 추출 (extractMembersFromContainer)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('멤버 모달 창 내부의 실제 멤버들만 정확히 추출 (배경 추천 계정 배제)', () => {
+        sandbox.innerHTML = `
+          <div id="background-page">
+            <div data-testid="UserCell"><a href="/fake_reco_user">@fake_reco_user</a></div>
+          </div>
+          <div role="dialog" id="active-dialog">
+            <div role="tab" aria-selected="true">구성원</div>
+            <div data-testid="UserCell"><a href="/real_member1">@real_member1</a></div>
+            <div data-testid="UserCell"><a href="/real_member2">@real_member2</a></div>
+          </div>
+        `;
+        const dialog = sandbox.querySelector('#active-dialog');
+        const members = extractMembersFromContainer(dialog, dialog);
+        assertDeepEqual(members, ['@real_member1', '@real_member2']);
+      });
+
+      it('시스템 예약어 링크(home, explore 등)는 멤버에서 제외', () => {
+        sandbox.innerHTML = `
+          <div data-testid="primaryColumn" id="members-page">
+            <div data-testid="UserCell"><a href="/home">Home</a></div>
+            <div data-testid="UserCell"><a href="/valid_user">@valid_user</a></div>
+          </div>
+        `;
+        const container = sandbox.querySelector('#members-page');
+        const members = extractMembersFromContainer(container, null);
+        assertDeepEqual(members, ['@valid_user']);
+      });
+    });
+
+    // SUITE 5: buildHandleMap 및 타임라인 뱃지 매핑 테스트
+    describe('5. 타임라인 뱃지 매핑 (buildHandleMap)', () => {
+      it('대소문자 무관(Case-insensitive) 핸들 검색 매핑 생성', () => {
+        const lists = {
+          'AI 연구자': { color: '#7928ca', mode: 'highlight', members: ['@YannLeCun', '@sama'] }
+        };
+        const map = buildHandleMap(lists);
+        assert(map['@yannlecun'] !== undefined, '소문자 키로 조회 가능해야 함');
+        assertEqual(map['@yannlecun'][0].name, 'AI 연구자');
+        assertEqual(map['@yannlecun'][0].mode, 'highlight');
+        assertEqual(map['@sama'][0].color, '#7928ca');
+      });
+
+      it('여러 리스트에 중복 소속된 유저의 다중 뱃지 매핑 확인', () => {
+        const lists = {
+          '테크': { color: '#1d9bf0', mode: 'normal', members: ['@elonmusk'] },
+          '우주': { color: '#f4212e', mode: 'highlight', members: ['@elonmusk'] }
+        };
+        const map = buildHandleMap(lists);
+        assertEqual(map['@elonmusk'].length, 2);
+        assertEqual(map['@elonmusk'][0].name, '테크');
+        assertEqual(map['@elonmusk'][1].name, '우주');
+      });
+    });
+
+    // SUITE 6: 개별 멤버 삭제 로직 테스트 (shared.js removeMemberFromLists)
+    describe('6. 개별 멤버 삭제 (removeMemberFromLists 검증)', () => {
+      it('특정 핸들만 대소문자 무관하게 리스트에서 정확하게 제거하고 변경 여부를 반환', () => {
+        const listData = {
+          '개발자': { color: '#1d9bf0', mode: 'normal', members: ['@user1', '@User2', '@user3'] }
+        };
+        const changed = removeMemberFromLists(listData, '개발자', '@user2');
+        assertEqual(changed, true);
+        assertDeepEqual(listData['개발자'].members, ['@user1', '@user3']);
+
+        const unchanged = removeMemberFromLists(listData, '개발자', '@nonexistent');
+        assertEqual(unchanged, false);
+      });
+    });
+
+    // SUITE 7: URL 파싱 및 자동/수동 수집 차단 정책 (parseListUrl & getScrapeBlockReason)
+    describe('7. 리스트 URL 파싱 및 수집 차단 정책 (parseListUrl & getScrapeBlockReason)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('/i/lists/:id 및 /members, /followers URL 정확히 판별', () => {
+        const mainInfo = parseListUrl('https://x.com/i/lists/123456789');
+        assert(mainInfo !== null, '리스트 URL은 객체를 반환해야 함');
+        assertEqual(mainInfo.isMain, true);
+        assertEqual(mainInfo.isMembers, false);
+        assertEqual(mainInfo.isFollowers, false);
+        assertEqual(mainInfo.listId, '123456789');
+
+        const membersInfo = parseListUrl('/i/lists/123456789/members');
+        assertEqual(membersInfo.isMembers, true);
+        assertEqual(membersInfo.isMain, false);
+
+        const followersInfo = parseListUrl('/i/lists/123456789/followers');
+        assertEqual(followersInfo.isFollowers, true);
+
+        const homeInfo = parseListUrl('https://x.com/home');
+        assertEqual(homeInfo, null);
+      });
+
+      it('비리스트 페이지 및 팔로워(/followers) 페이지는 자동/수동 모두 차단 사유 반환', () => {
+        sandbox.innerHTML = '<div></div>';
+        assert(getScrapeBlockReason(parseListUrl('/home'), sandbox, null, true) !== null, '비리스트 페이지 차단');
+        assert(getScrapeBlockReason(parseListUrl('/i/lists/123/followers'), sandbox, null, true) !== null, '팔로워 뷰 차단');
+      });
+
+      it('"추천" 또는 "Suggested" 탭이 활성화된 경우 자동/수동 모두 차단 사유 반환', () => {
+        sandbox.innerHTML = `
+          <div role="dialog" id="dlg">
+            <div role="tab" aria-selected="true">추천</div>
+          </div>
+        `;
+        const dlg = sandbox.querySelector('#dlg');
+        const urlInfo = parseListUrl('/i/lists/123/members');
+        assert(getScrapeBlockReason(urlInfo, dlg, dlg, false) !== null, '자동 수집 추천 탭 차단');
+        assert(getScrapeBlockReason(urlInfo, dlg, dlg, true) !== null, '수동 수집 추천 탭 차단');
+      });
+
+      it('일반 리스트 타임라인(/i/lists/:id, 모달 없음)은 자동 수집 차단, 수동 수집은 허용(null)', () => {
+        sandbox.innerHTML = '<div id="main"></div>';
+        const urlInfo = parseListUrl('/i/lists/123');
+        assert(getScrapeBlockReason(urlInfo, sandbox, null, false) !== null, '일반 타임라인 자동 수집 차단');
+        assertEqual(getScrapeBlockReason(urlInfo, sandbox, null, true), null);
+      });
+
+      it('멤버 뷰(/members)에서 "구성원" 탭 활성화 시 자동 수집 정상 허용(null)', () => {
+        sandbox.innerHTML = `
+          <div role="dialog" id="dlg">
+            <div role="tab" aria-selected="true">구성원</div>
+          </div>
+        `;
+        const dlg = sandbox.querySelector('#dlg');
+        const urlInfo = parseListUrl('/i/lists/123/members');
+        assertEqual(getScrapeBlockReason(urlInfo, dlg, dlg, false), null);
+      });
+    });
+
+    // SUITE 8: 폴백 리스트 이름("리스트 (ID)") 자동 승격 및 병합 (resolveListKey)
+    describe('8. 폴백 리스트명 자동 승격 및 listId 기반 병합 (resolveListKey)', () => {
+      it('isFallbackListName이 "리스트 (12345)" 형태만 정확히 폴백으로 감지', () => {
+        assertEqual(isFallbackListName('리스트 (123456)'), true);
+        assertEqual(isFallbackListName('코인 리스트 (2026)'), false);
+        assertEqual(isFallbackListName('내 리스트'), false);
+      });
+
+      it('기존에 "리스트 (ID)"로 저장된 항목이 있을 때 실제 리스트명이 들어오면 renameFrom 반환하여 승격 유도', () => {
+        const lists = {
+          '리스트 (999888)': { color: '#ff0000', mode: 'highlight', listId: '999888', members: ['@u1'] }
+        };
+        const resolved = resolveListKey(lists, '진짜 리스트 이름', '999888');
+        assertEqual(resolved.renameFrom, '리스트 (999888)');
+        assertEqual(resolved.key, '진짜 리스트 이름');
+      });
+
+      it('이미 실제 이름으로 저장된 리스트(listId 일치)에 폴백 이름이 들어오면 기존 실제 이름을 유지', () => {
+        const lists = {
+          '실제 이름': { color: '#00ba7c', mode: 'normal', listId: '777666', members: ['@u1', '@u2'] }
+        };
+        const resolved = resolveListKey(lists, '리스트 (777666)', '777666');
+        assertEqual(resolved.renameFrom, null);
+        assertEqual(resolved.key, '실제 이름');
+      });
+
+      it('이름이 같지만 서로 다른 listId 를 가진 별개 리스트는 접미사를 붙여 충돌을 방지', () => {
+        const lists = {
+          '친구': { color: '#1d9bf0', mode: 'normal', listId: '11112222', members: ['@a'] }
+        };
+        const resolved = resolveListKey(lists, '친구', '99998888');
+        assertEqual(resolved.renameFrom, null);
+        assertEqual(resolved.key, '친구 (8888)');
+      });
+    });
+
+    // SUITE 9: 배지 스타일 !important 적용 및 자체 주입 노드 감지 (applyBadgeStyle & isOwnInjectedNode)
+    describe('9. 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('applyBadgeStyle 호출 시 color, font-size, background-color에 !important 우선순위가 설정됨', () => {
+        const badge = document.createElement('span');
+        applyBadgeStyle(badge, '#7928ca', { textColor: '#00ffcc', fontSize: 14, fontFamily: 'monospace' }, true);
+        assertEqual(badge.style.getPropertyPriority('color'), 'important');
+        assertEqual(badge.style.getPropertyPriority('font-size'), 'important');
+        assertEqual(badge.style.getPropertyValue('font-size'), '14px');
+        assertEqual(badge.style.getPropertyPriority('font-family'), 'important');
+
+        // 미니 배지는 기본 크기보다 2px 작게(최소 8px) 적용
+        const miniBadge = document.createElement('span');
+        applyBadgeStyle(miniBadge, '#1d9bf0', { textColor: '#ffffff', fontSize: 12, fontFamily: 'system' }, false);
+        assertEqual(miniBadge.style.getPropertyValue('font-size'), '10px');
+      });
+
+      it('isOwnInjectedNode가 확장 프로그램이 주입한 배지/래퍼 노드를 정확히 판별', () => {
+        sandbox.innerHTML = `
+          <div class="ag-badges-wrapper" id="w">
+            <span class="ag-list-badge" id="b">리스트</span>
+          </div>
+          <div data-testid="tweet" id="t">일반 트윗 노드</div>
+        `;
+        assertEqual(isOwnInjectedNode(sandbox.querySelector('#w')), true);
+        assertEqual(isOwnInjectedNode(sandbox.querySelector('#b')), true);
+        assertEqual(isOwnInjectedNode(sandbox.querySelector('#t')), false);
+      });
+    });
+
+    // SUITE 10: 핸들 파싱, 백업 가져오기 정규화, 수집 시그니처 (parseHandles & normalizeImportedLists)
+    describe('10. 수동 핸들 파싱 및 백업 JSON 검증 (parseHandles & normalizeImportedLists)', () => {
+      it('쉼표/공백/줄바꿈 구분 핸들을 정규화하고 유효하지 않은 핸들은 필터링', () => {
+        const raw = 'user_one, @User_Two\n@invalid-handle! @too_long_username_123456 @user_one';
+        const parsed = parseHandles(raw);
+        assertDeepEqual(parsed, ['@user_one', '@User_Two']);
+      });
+
+      it('normalizeImportedLists가 배열/null을 거부하고 잘못된 mode/color 및 시스템 키를 정제', () => {
+        assertEqual(normalizeImportedLists(null), null);
+        assertEqual(normalizeImportedLists([1, 2, 3]), null);
+
+        const rawImport = {
+          '멤버 관리': { color: '#1d9bf0', mode: 'normal', members: ['@u1'] },
+          '내 친구 (@me)': { color: 'invalid', mode: 'invalid_mode', listId: '123456789', members: ['alice', '@bob', 'bad-handle!'] }
+        };
+        const normalized = normalizeImportedLists(rawImport);
+        assertEqual(normalized['멤버 관리'], undefined);
+        assert(normalized['내 친구'] !== undefined, '정제된 키가 존재해야 함');
+        assertEqual(normalized['내 친구'].color, '#1d9bf0');
+        assertEqual(normalized['내 친구'].mode, 'normal');
+        assertEqual(normalized['내 친구'].listId, '123456789');
+        assertDeepEqual(normalized['내 친구'].members, ['@alice', '@bob']);
+      });
+
+      it('buildScrapeSignature가 멤버 순서와 대소문자에 무관하게 동일한 시그니처 생성', () => {
+        const sig1 = buildScrapeSignature('테크', ['@Bob', '@alice']);
+        const sig2 = buildScrapeSignature('테크', ['@ALICE', '@bob']);
+        assertEqual(sig1, sig2);
+      });
+    });
+
+    // SUITE 11: 모듈 무결성 스모크 테스트
+    describe('11. 공통 모듈(shared.js) 심볼 무결성 검증', () => {
+      it('필수 공유 함수 및 상수가 전역 스코프에 정상 로드됨', () => {
+        const requiredFns = [
+          debounce, mergeHandles, removeMemberFromLists,
+          isSystemListName, isValidListName, cleanListName, sanitizeListsObject,
+          parseListUrl, getActiveTabText, getScrapeBlockReason,
+          isFallbackListName, resolveListKey, applyListSave, isExcludedUserCell,
+          extractMembersFromContainer, buildScrapeSignature, buildHandleMap,
+          applyBadgeStyle, isOwnInjectedNode, parseHandles, normalizeImportedLists,
+          isRecoLabel, mergeImportedLists, applyManualAdd, getSyncTabError, getBadgeAnchor,
+          normalizeBadgeSettings, buildBackup, parseBackup
+        ];
+        requiredFns.forEach(fn => assertEqual(typeof fn, 'function'));
+        assertEqual(typeof AG_DEFAULT_BADGE_SETTINGS, 'object');
+        assert(AG_HANDLE_RE instanceof RegExp, 'AG_HANDLE_RE 정규식 상수가 존재해야 함');
+      });
+    });
+
+    // SUITE 12: 리스트 저장 통합 파이프라인 및 하이픈 리스트명 보존 검증 (applyListSave & mergeHandles)
+    describe('12. 리스트 저장 통합 파이프라인 및 하이픈 보존 (applyListSave & mergeHandles)', () => {
+      it('하이픈(-)이 포함된 실제 리스트 이름("AI - 연구자")이 잘리지 않고 온전히 보존됨', () => {
+        const title = '리스트 멤버 - AI - 연구자 (@my_handle) / X';
+        assertEqual(cleanListName(title), 'AI - 연구자');
+      });
+
+      it('applyListSave가 폴백 리스트를 실제 이름으로 승격하고 기존 색상/모드/멤버를 보존하여 병합', () => {
+        const initial = {
+          '리스트 (555666)': { color: '#ff0055', mode: 'highlight', listId: '555666', members: ['@Alpha'] }
+        };
+        const res = applyListSave(initial, 'AI - 연구자 (@me)', ['@alpha', '@Beta'], '555666');
+        assertEqual(res.success, true);
+        assertEqual(res.listName, 'AI - 연구자');
+        assertEqual(res.added, 1);
+        assertEqual(res.count, 2);
+        assertEqual(res.lists['리스트 (555666)'], undefined);
+        assertEqual(res.lists['AI - 연구자'].color, '#ff0055');
+        assertEqual(res.lists['AI - 연구자'].mode, 'highlight');
+        assertDeepEqual(res.lists['AI - 연구자'].members, ['@Alpha', '@Beta']);
+      });
+
+      it('applyListSave가 변경 사항이 없을 때 noChange: true를 반환하여 불필요한 스토리지 쓰기 방지', () => {
+        const initial = {
+          '테크': { color: '#1d9bf0', mode: 'normal', listId: '100', members: ['@user1', '@user2'] }
+        };
+        const res = applyListSave(initial, '테크', ['@USER1', '@user2'], '100');
+        assertEqual(res.success, true);
+        assertEqual(res.noChange, true);
+        assertEqual(res.added, 0);
+      });
+    });
+
+    // SUITE 13: 실제 리스트 이름 보존 (cleanListName 과잉 정제 방지, v1.4.1)
+    describe('13. 실제 리스트 이름 보존 (cleanListName 과잉 정제 방지)', () => {
+      it('구분자 없이 끝에 붙은 "Members"/"리스트 멤버"는 이름의 일부로 보존', () => {
+        assertEqual(cleanListName('Core Members'), 'Core Members');
+        assertEqual(cleanListName('우리팀 리스트 멤버'), '우리팀 리스트 멤버');
+        assertEqual(cleanListName('Core Members / X'), 'Core Members');
+      });
+
+      it('구분자 없이 앞에 붙은 "Members"도 보존 ("Members Only Club")', () => {
+        assertEqual(cleanListName('Members Only Club'), 'Members Only Club');
+      });
+
+      it('구분자가 있는 시스템 접두사/접미사는 계속 제거', () => {
+        assertEqual(cleanListName('Friends - Members'), 'Friends');
+        assertEqual(cleanListName('List members · Friends'), 'Friends');
+        assertEqual(cleanListName('리스트 멤버: 우리팀'), '우리팀');
+      });
+
+      it('단어 중간의 @ 는 보존하고, 공백 뒤 끝에 붙은 @핸들만 제거', () => {
+        assertEqual(cleanListName('연락처 me@site'), '연락처 me@site');
+        assertEqual(cleanListName('코인 뉴스 @developer'), '코인 뉴스');
+      });
+    });
+
+    // SUITE 14: 정제 시 서로 다른 리스트 분리 (sanitizeListsObject, v1.4.1)
+    describe('14. 정제 중 동명 이질 리스트 분리 (sanitizeListsObject)', () => {
+      it('정제 후 이름이 같아도 listId 가 다르면 합치지 않고 각자의 멤버/색상/모드를 유지', () => {
+        const { newLists, modified } = sanitizeListsObject({
+          'A (@x)': { color: '#ff0000', mode: 'highlight', members: ['@a1'], listId: '1' },
+          'A': { color: '#00ff00', mode: 'dim', members: ['@b1'], listId: '2' }
+        });
+        assertEqual(modified, true);
+        assertEqual(Object.keys(newLists).length, 2);
+        // 원래 "A" 를 쓰던 리스트(id 2)가 이름을 유지
+        assertEqual(newLists['A'].listId, '2');
+        assertEqual(newLists['A'].mode, 'dim');
+        assertDeepEqual(newLists['A'].members, ['@b1']);
+        assertEqual(newLists['A (1)'].listId, '1');
+        assertEqual(newLists['A (1)'].color, '#ff0000');
+        assertDeepEqual(newLists['A (1)'].members, ['@a1']);
+      });
+
+      it('같은 listId 이거나 한쪽에 listId 가 없으면 기존처럼 병합', () => {
+        const same = sanitizeListsObject({
+          'B': { color: '#111111', mode: 'normal', members: ['@x'], listId: '9' },
+          'B (@me)': { color: '#222222', mode: 'normal', members: ['@y'], listId: '9' }
+        }).newLists;
+        assertEqual(Object.keys(same).length, 1);
+        assertDeepEqual(same['B'].members, ['@x', '@y']);
+
+        const noId = sanitizeListsObject({
+          'C': { color: '#111111', mode: 'normal', members: ['@x'] },
+          'C (@me)': { color: '#222222', mode: 'normal', members: ['@y'], listId: '5' }
+        }).newLists;
+        assertEqual(Object.keys(noId).length, 1);
+        assertEqual(noId['C'].listId, '5');
+      });
+
+      it('분리된 결과를 다시 정제해도 바뀌지 않음 (무한 저장 루프 없음)', () => {
+        const first = sanitizeListsObject({
+          'A (@x)': { members: ['@a1'], listId: '1' },
+          'A': { members: ['@b1'], listId: '2' }
+        }).newLists;
+        const second = sanitizeListsObject(first);
+        assertEqual(second.modified, false);
+        assertDeepEqual(second.newLists, first);
+      });
+
+      it('백업 가져오기(normalizeImportedLists)에서도 동명 이질 리스트가 분리됨', () => {
+        const imp = normalizeImportedLists({
+          'A (@x)': { members: ['@a1'], listId: '1' },
+          'A': { members: ['@b1'], listId: '2' }
+        });
+        assertEqual(Object.keys(imp).length, 2);
+      });
+    });
+
+    // SUITE 15: 가져오기 병합 (mergeImportedLists, v1.4.1)
+    describe('15. 백업 병합 시 listId 기준 매칭 (mergeImportedLists)', () => {
+      it('이름이 같아도 listId 가 다르면 별개 리스트로 추가', () => {
+        const lists = { '친구': { color: '#ff0000', mode: 'highlight', listId: '11112222', members: ['@a'] } };
+        mergeImportedLists(lists, { '친구': { color: '#1d9bf0', mode: 'normal', listId: '99998888', members: ['@b'] } });
+        assertDeepEqual(lists['친구'].members, ['@a']);
+        assertDeepEqual(lists['친구 (8888)'].members, ['@b']);
+      });
+
+      it('같은 listId 는 이름이 달라도 기존 리스트에 합치고 기존 색상/모드를 유지', () => {
+        const lists = { '새 이름': { color: '#ff0000', mode: 'dim', listId: '42', members: ['@a'] } };
+        mergeImportedLists(lists, { '옛 이름': { color: '#1d9bf0', mode: 'normal', listId: '42', members: ['@b', '@A'] } });
+        assertEqual(Object.keys(lists).length, 1);
+        assertEqual(lists['새 이름'].color, '#ff0000');
+        assertEqual(lists['새 이름'].mode, 'dim');
+        assertDeepEqual(lists['새 이름'].members, ['@a', '@b']);
+      });
+
+      it('없는 리스트는 그대로 추가하고 listId 없는 기존 리스트에는 listId 를 채움', () => {
+        const lists = { '테크': { color: '#ff0000', mode: 'normal', members: ['@a'] } };
+        mergeImportedLists(lists, {
+          '테크': { color: '#1d9bf0', mode: 'normal', listId: '7', members: ['@b'] },
+          '새 리스트': { color: '#00ff00', mode: 'normal', members: ['@c'] }
+        });
+        assertEqual(lists['테크'].listId, '7');
+        assertEqual(lists['테크'].color, '#ff0000');
+        assertDeepEqual(lists['새 리스트'].members, ['@c']);
+      });
+    });
+
+    // SUITE 16: 직접 추가 시 기존 색상/모드 유지 (applyManualAdd, v1.4.1)
+    describe('16. 직접 리스트 추가 (applyManualAdd)', () => {
+      it('기존 리스트에 추가하면 멤버만 합치고 사용자가 정한 색상/모드/listId 는 유지', () => {
+        const lists = { '테크': { color: '#ff0055', mode: 'highlight', listId: '1', members: ['@a'] } };
+        const res = applyManualAdd(lists, '테크', ['@b', '@A'], '#1d9bf0', 'normal');
+        assertEqual(res.created, false);
+        assertEqual(res.total, 2);
+        assertEqual(lists['테크'].color, '#ff0055');
+        assertEqual(lists['테크'].mode, 'highlight');
+        assertEqual(lists['테크'].listId, '1');
+      });
+
+      it('새 리스트는 폼의 색상/모드로 만들고, 잘못된 값은 기본값 사용', () => {
+        const lists = {};
+        const res = applyManualAdd(lists, '새 리스트', ['@a'], '#00ff00', 'dim');
+        assertEqual(res.created, true);
+        assertEqual(lists['새 리스트'].color, '#00ff00');
+        assertEqual(lists['새 리스트'].mode, 'dim');
+        applyManualAdd(lists, '다른 리스트', ['@a'], 'red', 'bogus');
+        assertEqual(lists['다른 리스트'].color, '#1d9bf0');
+        assertEqual(lists['다른 리스트'].mode, 'normal');
+      });
+    });
+
+    // SUITE 17: 팝업 수집 대상 탭 검사 (getSyncTabError, v1.4.1)
+    describe('17. 팝업 [가져오기] 대상 탭 검사 (getSyncTabError)', () => {
+      it('탭 자체가 없을 때만 "활성화된 탭을 찾을 수 없습니다"', () => {
+        assertEqual(getSyncTabError(undefined), '활성화된 탭을 찾을 수 없습니다.');
+      });
+
+      it('url 이 없는 탭(tabs 권한 없음 → X 가 아닌 탭)은 "X 페이지가 아닙니다"로 안내', () => {
+        assertEqual(getSyncTabError({ id: 3 }), '현재 탭이 X(Twitter) 페이지가 아닙니다.');
+        assertEqual(getSyncTabError({ id: 3, url: 'https://example.com/' }), '현재 탭이 X(Twitter) 페이지가 아닙니다.');
+      });
+
+      it('x.com / twitter.com 탭은 통과(null)', () => {
+        assertEqual(getSyncTabError({ id: 3, url: 'https://x.com/i/lists/1/members' }), null);
+        assertEqual(getSyncTabError({ id: 3, url: 'https://mobile.twitter.com/home' }), null);
+      });
+    });
+
+    // SUITE 18: 추천 계정 필터 범위 (isExcludedUserCell, v1.4.1)
+    describe('18. 추천 계정 필터 범위 축소 (isExcludedUserCell)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('목록 아래쪽에 "팔로우 추천" 제목이 있어도 그 위의 멤버는 수집하고, 아래 셀만 제외', () => {
+        sandbox.innerHTML = `
+          <div data-testid="primaryColumn"><section><div id="list">
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/alice">Alice</a></div></div>
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/bob">Bob</a></div></div>
+            <div data-testid="cellInnerDiv"><h2>팔로우 추천</h2></div>
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/carol">Carol</a></div></div>
+          </div></section></div>`;
+        assertDeepEqual(extractMembersFromContainer(sandbox.querySelector('#list'), null), ['@alice', '@bob']);
+      });
+
+      it('aria-label 에 "Connect"/"추천"이 일부 포함된 것만으로는 제외하지 않음 (전체 일치)', () => {
+        sandbox.innerHTML = `
+          <div aria-label="타임라인: Connected 친구들" id="c1">
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/dave">Dave</a></div></div>
+          </div>
+          <div aria-label="타임라인: 추천 작가 모음" id="c2">
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/erin">Erin</a></div></div>
+          </div>`;
+        assertDeepEqual(extractMembersFromContainer(sandbox.querySelector('#c1'), null), ['@dave']);
+        assertDeepEqual(extractMembersFromContainer(sandbox.querySelector('#c2'), null), ['@erin']);
+      });
+
+      it('"타임라인: 팔로우 추천" 처럼 접두사가 붙은 추천 영역 표기는 계속 제외', () => {
+        sandbox.innerHTML = `
+          <div aria-label="타임라인: 팔로우 추천" id="c3">
+            <div data-testid="UserCell"><a href="/reco">Reco</a></div>
+          </div>`;
+        assertDeepEqual(extractMembersFromContainer(sandbox.querySelector('#c3'), null), []);
+      });
+
+      it('리스트 헤더 이름("추천 작가")이 앞에 있어도 멤버를 제외하지 않음', () => {
+        sandbox.innerHTML = `
+          <div id="list2">
+            <div data-testid="cellInnerDiv"><h2>추천 작가</h2></div>
+            <div data-testid="cellInnerDiv"><div data-testid="UserCell"><a href="/frank">Frank</a></div></div>
+          </div>`;
+        assertDeepEqual(extractMembersFromContainer(sandbox.querySelector('#list2'), null), ['@frank']);
+      });
+    });
+
+    // SUITE 19: 인용 트윗 미니 배지 위치 (getBadgeAnchor, v1.4.1)
+    describe('19. 배지 부착 위치 (getBadgeAnchor)', () => {
+      const sandbox = document.getElementById('sandbox');
+
+      it('이름 링크가 있으면 링크의 부모 요소', () => {
+        sandbox.innerHTML = `<div data-testid="User-Name" id="u"><div id="row"><a href="/alice">Alice</a></div><div><span>@alice</span></div></div>`;
+        assertEqual(getBadgeAnchor(sandbox.querySelector('#u')).id, 'row');
+      });
+
+      it('링크가 없는 인용 트윗 이름 영역에서도 배지 위치를 반환 (첫 자식 요소)', () => {
+        sandbox.innerHTML = `<div data-testid="User-Name" id="q"><div id="namebox"><span>Alice</span></div><div><span>@alice</span></div></div>`;
+        const anchor = getBadgeAnchor(sandbox.querySelector('#q'));
+        assert(anchor !== null, '배지 위치가 있어야 함');
+        assertEqual(anchor.id, 'namebox');
+      });
+    });
+
+    // SUITE 20: 백업 파일 (buildBackup & parseBackup, v1.4.1)
+    describe('20. 백업에 배지 설정 포함 (buildBackup & parseBackup)', () => {
+      it('내보낸 파일을 다시 읽으면 리스트와 배지 설정이 모두 복원됨', () => {
+        const backup = buildBackup(
+          { '테크': { color: '#ff0000', mode: 'dim', listId: '7', members: ['@a'] } },
+          { textColor: '#000000', fontSize: 14, fontFamily: 'monospace' }
+        );
+        assertEqual(backup.app, 'banmo_tag');
+        const parsed = parseBackup(JSON.parse(JSON.stringify(backup)));
+        assertEqual(parsed.lists['테크'].mode, 'dim');
+        assertEqual(parsed.lists['테크'].listId, '7');
+        assertDeepEqual(parsed.badgeSettings, { textColor: '#000000', fontSize: 14, fontFamily: 'monospace' });
+      });
+
+      it('구버전 백업(리스트 객체만)도 그대로 읽고 badgeSettings 는 null', () => {
+        const parsed = parseBackup({ '테크': { color: '#ff0000', mode: 'normal', members: ['@a'] } });
+        assert(parsed !== null, '구버전 형식을 읽어야 함');
+        assertEqual(parsed.badgeSettings, null);
+        assertDeepEqual(parsed.lists['테크'].members, ['@a']);
+        // "app" 이라는 이름의 리스트가 있는 구버전 파일도 리스트로 처리
+        const withAppList = parseBackup({ 'app': { members: ['@b'] } });
+        assertDeepEqual(withAppList.lists['app'].members, ['@b']);
+      });
+
+      it('잘못된 배지 설정 값은 기본값으로, 잘못된 형식은 null', () => {
+        const s = normalizeBadgeSettings({ textColor: 'red', fontSize: 99, fontFamily: 'evil; color:red' });
+        assertDeepEqual(s, { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' });
+        assertEqual(parseBackup(null), null);
+        assertEqual(parseBackup([1, 2]), null);
+      });
+    });
+
+    // =========================================================================
+    // 테스트 실행기 엔진
+    // =========================================================================
+
+    function runAllTests() {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+      
+      let totalCount = 0;
+      let passCount = 0;
+      let failCount = 0;
+
+      const startTime = performance.now();
+
+      testSuites.forEach(suite => {
+        const suiteEl = document.createElement('div');
+        suiteEl.className = 'test-suite';
+
+        const headerEl = document.createElement('div');
+        headerEl.className = 'suite-header';
+        headerEl.textContent = suite.name;
+        suiteEl.appendChild(headerEl);
+
+        let suitePass = 0;
+        let suiteFail = 0;
+
+        suite.tests.forEach(test => {
+          totalCount++;
+          const testEl = document.createElement('div');
+          testEl.className = 'test-item';
+
+          const titleRow = document.createElement('div');
+          titleRow.className = 'test-title-row';
+
+          const badge = document.createElement('span');
+          badge.className = 'badge';
+
+          const title = document.createElement('span');
+          title.textContent = test.name;
+
+          titleRow.appendChild(badge);
+          titleRow.appendChild(title);
+          testEl.appendChild(titleRow);
+
+          let capturedError = null;
+          try {
+            test.fn();
+            passCount++;
+            suitePass++;
+            badge.className += ' badge-pass';
+            badge.textContent = 'PASS';
+          } catch (err) {
+            failCount++;
+            suiteFail++;
+            badge.className += ' badge-fail';
+            badge.textContent = 'FAIL';
+            capturedError = err.message;
+
+            const errDetail = document.createElement('div');
+            errDetail.className = 'test-detail test-error';
+            errDetail.textContent = '❌ ' + err.message;
+            testEl.appendChild(errDetail);
+          }
+          test._passed = (badge.textContent === 'PASS');
+          test._error = test._passed ? null : capturedError;
+
+          suiteEl.appendChild(testEl);
+        });
+
+        resultsDiv.appendChild(suiteEl);
+      });
+
+      const endTime = performance.now();
+      const elapsed = Math.round(endTime - startTime);
+
+      document.getElementById('stat-total').textContent = totalCount;
+      document.getElementById('stat-passed').textContent = passCount;
+      document.getElementById('stat-failed').textContent = failCount;
+      document.getElementById('stat-time').textContent = elapsed + 'ms';
+
+      // CLI 자동화 러너를 위한 정형화된 JSON 데이터 출력
+      const report = {
+        total: totalCount,
+        passed: passCount,
+        failed: failCount,
+        duration: elapsed + 'ms',
+        suites: testSuites.map(suite => ({
+          name: suite.name,
+          tests: suite.tests.map(t => ({
+            name: t.name,
+            passed: t._passed,
+            error: t._error || null
+          }))
+        }))
+      };
+
+      let jsonEl = document.getElementById('test-results-data');
+      if (!jsonEl) {
+        jsonEl = document.createElement('script');
+        jsonEl.id = 'test-results-data';
+        jsonEl.type = 'application/json';
+        document.body.appendChild(jsonEl);
+      }
+      jsonEl.textContent = JSON.stringify(report);
+    }
+
+    // 페이지 로드 시 자동 실행
+    window.addEventListener('DOMContentLoaded', () => {
+      runAllTests();
+    });
+  </script>
+</body>
+</html>
