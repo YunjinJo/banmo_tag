@@ -1,6 +1,6 @@
 # banmo_tag 개인정보 처리방침
 
-시행일: 2026-11-04
+시행일: 2026-11-05 (v1.5.0: 화면 구조 점검 결과 항목 추가)
 
 banmo_tag(이하 "확장 프로그램")는 X(Twitter) 타임라인에서 사용자가 정한 리스트의 멤버를 배지로 표시하는 크롬 확장 프로그램입니다. 이 문서는 확장 프로그램이 어떤 정보를 다루는지 설명합니다.
 
@@ -18,6 +18,7 @@ banmo_tag(이하 "확장 프로그램")는 X(Twitter) 타임라인에서 사용�
 | 리스트별 배지 색상, 표시 모드(기본/강조/흐리게) | `chrome.storage.local` | 사용자가 정한 표시 방식을 유지하기 위해 |
 | 배지 스타일 설정(글자 색상, 크기, 폰트) | `chrome.storage.local` | 배지 모양을 유지하기 위해 |
 | 현재 보고 있는 리스트의 이름 | X 탭의 `sessionStorage` (탭을 닫으면 삭제) | 리스트 메인 화면에서 멤버 화면으로 이동할 때 이름을 이어 쓰기 위해 |
+| 화면 구조 점검 결과 (영역: 멤버 수집/타임라인, 정상 여부, 안내 문구, 확인 시각) | `chrome.storage.local` | X 화면 구조가 바뀌어 기능이 멈췄을 때 팝업에서 알려 주기 위해. URL·화면 내용·핸들은 저장하지 않음 |
 
 멤버 핸들은 X에서 공개적으로 보이는 정보이며, 사용자가 리스트 멤버 화면을 열거나 직접 입력했을 때만 저장됩니다.
 
@@ -59,4 +60,4 @@ Chrome 웹 스토어 등록 페이지에 적힌 개발자 연락처로 문의해
 
 ## English summary
 
-banmo_tag does not collect, transmit, sell, or share any personal data. List names, list IDs, member handles, display colors/modes and badge style settings are stored only in the user's browser (`chrome.storage.local`, plus a tab-scoped `sessionStorage` cache of the current list name). The extension runs only on x.com / twitter.com, reads list member handles and tweet author handles locally to show badges, and never sends page content anywhere. It uses no analytics, ads, remote servers, or remote code. Users can delete all data with the reset button or by uninstalling the extension.
+banmo_tag does not collect, transmit, sell, or share any personal data. List names, list IDs, member handles, display colors/modes, badge style settings and a page-structure check status (area, ok flag, message, time; no URLs or page content) are stored only in the user's browser (`chrome.storage.local`, plus a tab-scoped `sessionStorage` cache of the current list name). The extension runs only on x.com / twitter.com, reads list member handles and tweet author handles locally to show badges, and never sends page content anywhere. It uses no analytics, ads, remote servers, or remote code. Users can delete all data with the reset button or by uninstalling the extension.

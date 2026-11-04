@@ -66,7 +66,7 @@ function isSystemListName(name) {
     '목록', '홈', '탐색하기', '알림', '쪽지', '북마크', '설정', '게시하기',
     'Lists', 'Manage members', 'List members', 'Members', 'Suggested', 'Who to follow',
     'Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Settings',
-    'X', 'Twitter', 'Post',
+    'X', 'Twitter', 'Post', '타임라인', 'Timeline',
     'リスト', 'メンバーの管理', 'リストメンバー', 'おすすめ'
   ];
   var lower = trimmed.toLowerCase();
@@ -94,6 +94,8 @@ function cleanListName(rawName) {
     name = name.replace(/\s*\/\s*(X|Twitter)$/i, '');
     // 2. 브라우저 탭 알림 카운트 제거: "(3) ", "[5] ", "(99+) " 등
     name = name.replace(/^\s*[\(\[]\d+\+?[\)\]]\s*/g, '');
+    // 2-1. X 의 화면 읽기용 제목 접두사 제거: "타임라인: 리스트 멤버", "Timeline: List members"
+    name = name.replace(/^(타임라인|Timeline)\s*:\s*/i, '');
     // 3. 시스템 접두사/접미사 정리 — 구분자(- · • : |)가 있을 때만 제거해 "Core Members", "우리팀 리스트 멤버" 같은 실제 이름을 보존
     name = name.replace(/^(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)\s*[\-·•:|]+\s*/i, '');
     name = name.replace(/\s*[\-·•:|]+\s*(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)$/i, '');
@@ -129,11 +131,14 @@ function sanitizeListsObject(lists) {
   cleanFirst.forEach(function (key) {
     var val = src[key];
     // 1. 키 자체 또는 정제된 키가 시스템 단어인 경우(예: '멤버 관리') 제거
+    //    단, 사용자가 직접 추가한 리스트(manual: true)는 "X", "Home" 같은 이름도 허용
     var cleanKey = cleanListName(key);
-    if (isSystemListName(key) || isSystemListName(cleanKey)) {
+    var isManual = !!(val && val.manual === true);
+    if (!isManual && (isSystemListName(key) || isSystemListName(cleanKey))) {
       modified = true;
       return;
     }
+    if (isManual && (!cleanKey || cleanKey === 'Unknown List')) cleanKey = key;
     var listId = val && val.listId;
     var targetKey = newLists[cleanKey] ? resolveListKey(newLists, cleanKey, listId).key : cleanKey;
     if (targetKey !== key) modified = true;
@@ -284,6 +289,56 @@ function applyListSave(rawLists, rawListName, incomingMembers, listId) {
   return { success: true, lists: lists, listName: listName, count: merged.length, added: addedCount, noChange: false };
 }
 
+// 리스트 멤버를 "이번에 확인한 멤버"로 교체 (X 리스트에서 뺀 멤버 정리용).
+// - 기존 멤버 중 확인된 사람은 기존 표기를 유지하고, 확인되지 않은 사람은 삭제, 새로 확인된 사람은 추가.
+// - 색상/모드/listId 는 유지. 폴백 이름("리스트 (ID)")이면 실제 이름으로 승격.
+// - 입력 객체를 바꾸지 않고 새 lists 를 반환하므로 미리보기에도 그대로 사용 가능.
+function applyListReplace(rawLists, rawListName, seenMembers, listId) {
+  var cleanedName = cleanListName(rawListName);
+  if (isSystemListName(cleanedName)) {
+    return { success: false, message: '시스템 단어는 리스트 이름으로 저장할 수 없습니다.' };
+  }
+  var members = (Array.isArray(seenMembers) ? seenMembers : [])
+    .filter(function (m) { return typeof m === 'string' && AG_HANDLE_RE.test(m); });
+  if (members.length === 0) {
+    return { success: false, message: '확인한 멤버가 없습니다. 리스트의 멤버 화면을 열어 끝까지 스크롤해주세요.' };
+  }
+
+  var lists = sanitizeListsObject(JSON.parse(JSON.stringify(rawLists || {}))).newLists;
+  var resolved = resolveListKey(lists, cleanedName, listId);
+  var listName = resolved.key;
+
+  if (resolved.renameFrom && lists[resolved.renameFrom]) {
+    var old = lists[resolved.renameFrom];
+    delete lists[resolved.renameFrom];
+    var target = lists[listName];
+    lists[listName] = target
+      ? Object.assign({}, target, { members: mergeHandles(target.members, old.members) })
+      : old;
+  }
+  if (!lists[listName]) {
+    lists[listName] = { color: AG_DEFAULT_LIST_COLOR, mode: 'normal', members: [] };
+  }
+  if (listId) lists[listName].listId = listId;
+
+  var seen = new Set(members.map(function (m) { return m.toLowerCase(); }));
+  var existing = lists[listName].members || [];
+  var kept = existing.filter(function (h) { return seen.has(String(h).toLowerCase()); });
+  var removed = existing.filter(function (h) { return !seen.has(String(h).toLowerCase()); });
+  var merged = mergeHandles(kept, members);
+
+  lists[listName].members = merged;
+  return {
+    success: true,
+    lists: lists,
+    listName: listName,
+    previousCount: existing.length,
+    count: merged.length,
+    added: merged.length - kept.length,
+    removed: removed
+  };
+}
+
 // ==========================================
 // 3. 멤버 추출
 // ==========================================
@@ -408,6 +463,29 @@ function buildHandleMap(listData) {
   return map;
 }
 
+// 두 핸들 맵(buildHandleMap 결과)을 비교해 배지 표시가 달라지는 핸들 목록을 반환.
+// 리스트가 바뀔 때 화면의 모든 트윗이 아니라 이 핸들이 쓴 트윗만 다시 그리기 위해 사용.
+function diffHandleMaps(oldMap, newMap) {
+  var a = oldMap || {};
+  var b = newMap || {};
+  var seen = {};
+  var changed = [];
+  Object.keys(a).concat(Object.keys(b)).forEach(function (h) {
+    if (seen[h]) return;
+    seen[h] = true;
+    if (JSON.stringify(a[h] || null) !== JSON.stringify(b[h] || null)) changed.push(h);
+  });
+  return changed;
+}
+
+// 트윗 처리 서명(dataset.agProcessed = "@a,@b")에 바뀐 핸들이 하나라도 있으면 true
+function isTweetAffected(handlesKey, changedHandles) {
+  if (!handlesKey) return false;
+  var set = changedHandles instanceof Set ? changedHandles : new Set(changedHandles || []);
+  if (set.size === 0) return false;
+  return String(handlesKey).split(',').some(function (h) { return h && set.has(h); });
+}
+
 // 배지에 사용자 스타일 적용 (CSS 변수 및 인라인 !important 동시 지원).
 function applyBadgeStyle(badge, bgColor, settings, isMainAuthor) {
   var s = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, settings || {});
@@ -471,6 +549,7 @@ function normalizeImportedLists(obj) {
     if (val && typeof val.listId === 'string' && /^[A-Za-z0-9_-]+$/.test(val.listId)) {
       entry.listId = val.listId;
     }
+    if (val && val.manual === true) entry.manual = true;
     result[key] = entry;
   });
   return sanitizeListsObject(result).newLists;
@@ -503,6 +582,7 @@ function mergeImportedLists(lists, data) {
 }
 
 // 팝업 "직접 리스트 추가" 처리. 이미 있는 리스트면 멤버만 추가하고 사용자가 정해둔 색상/모드는 유지.
+// 새로 만든 리스트에는 manual: true 를 붙여, "X"·"Home" 같은 이름도 정제 과정에서 지워지지 않게 함.
 function applyManualAdd(lists, listName, handles, color, mode) {
   var existing = lists[listName];
   if (existing) {
@@ -512,9 +592,19 @@ function applyManualAdd(lists, listName, handles, color, mode) {
   lists[listName] = {
     color: (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) ? color : AG_DEFAULT_LIST_COLOR,
     mode: AG_VALID_MODES.indexOf(mode) !== -1 ? mode : 'normal',
-    members: mergeHandles([], handles)
+    members: mergeHandles([], handles),
+    manual: true
   };
   return { created: true, total: lists[listName].members.length };
+}
+
+// 직접 추가할 리스트 이름 검사. 문제가 없으면 null.
+// 자동 수집과 달리 "X", "Home", "리스트" 같은 이름도 허용 (사용자가 직접 정한 이름이므로).
+function getManualListNameError(rawName) {
+  var name = String(rawName || '').trim();
+  if (!name || name === 'Unknown List') return '리스트 이름을 입력해주세요.';
+  if (name.length > 50) return '리스트 이름은 50자 이하로 입력해주세요.';
+  return null;
 }
 
 // 팝업 [⚡ 가져오기] 대상 탭 검사. 문제가 없으면 null.
@@ -574,4 +664,73 @@ function parseBackup(obj) {
   }
   var legacy = normalizeImportedLists(obj);
   return legacy ? { lists: legacy, badgeSettings: null } : null;
+}
+
+// ==========================================
+// 7. X 화면 구조 변화 감지
+// ==========================================
+
+var AG_NAV_PATHS = ['home', 'explore', 'notifications', 'messages', 'lists', 'bookmarks', 'settings', 'i',
+  'search', 'compose', 'jobs', 'premium', 'communities', 'tos', 'privacy'];
+
+// 컨테이너 안의 프로필 링크(/handle) 개수 (중복 제외)
+function countProfileLinks(container) {
+  if (!container || !container.querySelectorAll) return 0;
+  var seen = new Set();
+  container.querySelectorAll('a[href^="/"]').forEach(function (a) {
+    var m = (a.getAttribute('href') || '').match(/^\/([A-Za-z0-9_]{1,15})$/);
+    if (m && AG_NAV_PATHS.indexOf(m[1].toLowerCase()) === -1) seen.add(m[1].toLowerCase());
+  });
+  return seen.size;
+}
+
+// 확장 프로그램이 기대하는 X 화면 구조가 보이는지 진단.
+// - { area: 'members'|'timeline', ok: true } : 정상
+// - { area, ok: false, message } : 사용자 정보는 보이는데 기대한 구조(UserCell, User-Name 등)가 없음 → X 구조 변경 의심
+// - null : 판단할 수 없음 (로딩 중, 트윗이 없는 화면 등)
+function diagnoseStructure(doc, urlInfo, dialog) {
+  if (!doc || !doc.querySelectorAll) return null;
+
+  if (urlInfo && (urlInfo.isMembers || dialog)) {
+    var container = dialog || doc.querySelector('[data-testid="primaryColumn"], main[role="main"]');
+    if (!container) {
+      return countProfileLinks(doc) >= 3
+        ? { area: 'members', ok: false, message: '본문 영역(primaryColumn)을 찾지 못했습니다.' }
+        : null;
+    }
+    if (container.querySelector('[data-testid="UserCell"]')) return { area: 'members', ok: true };
+    return countProfileLinks(container) >= 3
+      ? { area: 'members', ok: false, message: '멤버 목록에서 사용자 셀(UserCell)을 찾지 못했습니다.' }
+      : null;
+  }
+
+  var articles = doc.querySelectorAll('article');
+  var tweets = doc.querySelectorAll('article[data-testid="tweet"]');
+  if (tweets.length === 0) {
+    return articles.length >= 3
+      ? { area: 'timeline', ok: false, message: '타임라인에서 트윗(article[data-testid="tweet"])을 찾지 못했습니다.' }
+      : null;
+  }
+  var named = 0;
+  for (var i = 0; i < tweets.length; i++) {
+    if (tweets[i].querySelector('[data-testid="User-Name"]')) named++;
+  }
+  if (named > 0) return { area: 'timeline', ok: true };
+  return tweets.length >= 3
+    ? { area: 'timeline', ok: false, message: '트윗에서 작성자 이름 영역(User-Name)을 찾지 못했습니다.' }
+    : null;
+}
+
+// 팝업에 보여줄 구조 경고 목록 (최근 maxAgeDays 일 이내의 ok:false 항목)
+function getStructureWarnings(health, nowMs, maxAgeDays) {
+  var out = [];
+  var now = typeof nowMs === 'number' ? nowMs : Date.now();
+  var maxAge = (maxAgeDays || 14) * 24 * 60 * 60 * 1000;
+  ['members', 'timeline'].forEach(function (area) {
+    var h = health && health[area];
+    if (!h || h.ok !== false || typeof h.at !== 'number') return;
+    if (now - h.at > maxAge) return;
+    out.push({ area: area, label: area === 'members' ? '멤버 수집' : '타임라인 배지', message: h.message || '', at: h.at });
+  });
+  return out;
 }

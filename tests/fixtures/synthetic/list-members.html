@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 리스트 "멤버" 화면 구조를 본떠 만든 테스트용 페이지 (실제 X 페이지 아님) -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="members">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/123/members">
+  <title>리스트 멤버 / X</title>
+</head>
+<body>
+<div id="react-root">
+  <header role="banner">
+    <nav aria-label="기본">
+      <a href="/home" role="link">홈</a>
+      <a href="/explore" role="link">탐색하기</a>
+      <a href="/notifications" role="link">알림</a>
+    </nav>
+  </header>
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar">
+        <h2 dir="ltr" role="heading">리스트 멤버</h2>
+      </div>
+      <section role="region" aria-labelledby="accessible-list-0">
+        <h1 id="accessible-list-0">타임라인: 리스트 멤버</h1>
+        <div aria-label="타임라인: 리스트 멤버" id="member-list">
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/alice" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-alice"></div></a></div>
+              <div>
+                <div><a href="/alice" role="link"><span>Alice Kim</span></a></div>
+                <div><a href="/alice" role="link" tabindex="-1"><span>@alice</span></a></div>
+              </div>
+            </button>
+          </div>
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/bob" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-bob"></div></a></div>
+              <div>
+                <div><a href="/bob" role="link"><span>Bob Lee</span></a></div>
+                <div><a href="/bob" role="link" tabindex="-1"><span>@bob</span></a></div>
+              </div>
+            </button>
+          </div>
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/dave_dev" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-dave_dev"></div></a></div>
+              <div>
+                <div><a href="/dave_dev" role="link"><span>Dave</span></a></div>
+                <div><a href="/dave_dev" role="link" tabindex="-1"><span>@dave_dev</span></a></div>
+              </div>
+            </button>
+          </div>
+          <!-- 목록 아래쪽 추천 블록: 위쪽 멤버는 그대로 수집되고 아래 셀만 제외되어야 함 -->
+          <div data-testid="cellInnerDiv"><h2 dir="ltr" role="heading">팔로우 추천</h2></div>
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/reco_user" role="link"><span>Reco</span></a></div>
+              <div><a href="/reco_user" role="link" tabindex="-1"><span>@reco_user</span></a></div>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div data-testid="sidebarColumn">
+      <aside aria-label="팔로우 추천">
+        <button data-testid="UserCell" role="button" tabindex="0">
+          <div><a href="/sidebar_reco" role="link"><span>Sidebar</span></a></div>
+          <div><a href="/sidebar_reco" role="link" tabindex="-1"><span>@sidebar_reco</span></a></div>
+        </button>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

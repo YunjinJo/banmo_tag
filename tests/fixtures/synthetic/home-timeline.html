@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 홈 타임라인 구조를 본떠 만든 테스트용 페이지 (실제 X 페이지 아님)
+     data-fixture-id 는 테스트에서 트윗을 찾기 위한 표시이며 실제 X 에는 없습니다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="timeline">
+  <meta name="ag-fixture-url" content="https://x.com/home">
+  <title>홈 / X</title>
+</head>
+<body>
+<div id="react-root">
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <section role="region" aria-labelledby="accessible-list-2">
+        <h1 id="accessible-list-2">타임라인: 내 홈 타임라인</h1>
+        <div aria-label="타임라인: 내 홈 타임라인" id="timeline">
+
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0" data-fixture-id="t-alice">
+              <div data-testid="User-Name">
+                <div><div><a href="/alice" role="link"><div><span>Alice Kim</span></div></a></div></div>
+                <div>
+                  <div><a href="/alice" role="link" tabindex="-1"><div><span>@alice</span></div></a></div>
+                  <div><a href="/alice/status/2001" role="link"><time datetime="2026-11-04T01:00:00.000Z">1시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>Alice 의 트윗</span></div>
+            </article>
+          </div>
+
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0" data-fixture-id="t-bob">
+              <div data-testid="User-Name">
+                <div><div><a href="/bob" role="link"><div><span>Bob Lee</span></div></a></div></div>
+                <div>
+                  <div><a href="/bob" role="link" tabindex="-1"><div><span>@bob</span></div></a></div>
+                  <div><a href="/bob/status/2002" role="link"><time datetime="2026-11-04T02:00:00.000Z">2시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>Bob 의 트윗</span></div>
+            </article>
+          </div>
+
+          <!-- 인용 트윗: 인용 카드 전체가 하나의 클릭 영역이라 작성자 이름에 <a> 가 없음 -->
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0" data-fixture-id="t-carol-quote">
+              <div data-testid="User-Name">
+                <div><div><a href="/carol" role="link"><div><span>Carol</span></div></a></div></div>
+                <div>
+                  <div><a href="/carol" role="link" tabindex="-1"><div><span>@carol</span></div></a></div>
+                  <div><a href="/carol/status/2003" role="link"><time datetime="2026-11-04T03:00:00.000Z">3시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>인용합니다</span></div>
+              <div role="link" tabindex="0" data-fixture-id="quote-card">
+                <div data-testid="User-Name">
+                  <div><div><div><span>Alice Kim</span></div></div></div>
+                  <div><div><div><span>@alice</span></div></div><div><time datetime="2026-11-04T01:00:00.000Z">1시간</time></div></div>
+                </div>
+                <div data-testid="tweetText"><span>인용된 Alice 의 트윗</span></div>
+              </div>
+            </article>
+          </div>
+
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0" data-fixture-id="t-dave">
+              <div data-testid="User-Name">
+                <div><div><a href="/dave_dev" role="link"><div><span>Dave</span></div></a></div></div>
+                <div>
+                  <div><a href="/dave_dev" role="link" tabindex="-1"><div><span>@dave_dev</span></div></a></div>
+                  <div><a href="/dave_dev/status/2004" role="link"><time datetime="2026-11-04T04:00:00.000Z">4시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>리스트에 없는 사람의 트윗</span></div>
+            </article>
+          </div>
+
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 가 멤버 화면 구조를 바꾼 상황을 흉내 냄 (UserCell 대신 다른 이름의 셀).
+     확장 프로그램은 멤버를 수집하지 못하고, 팝업에 "구조가 바뀌었을 수 있음" 경고를 띄워야 합니다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="members-changed">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/999/members">
+  <title>리스트 멤버 / X</title>
+</head>
+<body>
+<div id="react-root">
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar"><h2 dir="ltr" role="heading">리스트 멤버</h2></div>
+      <section role="region">
+        <div data-testid="cellInnerDiv"><div data-testid="UserRowV2"><a href="/alice" role="link"><span>Alice</span></a><span>@alice</span></div></div>
+        <div data-testid="cellInnerDiv"><div data-testid="UserRowV2"><a href="/bob" role="link"><span>Bob</span></a><span>@bob</span></div></div>
+        <div data-testid="cellInnerDiv"><div data-testid="UserRowV2"><a href="/carol" role="link"><span>Carol</span></a><span>@carol</span></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

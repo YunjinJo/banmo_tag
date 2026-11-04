@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 가 트윗 구조를 바꾼 상황을 흉내 냄 (article 의 data-testid 가 "tweet" 이 아님).
+     확장 프로그램은 배지를 붙이지 못하고, 팝업에 "구조가 바뀌었을 수 있음" 경고를 띄워야 합니다. -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="timeline-changed">
+  <meta name="ag-fixture-url" content="https://x.com/home">
+  <title>홈 / X</title>
+</head>
+<body>
+<div id="react-root">
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <section role="region">
+        <div data-testid="cellInnerDiv"><article data-testid="post"><div data-testid="AuthorName"><a href="/alice">Alice</a><span>@alice</span></div></article></div>
+        <div data-testid="cellInnerDiv"><article data-testid="post"><div data-testid="AuthorName"><a href="/bob">Bob</a><span>@bob</span></div></article></div>
+        <div data-testid="cellInnerDiv"><article data-testid="post"><div data-testid="AuthorName"><a href="/carol">Carol</a><span>@carol</span></div></article></div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

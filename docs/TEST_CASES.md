@@ -15,10 +15,14 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
   ```
 - **탐색기 원클릭**:
   - `tests\run-tests.bat` 파일을 더블 클릭
-- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정적 검사([`scripts/validate.js`](../scripts/validate.js))와 같은 테스트(Windows 러너)를 실행하고 배포 zip 을 빌드합니다.
+- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정적 검사([`scripts/validate.js`](../scripts/validate.js))·ESLint, E2E(Ubuntu), 같은 단위 테스트(Windows 러너)를 실행하고 배포 zip 을 빌드합니다.
+
+### 방법 C: Playwright E2E (실제 확장 프로그램, Node.js 필요)
+- `npm ci` 와 `npx playwright install chromium` 을 한 번 실행한 뒤 `npm test`.
+- [`tests/e2e/`](../tests/e2e/)의 테스트가 실제 `extension/` 폴더를 Chromium 에 로드하고, `x.com` 요청에는 [`tests/fixtures/`](../tests/fixtures/README.md)의 HTML 로 응답해 팝업·content script·background 를 함께 검사합니다. `shared.js` 단위 테스트(`test-runner.html`)도 이 안에서 함께 실행됩니다.
 - **작동 원리**:
   1. 시스템에 설치된 Chrome 또는 Edge의 Headless 모드(`--headless=new --dump-dom`)를 백그라운드로 실행.
-  2. `test-runner.html`이 [`shared.js`](../extension/shared.js)를 직접 로드하여 **73개 단위 테스트**를 브라우저 환경에서 고속 실행(평균 10~15ms).
+  2. `test-runner.html`이 [`shared.js`](../extension/shared.js)를 직접 로드하여 **90개 단위 테스트**를 브라우저 환경에서 고속 실행(평균 10~15ms).
   3. JSON 포맷으로 생성된 결과를 터미널 콘솔에 컬러로 포맷팅하여 출력.
   4. 모든 테스트 통과 시 Exit Code `0`, 실패 시 Exit Code `1` 반환.
 
@@ -53,7 +57,24 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
 | **TS-18** | `isExcludedUserCell` & `isRecoLabel` | v1.4.1 | 4건 | 추천 블록 앞 멤버 보존, 부분 일치 오탐 방지, 접두사 붙은 추천 표기 제외 | Yes | **PASS (4/4)** |
 | **TS-19** | `getBadgeAnchor` | v1.4.1 | 2건 | 링크 없는 인용 트윗 이름 영역의 배지 위치 | Yes | **PASS (2/2)** |
 | **TS-20** | `buildBackup` & `parseBackup` | v1.4.1 | 3건 | 배지 설정 포함 백업 왕복, 구버전 백업 호환, 잘못된 설정 값 정규화 | Yes | **PASS (3/3)** |
-| **합계** | **21개 스위트 (`shared.js` 직접 로드)** | **v1.4.1** | **73건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (73/73)** |
+| **TS-21** | `applyListReplace` | v1.5.0 | 4건 | 교체 동기화: 뺀 멤버 삭제·새 멤버 추가·기존 표기/색상/모드 유지, 입력 불변, 폴백 이름 승격, 빈 목록 거부 | Yes | **PASS (4/4)** |
+| **TS-22** | `diffHandleMaps` & `isTweetAffected` | v1.5.0 | 3건 | 리스트 변경 시 배지가 달라지는 핸들만 계산, 해당 트윗만 다시 그림 | Yes | **PASS (3/3)** |
+| **TS-23** | `diagnoseStructure` & `getStructureWarnings` | v1.5.0 | 5건 | X 화면 구조 변경 의심 판정(멤버 화면/타임라인), 로딩 중 보류, 2주 지난 경고 제외 | Yes | **PASS (5/5)** |
+| **TS-24** | `manual` 리스트 & `getManualListNameError` | v1.5.0 | 4건 | 직접 추가 리스트는 "X"·"Home" 이름 허용·정제에서 보존·백업 보존, 자동 수집은 계속 차단 | Yes | **PASS (4/4)** |
+| **합계** | **25개 스위트 (`shared.js` 직접 로드)** | **v1.5.0** | **90건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (90/90)** |
+
+TS-13 은 v1.5.0 에서 "타임라인:" 제목 처리 1건이 추가되어 5건입니다.
+
+### E2E 테스트 (Playwright, `tests/e2e/`)
+
+| 파일 | 건수 | 검사 내용 |
+|---|:-:|---|
+| `content.spec.js` | 11건 | 멤버 자동 수집·추천 제외, 메인 → 멤버 화면 이름 캐시, 배지·강조·인용 미니 배지, 바뀐 트윗만 다시 그리기, DOM 재사용, 교체 동기화(스크롤로 사라진 멤버 유지), 구조 변화 경고 기록/해제 |
+| `popup.spec.js` | 12건 | 키보드 접근, X 아닌 탭 안내, 직접 추가(색상·모드 유지, "X" 이름), 팝업 안 확인 상자, 백업 내보내기/덮어쓰기, 구조 경고 표시·해제, 팝업 ↔ X 탭 가져오기·교체 동기화 |
+| `unit-runner.spec.js` | 1건 | `test-runner.html` 의 단위 테스트 90건 |
+| `real-snapshots.spec.js` | 스냅샷 수 | `tests/fixtures/real/` 의 실제 X 화면 스냅샷 (없으면 건너뜀) |
+
+E2E 의 X 화면은 `tests/fixtures/synthetic/` 의 **합성 페이지**입니다. X 구조를 추정해 만든 것이므로, 실제 화면 스냅샷을 `tests/fixtures/real/` 에 추가해 두는 것을 권장합니다.
 
 > 자동 테스트로 검증할 수 없는 v1.4.1 변경(실제 X 화면 필요): 리스트 메인 → 멤버 화면 이동 시 이름 캐시 사용, 인용 트윗 미니 배지 위치, 변경 트윗만 처리하는 타임라인 갱신. 아래 TC-V141 시나리오로 수동 확인합니다.
 

@@ -141,7 +141,7 @@
 <body>
   <div class="container">
     <header>
-      <h1><span>⚡</span> banmo_tag v1.4.1 자동화 테스트 러너</h1>
+      <h1><span>⚡</span> banmo_tag v1.5.0 자동화 테스트 러너</h1>
       <button id="run-btn" class="btn" onclick="runAllTests()">테스트 다시 실행</button>
     </header>
 
@@ -679,7 +679,9 @@
           extractMembersFromContainer, buildScrapeSignature, buildHandleMap,
           applyBadgeStyle, isOwnInjectedNode, parseHandles, normalizeImportedLists,
           isRecoLabel, mergeImportedLists, applyManualAdd, getSyncTabError, getBadgeAnchor,
-          normalizeBadgeSettings, buildBackup, parseBackup
+          normalizeBadgeSettings, buildBackup, parseBackup,
+          applyListReplace, diffHandleMaps, isTweetAffected, countProfileLinks,
+          diagnoseStructure, getStructureWarnings, getManualListNameError
         ];
         requiredFns.forEach(fn => assertEqual(typeof fn, 'function'));
         assertEqual(typeof AG_DEFAULT_BADGE_SETTINGS, 'object');
@@ -736,6 +738,14 @@
         assertEqual(cleanListName('Friends - Members'), 'Friends');
         assertEqual(cleanListName('List members · Friends'), 'Friends');
         assertEqual(cleanListName('리스트 멤버: 우리팀'), '우리팀');
+      });
+
+      it('X 화면 읽기용 제목("타임라인: 리스트 멤버")은 리스트 이름이 될 수 없음', () => {
+        assertEqual(isValidListName(cleanListName('타임라인: 리스트 멤버')), false);
+        assertEqual(isValidListName(cleanListName('Timeline: List members')), false);
+        assertEqual(isValidListName(cleanListName('타임라인')), false);
+        assertEqual(cleanListName('타임라인: 우리팀'), '우리팀');
+        assertEqual(cleanListName('타임라인 정리 모음'), '타임라인 정리 모음', '접두사가 아닌 실제 이름은 보존');
       });
 
       it('단어 중간의 @ 는 보존하고, 공백 뒤 끝에 붙은 @핸들만 제거', () => {
@@ -959,6 +969,163 @@
         assertDeepEqual(s, { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' });
         assertEqual(parseBackup(null), null);
         assertEqual(parseBackup([1, 2]), null);
+      });
+    });
+
+    // SUITE 21: 교체 동기화 (applyListReplace, v1.5.0)
+    describe('21. 멤버 목록 교체 동기화 (applyListReplace)', () => {
+      it('확인되지 않은 멤버는 삭제, 새 멤버는 추가, 기존 표기·색상·모드·listId 는 유지', () => {
+        const initial = { '테크': { color: '#ff0055', mode: 'highlight', listId: '100', members: ['@Alice', '@bob', '@gone'] } };
+        const res = applyListReplace(initial, '테크', ['@alice', '@BOB', '@new_one'], '100');
+        assertEqual(res.success, true);
+        assertEqual(res.listName, '테크');
+        assertDeepEqual(res.lists['테크'].members, ['@Alice', '@bob', '@new_one']);
+        assertDeepEqual(res.removed, ['@gone']);
+        assertEqual(res.added, 1);
+        assertEqual(res.previousCount, 3);
+        assertEqual(res.lists['테크'].color, '#ff0055');
+        assertEqual(res.lists['테크'].mode, 'highlight');
+      });
+
+      it('입력 객체를 바꾸지 않음 (미리보기에 그대로 사용 가능)', () => {
+        const initial = { '테크': { color: '#ff0055', mode: 'normal', listId: '100', members: ['@a', '@b'] } };
+        const snapshot = JSON.stringify(initial);
+        applyListReplace(initial, '테크', ['@a'], '100');
+        assertEqual(JSON.stringify(initial), snapshot);
+      });
+
+      it('같은 listId 의 폴백 이름("리스트 (ID)")은 실제 이름으로 승격하며 교체', () => {
+        const initial = { '리스트 (555)': { color: '#00ff00', mode: 'dim', listId: '555', members: ['@x', '@y'] } };
+        const res = applyListReplace(initial, '진짜 이름', ['@y'], '555');
+        assertEqual(res.listName, '진짜 이름');
+        assertEqual(res.lists['리스트 (555)'], undefined);
+        assertDeepEqual(res.lists['진짜 이름'].members, ['@y']);
+        assertEqual(res.lists['진짜 이름'].mode, 'dim');
+        assertDeepEqual(res.removed, ['@x']);
+      });
+
+      it('확인한 멤버가 없거나 시스템 단어 이름이면 실패 (목록을 비우지 않음)', () => {
+        assertEqual(applyListReplace({}, '테크', [], '1').success, false);
+        assertEqual(applyListReplace({}, '테크', ['bad-handle!'], '1').success, false);
+        assertEqual(applyListReplace({}, '멤버 관리', ['@a'], '1').success, false);
+      });
+    });
+
+    // SUITE 22: 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected, v1.5.0)
+    describe('22. 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected)', () => {
+      it('멤버 추가/삭제/색상·모드 변경된 핸들만 반환하고 그대로인 핸들은 제외', () => {
+        const before = buildHandleMap({
+          '테크': { color: '#111111', mode: 'normal', members: ['@same', '@removed', '@recolor'] }
+        });
+        const after = buildHandleMap({
+          '테크': { color: '#111111', mode: 'normal', members: ['@same', '@added'] },
+          '강조': { color: '#ff0000', mode: 'highlight', members: ['@recolor'] }
+        });
+        const changed = diffHandleMaps(before, after).sort();
+        assertDeepEqual(changed, ['@added', '@recolor', '@removed']);
+      });
+
+      it('리스트 색상이 바뀌면 그 리스트의 모든 멤버가 바뀐 것으로 판단', () => {
+        const before = buildHandleMap({ 'A': { color: '#111111', mode: 'normal', members: ['@a', '@b'] } });
+        const after = buildHandleMap({ 'A': { color: '#222222', mode: 'normal', members: ['@a', '@b'] } });
+        assertDeepEqual(diffHandleMaps(before, after).sort(), ['@a', '@b']);
+        assertDeepEqual(diffHandleMaps(before, before), []);
+      });
+
+      it('트윗 처리 서명에 바뀐 핸들이 있을 때만 다시 그림', () => {
+        assertEqual(isTweetAffected('@a,@b', ['@b']), true);
+        assertEqual(isTweetAffected('@a,@b', new Set(['@c'])), false);
+        assertEqual(isTweetAffected('@ab', ['@a']), false, '부분 문자열이 아니라 핸들 단위로 비교');
+        assertEqual(isTweetAffected(undefined, ['@a']), false);
+        assertEqual(isTweetAffected('@a', []), false);
+      });
+    });
+
+    // SUITE 23: X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings, v1.5.0)
+    describe('23. X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings)', () => {
+      const sandbox = document.getElementById('sandbox');
+      const membersUrl = parseListUrl('/i/lists/1/members');
+      const profileLinks = '<a href="/user_a">A</a><a href="/user_b">B</a><a href="/user_c">C</a>';
+
+      it('멤버 화면: UserCell 이 있으면 정상, 프로필 링크만 있고 UserCell 이 없으면 구조 변경 의심', () => {
+        sandbox.innerHTML = `<div data-testid="primaryColumn"><div data-testid="UserCell"><a href="/user_a">A</a></div></div>`;
+        assertDeepEqual(diagnoseStructure(sandbox, membersUrl, null), { area: 'members', ok: true });
+
+        sandbox.innerHTML = `<div data-testid="primaryColumn"><div data-testid="NewUserRow">${profileLinks}</div></div>`;
+        const res = diagnoseStructure(sandbox, membersUrl, null);
+        assertEqual(res.area, 'members');
+        assertEqual(res.ok, false);
+      });
+
+      it('멤버 화면이 아직 로딩 중(사용자 링크 없음)이면 판단 보류(null)', () => {
+        sandbox.innerHTML = `<div data-testid="primaryColumn"><div>로딩 중</div><a href="/home">Home</a></div>`;
+        assertEqual(diagnoseStructure(sandbox, membersUrl, null), null);
+      });
+
+      it('타임라인: User-Name 이 있는 트윗이면 정상, 트윗은 있는데 User-Name 이 없으면 구조 변경 의심', () => {
+        sandbox.innerHTML = `<article data-testid="tweet"><div data-testid="User-Name"><span>@a</span></div></article>`;
+        assertDeepEqual(diagnoseStructure(sandbox, null, null), { area: 'timeline', ok: true });
+
+        sandbox.innerHTML = '<article data-testid="tweet"></article>'.repeat(3);
+        assertEqual(diagnoseStructure(sandbox, null, null).ok, false);
+
+        sandbox.innerHTML = '<article></article>'.repeat(3);
+        const res = diagnoseStructure(sandbox, null, null);
+        assertEqual(res.ok, false, 'article 은 있는데 data-testid="tweet" 이 없음');
+      });
+
+      it('트윗이 거의 없는 화면(설정, 빈 타임라인)은 판단 보류(null)', () => {
+        sandbox.innerHTML = '<div>설정 화면</div><article></article>';
+        assertEqual(diagnoseStructure(sandbox, null, null), null);
+      });
+
+      it('getStructureWarnings 는 최근 ok:false 항목만 반환', () => {
+        const now = Date.UTC(2026, 10, 4);
+        const day = 24 * 60 * 60 * 1000;
+        const warnings = getStructureWarnings({
+          members: { ok: false, message: 'm', at: now - day },
+          timeline: { ok: false, message: 't', at: now - 30 * day }
+        }, now, 14);
+        assertEqual(warnings.length, 1);
+        assertEqual(warnings[0].area, 'members');
+        assertEqual(getStructureWarnings({ members: { ok: true, at: now } }, now, 14).length, 0);
+        assertEqual(getStructureWarnings(undefined, now, 14).length, 0);
+      });
+    });
+
+    // SUITE 24: 직접 추가한 리스트의 시스템 단어 이름 허용 (manual 플래그, v1.5.0)
+    describe('24. 직접 추가한 리스트는 "X"·"Home" 같은 이름도 허용 (manual)', () => {
+      it('직접 추가로 만든 리스트에는 manual: true 가 붙고, 정제 과정에서 지워지지 않음', () => {
+        const lists = {};
+        applyManualAdd(lists, 'X', ['@a'], '#00ff00', 'normal');
+        applyManualAdd(lists, 'Home', ['@b'], '#00ff00', 'normal');
+        assertEqual(lists['X'].manual, true);
+        const { newLists, modified } = sanitizeListsObject(lists);
+        assertEqual(modified, false);
+        assertDeepEqual(Object.keys(newLists).sort(), ['Home', 'X']);
+      });
+
+      it('자동 수집으로 생긴 시스템 단어 리스트(manual 없음)는 계속 삭제', () => {
+        const { newLists } = sanitizeListsObject({
+          'X': { color: '#1d9bf0', mode: 'normal', members: ['@a'] },
+          '멤버 관리': { color: '#1d9bf0', mode: 'normal', members: ['@b'] },
+          '수동 리스트': { color: '#1d9bf0', mode: 'normal', members: ['@c'], manual: true }
+        });
+        assertDeepEqual(Object.keys(newLists), ['수동 리스트']);
+        assertEqual(applyListSave({}, 'Home', ['@a'], '1').success, false, '자동 수집은 여전히 차단');
+      });
+
+      it('백업 가져오기에서도 manual 표시를 보존해 "X" 리스트가 사라지지 않음', () => {
+        const imp = normalizeImportedLists({ 'X': { color: '#ff0000', mode: 'dim', members: ['@a'], manual: true } });
+        assertEqual(imp['X'].manual, true);
+        assertEqual(imp['X'].mode, 'dim');
+      });
+
+      it('getManualListNameError: 빈 이름·50자 초과만 거부', () => {
+        assertEqual(getManualListNameError('X'), null);
+        assertEqual(getManualListNameError('리스트'), null);
+        assertEqual(getManualListNameError('   '), '리스트 이름을 입력해주세요.');
+        assertEqual(getManualListNameError('가'.repeat(51)), '리스트 이름은 50자 이하로 입력해주세요.');
       });
     });
 

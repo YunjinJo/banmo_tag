@@ -2,6 +2,12 @@
 dist/
 *.zip
 
+# 개발 도구 (npm ci 로 다시 설치) 와 Playwright 결과
+node_modules/
+test-results/
+playwright-report/
+blob-report/
+
 # 예전 폴더 구조 (Chrome 이 아직 이 폴더를 로드 중. 데이터를 옮긴 뒤 삭제)
 antigravity-extension/
 

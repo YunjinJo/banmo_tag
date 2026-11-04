@@ -2,7 +2,7 @@
 
 banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게 해 주는 크롬 확장 프로그램입니다. 리스트 멤버가 쓴 트윗의 이름 옆에 배지를 붙이고, 리스트별로 강조하거나 흐리게 표시합니다.
 
-- 현재 버전: **v1.4.1** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
+- 현재 버전: **v1.5.0** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
 - 모든 데이터는 브라우저(`chrome.storage.local`)에만 저장되며 외부로 전송되지 않습니다. ([개인정보 처리방침](docs/PRIVACY.md))
 
 ---
@@ -14,6 +14,8 @@ banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 
 - **즉시 수집**: 팝업의 **[⚡ 현재 열린 트위터 리스트 가져오기]** 버튼으로 현재 탭에서 바로 수집합니다.
 - **추천 계정 제외**: "팔로우 추천", "추천" 탭, 사이드바, 멤버 창 뒤쪽 화면의 계정은 수집하지 않습니다. 리스트 팔로워 화면도 수집하지 않습니다.
 - **리스트 구분**: 같은 이름이라도 다른 리스트(`listId`가 다름)는 `친구 (8888)`처럼 따로 저장합니다.
+- **뺀 멤버 정리**: 자동 수집은 멤버를 추가만 합니다. X 리스트에서 뺀 멤버를 정리하려면 멤버 화면을 끝까지 스크롤한 뒤 팝업의 **[🔄 멤버 목록 교체 동기화]**를 누르세요. 이번에 화면에 나타난 멤버로 목록을 교체하며, 삭제될 멤버를 먼저 보여 주고 확인을 받습니다.
+- **X 화면 구조 변화 경고**: X 가 화면 구조를 바꿔 수집·배지가 멈춘 것으로 보이면 팝업 맨 위에 경고를 띄웁니다.
 
 ### 2. 타임라인 배지
 - 리스트 멤버가 쓴 트윗의 이름 옆에 리스트 이름 배지를 붙입니다. 여러 리스트에 속하면 배지가 나란히 표시됩니다.
@@ -34,11 +36,13 @@ banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 
 ## 폴더 구조
 
 ```
-extension/   Chrome 에 로드하는 확장 프로그램 파일 (배포 zip 내용)
-tests/       자동 테스트 (test-runner.html, run-tests.ps1, run-tests.bat)
-scripts/     빌드 스크립트 (build.ps1)
-docs/        CHANGELOG, 테스트 명세, 개선 과제, 개인정보 처리방침
-dist/        빌드 결과 zip (git 에 올리지 않음)
+extension/        Chrome 에 로드하는 확장 프로그램 파일 (배포 zip 내용)
+tests/            shared.js 단위 테스트 (test-runner.html, run-tests.ps1, run-tests.bat)
+tests/e2e/        Playwright E2E 테스트 (실제 확장 프로그램을 Chromium 에 로드)
+tests/fixtures/   E2E 용 X 화면 (synthetic: 합성, real: 실제 화면 스냅샷)
+scripts/          build.ps1, validate.js (정적 검사), bump-version.js
+docs/             CHANGELOG, 테스트 명세, 개선 과제, 개인정보 처리방침
+dist/             빌드 결과 zip (git 에 올리지 않음)
 ```
 
 ## 설치 (개발용)
@@ -48,16 +52,33 @@ dist/        빌드 결과 zip (git 에 올리지 않음)
 
 > 다른 폴더(예: 예전 `antigravity-extension`)에서 로드하던 확장 프로그램은 ID 가 달라 저장 데이터가 넘어오지 않습니다. 옮기기 전에 팝업에서 📤 내보내기를 하고, 새로 로드한 뒤 📥 가져오기(덮어쓰기)를 하세요.
 
-## 테스트
+## 개발 환경
 
-Chrome 또는 Edge만 있으면 별도 설치 없이 실행됩니다.
+Node.js 22 이상이 필요합니다. 처음 한 번 개발 도구를 설치합니다.
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+npm ci
+npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은 폴더에서 확장 프로그램 로드 옵션을 지원하지 않음)
 ```
 
-- 탐색기에서 `tests\run-tests.bat` 더블 클릭으로도 실행됩니다.
-- 브라우저에서 보기: `tests\test-runner.html` 열기
+| 명령 | 내용 |
+|---|---|
+| `npm run check` | 아래 세 가지를 모두 실행 (push 전에 권장) |
+| `npm run validate` | 정적 검사 (`scripts/validate.js`) |
+| `npm run lint` | ESLint. `shared.js` 함수 이름을 바꾸거나 지웠는데 다른 파일이 아직 쓰고 있으면 여기서 잡힘 |
+| `npm test` | Playwright: 실제 확장 프로그램 E2E 테스트 + `shared.js` 단위 테스트 |
+| `npm run bump -- 1.6.0` | 새 버전 준비 (manifest, CHANGELOG 틀, README, 테스트 러너 제목을 한 번에 변경) |
+
+## 테스트
+
+- **E2E (Playwright)**: `npm test`. 실제 확장 프로그램을 Chromium 에 로드하고, `x.com` 요청에는 `tests/fixtures/` 의 HTML 로 응답해 팝업·content script·background 를 함께 검사합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
+- **실제 X 화면 스냅샷**: `tests/fixtures/real/` 에 넣으면 자동으로 검사됩니다. 만드는 법은 [tests/fixtures/README.md](tests/fixtures/README.md) 참고.
+- **`shared.js` 단위 테스트만** (Node.js 없이, Chrome 또는 Edge만 있으면 됨):
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
+  ```
+  탐색기에서 `tests\run-tests.bat` 더블 클릭, 또는 `tests\test-runner.html` 을 브라우저로 열어도 됩니다.
+
 테스트 목록과 수동 확인 시나리오는 [docs/TEST_CASES.md](docs/TEST_CASES.md)에 있습니다.
 
 ## CI/CD (GitHub Actions)
@@ -66,13 +87,16 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 
 | 단계 | 러너 | 내용 |
 |---|---|---|
-| 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 |
-| 테스트 및 빌드 | Windows | `scripts/build.ps1`: 자동 테스트(headless Chrome) → `banmo_tag-v<버전>.zip` 을 실행 결과(Artifacts)에 업로드 |
-| 릴리스 | Ubuntu | `main` push 이고 **새 버전**일 때만 GitHub Release `v<버전>` 생성, zip 첨부, CHANGELOG 내용을 릴리스 노트로 사용 |
+| 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 + **ESLint** |
+| E2E 테스트 | Ubuntu | Playwright 로 실제 확장 프로그램 검사 (실패하면 보고서를 Artifacts 에 업로드) |
+| 테스트 및 빌드 | Windows | `scripts/build.ps1`: 단위 테스트(headless Chrome) → `banmo_tag-v<버전>.zip` 을 Artifacts 에 업로드 |
+| 릴리스 | Ubuntu | 위 단계가 모두 통과하고, `main` push 이며 **새 버전**일 때만 GitHub Release `v<버전>` 생성, zip 첨부, CHANGELOG 내용을 릴리스 노트로 사용 |
 
-**새 버전 배포 방법**: `extension/manifest.json`의 `version`과 `docs/CHANGELOG.md` 맨 위 `## [vX.Y.Z]`를 함께 올려 `main`에 push 하면 됩니다. 버전이 같으면 검사·테스트·빌드만 하고 릴리스는 건너뜁니다.
+**새 버전 배포 방법**: `npm run bump -- X.Y.Z` 로 버전을 올리고 `docs/CHANGELOG.md` 의 새 항목을 채운 뒤 `main`에 push 하면 됩니다. 버전이 같으면 검사·테스트·빌드만 하고 릴리스는 건너뜁니다.
 
-정적 검사는 로컬에서도 실행할 수 있습니다(Node.js 필요): `node scripts/validate.js`
+**Dependabot**: GitHub Actions 와 개발용 npm 패키지의 새 버전을 매주 월요일 확인해 PR 을 만듭니다. PR 에서도 CI 가 돌기 때문에 통과한 것만 merge 하면 됩니다.
+
+> 무료 플랜의 비공개 저장소는 브랜치 보호 규칙을 쓸 수 없어, 테스트가 실패하는 코드도 `main` 에 push 될 수 있습니다. 다만 릴리스는 모든 검사를 통과해야만 만들어지므로 깨진 버전이 배포되지는 않습니다.
 
 ## 빌드
 
@@ -80,7 +104,7 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-버전 일치 확인(`extension/manifest.json` ↔ `docs/CHANGELOG.md`) → 자동 테스트 → `dist/banmo_tag-v<버전>.zip` 생성 순서로 진행합니다. 테스트가 하나라도 실패하면 zip을 만들지 않습니다.
+버전 일치 확인(`extension/manifest.json` ↔ `docs/CHANGELOG.md`) → 정적 검사·ESLint(Node.js 가 있을 때) → 단위 테스트 → `dist/banmo_tag-v<버전>.zip` 생성 순서로 진행합니다. 하나라도 실패하면 zip을 만들지 않습니다.
 
 ## 문서
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): 버전별 변경 내역

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 리스트 메인 화면 구조를 본떠 만든 테스트용 페이지 (실제 X 페이지 아님) -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="list-main">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/123">
+  <title>Core Members / X</title>
+</head>
+<body>
+<div id="react-root">
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar">
+        <h2 dir="ltr" role="heading"><span>Core Members</span></h2>
+        <div><span>@owner_handle</span></div>
+      </div>
+      <section role="region" aria-labelledby="accessible-list-1">
+        <h1 id="accessible-list-1">타임라인: Core Members</h1>
+        <div aria-label="타임라인: Core Members">
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0">
+              <div data-testid="User-Name">
+                <div><div><a href="/alice" role="link"><div><span>Alice Kim</span></div></a></div></div>
+                <div>
+                  <div><a href="/alice" role="link" tabindex="-1"><div><span>@alice</span></div></a></div>
+                  <div><a href="/alice/status/1001" role="link"><time datetime="2026-11-04T00:00:00.000Z">1시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>리스트 타임라인 트윗</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</body>
+</html>

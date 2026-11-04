@@ -1,0 +1,26 @@
+# GitHub Actions 와 개발용 npm 패키지(ESLint, Playwright)의 새 버전을 매주 확인해 PR 을 만듭니다.
+# PR 마다 CI(검사·테스트·빌드)가 돌기 때문에, 통과한 것만 merge 하면 됩니다.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      github-actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      dev-dependencies:
+        patterns: ["*"]
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "deps"

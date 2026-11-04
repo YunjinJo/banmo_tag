@@ -80,6 +80,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   setupConfirmBox();
   loadLists();
+  loadHealthWarning();
   setupSyncButton();
   setupManualAdd();
   setupBackupRestore();
@@ -90,7 +91,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // 연속 변경을 묶어서 한 번만 그립니다. 정제된 데이터는 다시 정제해도 바뀌지 않으므로 무한 루프가 생기지 않습니다.
   const debouncedLoad = debounce(loadLists, 100);
   chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace === 'local' && changes.lists) debouncedLoad();
+    if (namespace !== 'local') return;
+    if (changes.lists) debouncedLoad();
+    if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
   });
 });
 
@@ -111,7 +114,7 @@ function showSyncStatus(message, isError = false) {
 // 3. 현재 트위터 탭에서 즉시 수집
 // ==========================================
 
-function sendScrapeRequest(tabId, timeoutMs = 8000) {
+function sendTabMessage(tabId, message, timeoutMs = 8000) {
   return new Promise(resolve => {
     let settled = false;
     const timer = setTimeout(() => {
@@ -120,7 +123,7 @@ function sendScrapeRequest(tabId, timeoutMs = 8000) {
       resolve({ timeoutError: true });
     }, timeoutMs);
 
-    chrome.tabs.sendMessage(tabId, { action: 'scrapeNow' }, (response) => {
+    chrome.tabs.sendMessage(tabId, message, (response) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -136,46 +139,126 @@ async function injectContentScript(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['shared.js', 'content.js'] });
 }
 
+// 현재 X 탭에 메시지를 보내고 응답을 받음. content script 가 없으면 한 번 주입 후 재시도.
+// 연결/시간 초과 문제는 { error: '안내 문구' } 로 정리해서 반환.
+async function requestFromActiveTab(message) {
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const tabError = getSyncTabError(activeTab);
+  if (tabError) return { error: tabError };
+
+  let response = await sendTabMessage(activeTab.id, message);
+  if (response && response.connectionError) {
+    try {
+      await injectContentScript(activeTab.id);
+    } catch (e) {
+      return { error: '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.' };
+    }
+    response = await sendTabMessage(activeTab.id, message);
+  }
+  if (response && response.timeoutError) {
+    return { error: '응답 시간이 초과되었습니다. 트위터 탭을 새로고침(F5) 후 다시 시도해주세요.' };
+  }
+  if (!response || response.connectionError) {
+    return { error: '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.' };
+  }
+  return response;
+}
+
 function setupSyncButton() {
   const syncBtn = document.getElementById('sync-current-tab-btn');
-  if (!syncBtn) return;
+  const resyncBtn = document.getElementById('resync-replace-btn');
 
-  syncBtn.addEventListener('click', async () => {
-    const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const tabError = getSyncTabError(activeTab);
-    if (tabError) {
-      showSyncStatus(tabError, true);
-      return;
-    }
-
+  syncBtn?.addEventListener('click', async () => {
     syncBtn.disabled = true;
     showSyncStatus('데이터 수집 중...', false);
     try {
-      let response = await sendScrapeRequest(activeTab.id);
-      if (response && response.connectionError) {
-        try {
-          await injectContentScript(activeTab.id);
-        } catch (e) {
-          showSyncStatus('페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.', true);
-          return;
-        }
-        response = await sendScrapeRequest(activeTab.id);
-      }
-
-      if (response && response.success) {
+      const response = await requestFromActiveTab({ action: 'scrapeNow' });
+      if (response.error) {
+        showSyncStatus(response.error, true);
+      } else if (response.success) {
         const detail = response.added > 0 ? `새로 ${response.added}명 추가` : '새 멤버 없음';
         showSyncStatus(`'${response.listName}' 총 ${response.count}명 (${detail})`, false);
-      } else if (response && response.timeoutError) {
-        showSyncStatus('응답 시간이 초과되었습니다. 트위터 탭을 새로고침(F5) 후 다시 시도해주세요.', true);
-      } else if (response && response.connectionError) {
-        showSyncStatus('페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.', true);
       } else {
-        showSyncStatus((response && response.message) || '리스트 멤버를 찾을 수 없습니다. 멤버 화면을 열어주세요.', true);
+        showSyncStatus(response.message || '리스트 멤버를 찾을 수 없습니다. 멤버 화면을 열어주세요.', true);
       }
     } finally {
       syncBtn.disabled = false;
     }
   });
+
+  // 교체 동기화: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
+  resyncBtn?.addEventListener('click', async () => {
+    resyncBtn.disabled = true;
+    try {
+      const preview = await requestFromActiveTab({ action: 'replacePreview' });
+      if (preview.error || !preview.success) {
+        showSyncStatus(preview.error || preview.message || '교체 동기화를 준비하지 못했습니다.', true);
+        return;
+      }
+      const removedCount = preview.removed.length;
+      if (removedCount === 0 && preview.added === 0) {
+        showSyncStatus(`'${preview.listName}' 멤버 목록이 이미 최신입니다. (${preview.seenCount}명)`, false);
+        return;
+      }
+      if (!await askConfirm(buildReplaceConfirmText(preview), '교체')) return;
+
+      const saved = await requestFromActiveTab({ action: 'replaceNow' });
+      if (saved.error || !saved.success) {
+        showSyncStatus(saved.error || saved.message || '교체 동기화에 실패했습니다.', true);
+        return;
+      }
+      showSyncStatus(`'${saved.listName}' 멤버를 교체했습니다. 총 ${saved.count}명 (추가 ${saved.added}명, 삭제 ${saved.removedCount}명)`, false);
+    } finally {
+      resyncBtn.disabled = false;
+    }
+  });
+}
+
+// 교체 확인 문구 (삭제될 핸들 일부 표시, 절반 이상 삭제되면 강하게 경고)
+function buildReplaceConfirmText(preview) {
+  const removed = preview.removed || [];
+  const shown = removed.slice(0, 5).join(', ') + (removed.length > 5 ? ` 외 ${removed.length - 5}명` : '');
+  const lines = [];
+  if (preview.previousCount > 0 && removed.length * 2 >= preview.previousCount) {
+    lines.push(`⚠️ 저장된 ${preview.previousCount}명 중 절반 이상이 삭제됩니다. 멤버 화면을 끝까지 스크롤했는지 꼭 확인하세요.`);
+  }
+  lines.push(`'${preview.listName}' 멤버를 이번에 멤버 화면에서 확인한 ${preview.seenCount}명으로 교체합니다.`);
+  lines.push(`삭제 ${removed.length}명${removed.length ? ': ' + shown : ''} / 추가 ${preview.added}명`);
+  lines.push('화면에 한 번도 나오지 않은 멤버는 삭제되니, 목록을 끝까지 스크롤한 뒤 진행하세요.');
+  return lines.join('\n');
+}
+
+// ==========================================
+// 3-1. X 화면 구조 변화 경고
+// ==========================================
+
+function renderHealthWarning(health) {
+  const el = document.getElementById('health-warning');
+  if (!el) return;
+  const warnings = getStructureWarnings(health, Date.now(), 14);
+  if (warnings.length === 0) {
+    el.style.display = 'none';
+    el.textContent = '';
+    return;
+  }
+  el.textContent = '';
+  const title = document.createElement('strong');
+  title.textContent = '⚠️ X 화면 구조가 바뀌었을 수 있습니다';
+  el.appendChild(title);
+  warnings.forEach(w => {
+    const line = document.createElement('div');
+    line.textContent = `• ${w.label}: ${w.message} (${new Date(w.at).toLocaleString()})`;
+    el.appendChild(line);
+  });
+  const hint = document.createElement('div');
+  hint.textContent = '수집이나 배지가 동작하지 않으면 확장 프로그램 업데이트가 필요합니다.';
+  el.appendChild(hint);
+  el.style.display = 'block';
+}
+
+async function loadHealthWarning() {
+  const result = await chrome.storage.local.get(['structureHealth']);
+  renderHealthWarning(result.structureHealth);
 }
 
 // ==========================================
@@ -202,14 +285,11 @@ function setupManualAdd() {
   toggleBtn.addEventListener('click', () => setFormOpen(form.style.display === 'none'));
 
   saveBtn.addEventListener('click', async () => {
-    const listName = cleanListName(nameInput.value.trim());
-    if (!nameInput.value.trim() || listName === 'Unknown List') {
-      showSyncStatus('리스트 이름을 입력해주세요.', true);
-      nameInput.focus();
-      return;
-    }
-    if (isSystemListName(listName)) {
-      showSyncStatus('시스템 예약어("멤버 관리", "리스트" 등)는 리스트 이름으로 사용할 수 없습니다.', true);
+    // 직접 추가는 "X", "Home" 같은 이름도 허용 (자동 수집에서만 시스템 단어를 막음)
+    const listName = nameInput.value.trim() ? cleanListName(nameInput.value.trim()) : '';
+    const nameError = getManualListNameError(listName);
+    if (nameError) {
+      showSyncStatus(nameError, true);
       nameInput.focus();
       return;
     }
@@ -293,10 +373,10 @@ function setupBackupRestore() {
 
       const reader = new FileReader();
       reader.onload = (ev) => {
-        let parsed = null;
+        let parsed;
         try {
           parsed = parseBackup(JSON.parse(ev.target.result));
-        } catch (err) {
+        } catch {
           parsed = null;
         }
         if (!parsed) {

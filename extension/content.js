@@ -23,6 +23,12 @@
   let lastUrl = location.href;
   let isShutDown = false;
   const pendingTimers = new Set();
+  // 이번 방문에서 멤버 화면에 나타난 멤버 누적 (listId → { listName, handles: Map<lower, 원래 표기> })
+  // X 목록은 가상 스크롤이라 화면 밖 멤버는 DOM 에서 사라지므로, "교체 동기화"는 이 누적 목록을 사용
+  const seenByList = new Map();
+  // X 화면 구조 진단 상태 (storage 의 structureHealth 와 동기화)
+  let storedHealth = {};
+  const pendingHealth = {}; // area → { ok, message, firstAt } : 같은 결과가 일정 시간 유지될 때만 기록
 
   // ==========================================
   // 0. 확장 프로그램 컨텍스트 관리
@@ -76,10 +82,11 @@
 
   // 초기 데이터 로드
   function loadData() {
-    chrome.storage.local.get(['lists', 'badgeSettings'], (result) => {
+    chrome.storage.local.get(['lists', 'badgeSettings', 'structureHealth'], (result) => {
       if (chrome.runtime.lastError) return;
       applyLists(result.lists);
       badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(result.badgeSettings || {}) };
+      storedHealth = result.structureHealth || {};
       // 데이터 로드 전에 빈 데이터로 처리된 트윗이 있을 수 있으므로 초기화 후 재처리
       clearProcessedStyles();
       processTimeline();
@@ -89,22 +96,40 @@
   // 스토리지 변경 감지
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local' || isShutDown) return;
-    let needsRefresh = false;
+    if (changes.structureHealth) {
+      storedHealth = changes.structureHealth.newValue || {};
+    }
+    let changedHandles = null;
     if (changes.lists) {
+      const oldMap = handleToListsMap;
       applyLists(changes.lists.newValue);
       // 리스트가 삭제/수정되었을 수 있으므로, 현재 화면 멤버를 다시 보낼 수 있게 서명 초기화
       lastSentSignature = '';
-      needsRefresh = true;
+      changedHandles = diffHandleMaps(oldMap, handleToListsMap);
     }
     if (changes.badgeSettings) {
+      // 배지 모양은 모든 배지에 영향을 주므로 전체 다시 그리기
       badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(changes.badgeSettings.newValue || {}) };
-      needsRefresh = true;
-    }
-    if (needsRefresh) {
-      clearProcessedStyles(); // 설정 변경 시 재처리를 위해 초기화
+      clearProcessedStyles();
       processTimeline();
+    } else if (changedHandles && changedHandles.length > 0) {
+      // 리스트 변경은 표시가 달라진 핸들이 쓴 트윗만 다시 그림 (멤버 화면 스크롤 중 잦은 저장에도 가볍게)
+      refreshTweetsByHandles(changedHandles);
     }
   });
+
+  // 바뀐 핸들이 포함된 트윗만 초기화 후 다시 처리
+  function refreshTweetsByHandles(changedHandles) {
+    const changed = new Set(changedHandles);
+    const affected = [];
+    document.querySelectorAll('article[data-testid="tweet"]').forEach(t => {
+      if (isTweetAffected(t.dataset.agProcessed, changed)) {
+        resetTweetStyle(t);
+        affected.push(t);
+      }
+    });
+    if (affected.length > 0) processTimeline(affected);
+  }
 
   // 개별 트윗에 적용된 배지/강조 스타일 초기화 (가상 스크롤 DOM 재사용 대응)
   function resetTweetStyle(t) {
@@ -221,10 +246,9 @@
     return extractMembersFromContainer(container, dialog);
   }
 
-  // 스크래핑 및 저장 실행
-  // - isManual: 팝업의 [⚡ 가져오기] 요청 여부 (멤버 관리 화면 차단 및 중복 전송 방지를 우회)
-  // - onSaved: background 저장 결과 콜백 (수동 요청 시 실제 저장 결과를 팝업에 전달)
-  function scrapeListMembers(isManual = false, onSaved = null) {
+  // 현재 화면에서 수집 가능한 멤버를 읽고, 이번 방문 누적 목록(seenByList)에 더함.
+  // 성공: { success: true, urlInfo, listName, members }, 실패: { success: false, message }
+  function collectVisibleMembers(isManual) {
     const urlInfo = parseListUrl(location.pathname);
     // 비리스트 페이지에서는 불필요한 DOM 탐색(getMemberListDialog) 전에 즉시 종료
     if (!urlInfo) {
@@ -254,6 +278,59 @@
     if (members.length === 0) {
       return { success: false, message: '순수 멤버를 찾을 수 없습니다. 멤버 목록이 보이는 상태에서 시도해주세요.' };
     }
+
+    // 멤버 화면(또는 멤버 창)에서 본 멤버만 교체 동기화용으로 누적
+    if (urlInfo.isMembers || dialog) {
+      let seen = seenByList.get(urlInfo.listId);
+      if (!seen) {
+        seen = { listName, handles: new Map() };
+        seenByList.set(urlInfo.listId, seen);
+      }
+      seen.listName = listName;
+      members.forEach(m => {
+        const lower = m.toLowerCase();
+        if (!seen.handles.has(lower)) seen.handles.set(lower, m);
+      });
+    }
+    return { success: true, urlInfo, listName, members };
+  }
+
+  // 교체 동기화 준비: 이번 방문 누적 목록과 저장 데이터를 비교한 결과 (저장하지 않음)
+  function getReplacePlan() {
+    const collected = collectVisibleMembers(true);
+    const urlInfo = parseListUrl(location.pathname);
+    const seen = urlInfo && seenByList.get(urlInfo.listId);
+    if (!seen || seen.handles.size === 0) {
+      return {
+        success: false,
+        message: collected.success
+          ? '교체 동기화는 리스트의 "멤버" 화면에서만 할 수 있습니다.'
+          : collected.message
+      };
+    }
+    const handles = Array.from(seen.handles.values());
+    const plan = applyListReplace(listData, seen.listName, handles, urlInfo.listId);
+    if (!plan.success) return plan;
+    return {
+      success: true,
+      listId: urlInfo.listId,
+      rawListName: seen.listName,
+      listName: plan.listName,
+      handles,
+      seenCount: handles.length,
+      previousCount: plan.previousCount,
+      added: plan.added,
+      removed: plan.removed
+    };
+  }
+
+  // 스크래핑 및 저장 실행
+  // - isManual: 팝업의 [⚡ 가져오기] 요청 여부 (멤버 관리 화면 차단 및 중복 전송 방지를 우회)
+  // - onSaved: background 저장 결과 콜백 (수동 요청 시 실제 저장 결과를 팝업에 전달)
+  function scrapeListMembers(isManual = false, onSaved = null) {
+    const collected = collectVisibleMembers(isManual);
+    if (!collected.success) return collected;
+    const { urlInfo, listName, members } = collected;
 
     // 동일한 데이터는 다시 보내지 않음 (스크롤/DOM 변경마다 background 왕복 방지)
     const signature = buildScrapeSignature(listName, members);
@@ -290,11 +367,52 @@
 
   // 팝업 등의 외부 요청 수신
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action !== 'scrapeNow') return false;
+    if (request.action === 'scrapeNow') {
+      const res = scrapeListMembers(true, (saved) => sendResponse(saved));
+      if (res.pending) return true; // background 저장 결과를 기다린 뒤 비동기 응답
+      sendResponse(res);
+      return false;
+    }
 
-    const res = scrapeListMembers(true, (saved) => sendResponse(saved));
-    if (res.pending) return true; // background 저장 결과를 기다린 뒤 비동기 응답
-    sendResponse(res);
+    // 교체 동기화 1단계: 미리보기 (몇 명이 삭제/추가되는지)
+    if (request.action === 'replacePreview') {
+      const plan = getReplacePlan();
+      if (!plan.success) {
+        sendResponse(plan);
+      } else {
+        sendResponse({
+          success: true, listName: plan.listName, seenCount: plan.seenCount,
+          previousCount: plan.previousCount, added: plan.added, removed: plan.removed
+        });
+      }
+      return false;
+    }
+
+    // 교체 동기화 2단계: 실제 저장 (background 가 저장 큐에서 처리)
+    if (request.action === 'replaceNow') {
+      const plan = getReplacePlan();
+      if (!plan.success) {
+        sendResponse(plan);
+        return false;
+      }
+      try {
+        chrome.runtime.sendMessage({
+          action: 'replaceListMembers',
+          data: { listName: plan.rawListName, listId: plan.listId, members: plan.handles }
+        }, (response) => {
+          if (chrome.runtime.lastError || !response) {
+            sendResponse({ success: false, message: '저장에 실패했습니다. 다시 시도해주세요.' });
+            return;
+          }
+          sendResponse(response);
+        });
+      } catch (err) {
+        if (!isContextValid()) shutdown();
+        sendResponse({ success: false, message: '확장 프로그램 연결이 끊어졌습니다. 페이지를 새로고침해주세요.' });
+        return false;
+      }
+      return true;
+    }
     return false;
   });
 
@@ -423,7 +541,48 @@
       processTimeline(batch);
     }
     scrapeListMembers(false);
+    checkStructureHealth();
   }, 200);
+
+  // ==========================================
+  // 5. X 화면 구조 변화 감지 (팝업 경고용)
+  // ==========================================
+
+  // 같은 진단 결과가 이 시간 이상 유지될 때만 기록 (페이지 로딩 중 일시적인 상태 무시)
+  const HEALTH_SETTLE_MS = 2500;
+
+  function checkStructureHealth() {
+    if (isShutDown) return;
+    const urlInfo = parseListUrl(location.pathname);
+    const result = diagnoseStructure(document, urlInfo, urlInfo ? getMemberListDialog() : null);
+    if (!result) return;
+
+    const now = Date.now();
+    // 정상 결과에는 message 가 없으므로(undefined) 항상 문자열로 맞춰 비교
+    const message = result.message || '';
+    const pending = pendingHealth[result.area];
+    if (!pending || pending.ok !== result.ok || pending.message !== message) {
+      pendingHealth[result.area] = { ok: result.ok, message, firstAt: now };
+      // 결과가 유지되는지 나중에 한 번 더 확인
+      schedule(checkStructureHealth, HEALTH_SETTLE_MS + 100);
+      return;
+    }
+    if (now - pending.firstAt < HEALTH_SETTLE_MS) return;
+
+    const stored = storedHealth[result.area];
+    const sameAsStored = stored && stored.ok === result.ok && (stored.message || '') === message;
+    if (sameAsStored) return;
+    // 정상 상태를 처음 확인한 경우(저장된 기록 없음)는 굳이 쓰지 않음
+    if (!stored && result.ok) return;
+
+    const next = { ...storedHealth, [result.area]: { ok: result.ok, message, at: now } };
+    storedHealth = next;
+    try {
+      chrome.storage.local.set({ structureHealth: next }).catch(() => {});
+    } catch (e) {
+      if (!isContextValid()) shutdown();
+    }
+  }
 
   function requestFullScan() {
     needsFullScan = true;
@@ -437,6 +596,11 @@
     if (location.href === lastUrl) return;
     lastUrl = location.href;
     lastSentSignature = '';
+    // 다른 화면으로 이동하면 "이번 방문" 누적 멤버를 비움 (같은 리스트의 멤버 화면에 머무는 경우만 유지)
+    const info = parseListUrl(location.pathname);
+    for (const id of Array.from(seenByList.keys())) {
+      if (!info || info.listId !== id || !info.isMembers) seenByList.delete(id);
+    }
     schedule(requestFullScan, 300);
     schedule(requestFullScan, 1200);
   }

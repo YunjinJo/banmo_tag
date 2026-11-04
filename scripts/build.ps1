@@ -13,7 +13,7 @@ $testRunner = Join-Path $rootDir "tests\run-tests.ps1"
 $changelogPath = Join-Path $rootDir "docs\CHANGELOG.md"
 $distDir = Join-Path $rootDir "dist"
 
-Write-Host "[0/2] Verifying version consistency between manifest.json and CHANGELOG.md..." -ForegroundColor Cyan
+Write-Host "[0/3] Verifying version consistency between manifest.json and CHANGELOG.md..." -ForegroundColor Cyan
 $manifestJson = Get-Content -Path (Join-Path $extDir "manifest.json") -Raw -Encoding UTF8 | ConvertFrom-Json
 $changelogText = Get-Content -Path $changelogPath -Raw -Encoding UTF8
 $verMatch = [regex]::Match($changelogText, '## \[v([0-9]+\.[0-9]+\.[0-9]+)\]')
@@ -23,14 +23,44 @@ if (-not $verMatch.Success -or $verMatch.Groups[1].Value -ne $manifestJson.versi
 }
 Write-Host "  Verified version v$($manifestJson.version)" -ForegroundColor Green
 
-Write-Host "[1/2] Running automated unit tests..." -ForegroundColor Cyan
+# Static checks (same as CI) when Node.js is available, so problems are found before push
+Write-Host "[1/3] Static checks (scripts/validate.js, ESLint)..." -ForegroundColor Cyan
+$node = Get-Command node -ErrorAction SilentlyContinue
+if (-not $node) {
+    Write-Host "  [SKIP] Node.js not found. Install Node.js to run the same static checks as CI." -ForegroundColor Yellow
+} else {
+    & node (Join-Path $rootDir "scripts\validate.js")
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "[ERROR] Build aborted because static checks failed." -ForegroundColor Red
+        exit 1
+    }
+    $eslintBin = Join-Path $rootDir "node_modules\eslint\bin\eslint.js"
+    if (Test-Path $eslintBin) {
+        Push-Location $rootDir
+        try {
+            & node $eslintBin .
+            $lintExit = $LASTEXITCODE
+        } finally {
+            Pop-Location
+        }
+        if ($lintExit -ne 0) {
+            Write-Host "[ERROR] Build aborted because ESLint found problems." -ForegroundColor Red
+            exit 1
+        }
+        Write-Host "  ESLint passed" -ForegroundColor Green
+    } else {
+        Write-Host "  [SKIP] ESLint not installed. Run 'npm ci' once to enable it." -ForegroundColor Yellow
+    }
+}
+
+Write-Host "[2/3] Running automated unit tests..." -ForegroundColor Cyan
 & powershell -ExecutionPolicy Bypass -File $testRunner
 if ($LASTEXITCODE -ne 0) {
     Write-Host "[ERROR] Build aborted because unit tests failed." -ForegroundColor Red
     exit 1
 }
 
-Write-Host "[2/2] Packaging runtime extension files..." -ForegroundColor Cyan
+Write-Host "[3/3] Packaging runtime extension files..." -ForegroundColor Cyan
 $runtimeItems = @(
     "manifest.json",
     "shared.js",

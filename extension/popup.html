@@ -311,6 +311,13 @@
       border: 1px solid rgba(255, 255, 255, 0.05);
     }
     .settings-header {
+      /* <button> 기본 모양 제거 (키보드로 열 수 있도록 div 대신 button 사용) */
+      width: 100%;
+      background: none;
+      border: none;
+      padding: 0;
+      font-family: inherit;
+      text-align: left;
       font-size: 0.85rem;
       font-weight: bold;
       color: #8899a6;
@@ -319,6 +326,30 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+    }
+    button:focus-visible,
+    select:focus-visible,
+    input:focus-visible,
+    textarea:focus-visible {
+      outline: 2px solid #1d9bf0;
+      outline-offset: 2px;
+    }
+    .health-warning {
+      background: rgba(255, 173, 31, 0.12);
+      border: 1px solid #ffad1f;
+      color: #ffd88a;
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      margin-bottom: 10px;
+    }
+    .resync-btn {
+      margin-top: -2px;
+    }
+    #confirm-text {
+      white-space: pre-line;
+      line-height: 1.45;
     }
     .settings-header:hover {
       color: #fff;
@@ -400,8 +431,12 @@
     </div>
   </div>
 
+  <div id="health-warning" class="health-warning" role="status" style="display:none;"></div>
+
   <div class="actions-bar">
     <button id="sync-current-tab-btn" class="sync-tab-btn">⚡ 현재 열린 트위터 리스트 가져오기</button>
+    <button id="resync-replace-btn" type="button" class="manual-toggle-btn resync-btn"
+      title="이번에 멤버 화면에서 확인한 멤버로 저장 목록을 교체합니다. X 리스트에서 뺀 멤버가 정리됩니다.">🔄 멤버 목록 교체 동기화 (뺀 멤버 정리)</button>
     <div id="sync-status" class="sync-status" style="display:none;"></div>
     <button id="toggle-manual-add-btn" class="manual-toggle-btn" aria-expanded="false">+ 직접 리스트 추가</button>
   </div>
@@ -427,10 +462,10 @@
   </div>
 
   <div class="settings-section">
-    <div class="settings-header" id="toggle-badge-settings" role="button" aria-expanded="false">
+    <button type="button" class="settings-header" id="toggle-badge-settings" aria-expanded="false" aria-controls="badge-settings-body">
       <span>🎨 배지 스타일 설정</span>
-      <span id="settings-arrow">▶</span>
-    </div>
+      <span id="settings-arrow" aria-hidden="true">▶</span>
+    </button>
     <div class="settings-body" id="badge-settings-body">
       <div class="setting-row">
         <span class="setting-label">글자 색상</span>
@@ -472,6 +507,7 @@
     <strong>💡 사용 안내:</strong><br>
     • X(Twitter) 리스트의 <strong>멤버(구성원) 화면</strong>을 열면 자동으로 멤버를 수집합니다.<br>
     • 상단의 <strong>[⚡ 현재 열린 트위터 리스트 가져오기]</strong> 버튼을 누르면 현재 탭에서 즉시 수집합니다.<br>
+    • X 리스트에서 뺀 멤버를 정리하려면, 멤버 화면을 끝까지 스크롤한 뒤 <strong>[🔄 멤버 목록 교체 동기화]</strong>를 누르세요.<br>
     • 필요 시 <strong>[+ 직접 리스트 추가]</strong>로 핸들을 직접 입력할 수도 있습니다.
   </div>
 

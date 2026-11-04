@@ -40,6 +40,23 @@ async function saveListMembers(rawListName, incomingMembers, listId) {
   return { success: true, listName: outcome.listName, count: outcome.count, added: outcome.added };
 }
 
+// 교체 동기화: 이번에 확인한 멤버로 목록을 바꿈 (X 리스트에서 뺀 멤버 정리)
+async function replaceListMembers(rawListName, seenMembers, listId) {
+  const result = await chrome.storage.local.get(['lists']);
+  const outcome = applyListReplace(result.lists || {}, rawListName, seenMembers, listId);
+  if (!outcome.success) {
+    return { success: false, message: outcome.message };
+  }
+  await chrome.storage.local.set({ lists: outcome.lists });
+  return {
+    success: true,
+    listName: outcome.listName,
+    count: outcome.count,
+    added: outcome.added,
+    removedCount: outcome.removed.length
+  };
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   console.log('banmo_tag 확장 프로그램이 설치/업데이트되었습니다.');
   // 설치 또는 업데이트 시 기존 데이터에 태그/시스템 단어가 섞여있다면 자동 정제
@@ -53,9 +70,17 @@ chrome.runtime.onInstalled.addListener(() => {
 
 // content script와의 메시지 통신 처리
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action !== 'saveListMembers' || !request.data) return false;
+  if (!request.data) return false;
+  let task;
+  if (request.action === 'saveListMembers') {
+    task = () => saveListMembers(request.data.listName, request.data.members, request.data.listId);
+  } else if (request.action === 'replaceListMembers') {
+    task = () => replaceListMembers(request.data.listName, request.data.members, request.data.listId);
+  } else {
+    return false;
+  }
 
-  enqueue(() => saveListMembers(request.data.listName, request.data.members, request.data.listId))
+  enqueue(task)
     .then(sendResponse)
     .catch(err => {
       console.error('Storage save failed:', err);
