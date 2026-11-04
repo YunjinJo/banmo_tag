@@ -1,10 +1,13 @@
-// background.js
-// 서비스 워커로서 확장 프로그램의 백그라운드 작업을 처리합니다.
-// 공통 로직(cleanListName, sanitizeListsObject, isSystemListName 등)은 shared.js 에 있습니다.
+// background.js — 서비스 워커
+//   content script 가 보낸 멤버 저장·교체 요청을 순서대로 처리하고, 설치/업데이트 때 저장 데이터를 정리합니다.
+// 공통 로직(applyListSave, applyListReplace, sanitizeListsObject 등)은 shared.js 에 있습니다.
 importScripts('shared.js');
 
-// 저장 작업 직렬화 큐.
-// 여러 탭/연속 스크래핑에서 get → set 이 겹치면 나중 쓰기가 앞선 변경을 덮어쓰므로 순서대로 처리합니다.
+// ==========================================
+// 저장 작업 큐
+// ==========================================
+
+// 여러 탭에서 동시에 읽기 → 쓰기가 겹치면 나중 쓰기가 앞선 변경을 덮어쓰므로 하나씩 순서대로 처리
 let saveQueue = Promise.resolve();
 
 function enqueue(task) {
@@ -13,6 +16,7 @@ function enqueue(task) {
   return run;
 }
 
+// 새 멤버가 저장되면 확장 프로그램 아이콘에 3초간 ✔ 표시
 function showSavedBadge() {
   try {
     chrome.action.setBadgeText({ text: '✔' });
@@ -25,6 +29,11 @@ function showSavedBadge() {
   }
 }
 
+// ==========================================
+// 저장 · 교체
+// ==========================================
+
+// 자동 수집/[가져오기]: 기존 멤버에 새 멤버를 더함
 async function saveListMembers(rawListName, incomingMembers, listId) {
   const result = await chrome.storage.local.get(['lists']);
   const outcome = applyListSave(result.lists || {}, rawListName, incomingMembers, listId);
@@ -57,9 +66,13 @@ async function replaceListMembers(rawListName, seenMembers, listId) {
   };
 }
 
+// ==========================================
+// 이벤트
+// ==========================================
+
+// 설치·업데이트 때 기존 데이터에 태그 붙은 이름이나 시스템 단어 리스트가 섞여 있으면 정리
 chrome.runtime.onInstalled.addListener(() => {
   console.log('banmo_tag 확장 프로그램이 설치/업데이트되었습니다.');
-  // 설치 또는 업데이트 시 기존 데이터에 태그/시스템 단어가 섞여있다면 자동 정제
   enqueue(async () => {
     const result = await chrome.storage.local.get(['lists']);
     if (!result.lists) return;
@@ -68,21 +81,19 @@ chrome.runtime.onInstalled.addListener(() => {
   }).catch(err => console.error('Storage migration failed:', err));
 });
 
-// content script와의 메시지 통신 처리
+// content script 요청: action → 처리 함수 (data: { listName, members, listId })
+const messageHandlers = {
+  saveListMembers: data => saveListMembers(data.listName, data.members, data.listId),
+  replaceListMembers: data => replaceListMembers(data.listName, data.members, data.listId)
+};
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (!request.data) return false;
-  let task;
-  if (request.action === 'saveListMembers') {
-    task = () => saveListMembers(request.data.listName, request.data.members, request.data.listId);
-  } else if (request.action === 'replaceListMembers') {
-    task = () => replaceListMembers(request.data.listName, request.data.members, request.data.listId);
-  } else {
-    return false;
-  }
+  if (!Object.prototype.hasOwnProperty.call(messageHandlers, request.action)) return false;
 
-  enqueue(task)
+  enqueue(() => messageHandlers[request.action](request.data))
     .then(sendResponse)
-    .catch(err => {
+    .catch((err) => {
       console.error('Storage save failed:', err);
       sendResponse({ success: false, error: String(err && err.message || err) });
     });

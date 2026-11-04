@@ -1,35 +1,122 @@
 // shared.js
-// content.js / popup.js / background.js / test-runner.html 이 공통으로 사용하는 순수 로직 모음.
-// - 한 곳에서만 수정하면 모든 컨텍스트에 반영되며, 테스트도 실제 코드를 그대로 검증합니다.
-// - 재주입 시 재선언 오류가 나지 않도록 function 선언과 var 만 사용합니다.
+// content.js / popup.js / background.js / tests/test-runner.html 이 함께 쓰는 순수 로직.
+// 한 곳만 고치면 모든 곳에 반영되고, 테스트도 이 파일을 그대로 검사합니다.
+//
+// ⚠️ 파일 최상위에는 function 선언과 var 만 씁니다.
+//    팝업이 content script 를 다시 주입할 때(chrome.scripting) 이 파일이 같은 공간에서 한 번 더 실행되는데,
+//    최상위 const/let 은 "이미 선언됨" 오류를 내기 때문입니다. 함수 안에서는 const/let 을 써도 됩니다.
+//
+// 목차
+//   0. 상수
+//   1. 공통 유틸          debounce, mergeHandles, isHexColor, isValidMode, getHandleFromProfileHref
+//   2. 리스트 이름        isSystemListName, isValidListName, cleanListName, isFallbackListName, getManualListNameError
+//   3. 리스트 데이터      sanitizeListsObject, resolveListKey, applyListSave, applyListReplace,
+//                         applyManualAdd, removeMemberFromLists
+//   4. URL · 수집 정책    parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError
+//   5. 멤버 추출          isRecoLabel, isExcludedUserCell, extractMembersFromContainer, buildScrapeSignature
+//   6. 타임라인 배지      buildHandleMap, diffHandleMaps, isTweetAffected, getBadgeAnchor, applyBadgeStyle, isOwnInjectedNode
+//   7. 입력 · 백업        parseHandles, normalizeImportedLists, mergeImportedLists,
+//                         normalizeBadgeSettings, buildBackup, parseBackup
+//   8. 화면 구조 진단     countProfileLinks, diagnoseStructure, getStructureWarnings
+
+// ==========================================
+// 0. 상수
+// ==========================================
 
 var AG_DEFAULT_BADGE_SETTINGS = { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' };
 var AG_DEFAULT_LIST_COLOR = '#1d9bf0';
 var AG_VALID_MODES = ['normal', 'highlight', 'dim'];
 var AG_HANDLE_RE = /^@[A-Za-z0-9_]{1,15}$/;
+var AG_HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+var AG_PROFILE_HREF_RE = /^\/([A-Za-z0-9_]{1,15})$/;
+var AG_HEADING_SELECTOR = 'h1, h2, h3, [role="heading"]';
 
-// 공통 디바운스 유틸리티 (content.js / popup.js 공용)
+// 리스트 이름이 될 수 없는 화면·메뉴 단어 (자동 수집에서 이름으로 잡히면 버림)
+var AG_SYSTEM_LIST_NAMES = [
+  '리스트', '멤버 관리', '구성원 관리', '리스트 멤버', '멤버', '구성원', '추천', '팔로우 추천',
+  '목록', '홈', '탐색하기', '알림', '쪽지', '북마크', '설정', '게시하기',
+  'Lists', 'Manage members', 'List members', 'Members', 'Suggested', 'Who to follow',
+  'Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Settings',
+  'X', 'Twitter', 'Post', '타임라인', 'Timeline',
+  'リスト', 'メンバーの管理', 'リストメンバー', 'おすすめ'
+];
+// 구두점으로 둘러싸인 시스템 단어 (예: "- 리스트 멤버 -")
+var AG_SYSTEM_NAME_WITH_PUNCT_RE = /^[\s\-·•:—\/]*(리스트|리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members|구성원|멤버|추천|Suggested|Who to follow|팔로우 추천)[\s\-·•:—\/]*$/i;
+
+// 리스트 이름 정제 규칙 (위에서부터 차례로 적용, 결과가 더 바뀌지 않을 때까지 최대 5번 반복)
+var AG_LIST_NAME_CLEANUP_RULES = [
+  // " / X", " / Twitter" 접미사
+  [/\s*\/\s*(X|Twitter)$/i, ''],
+  // 브라우저 탭 알림 카운트: "(3) ", "[5] ", "(99+) "
+  [/^\s*[\(\[]\d+\+?[\)\]]\s*/g, ''],
+  // X 의 화면 읽기용 제목 접두사: "타임라인: 리스트 멤버", "Timeline: List members"
+  [/^(타임라인|Timeline)\s*:\s*/i, ''],
+  // 시스템 접두사/접미사 — 구분자(- · • : |)가 있을 때만 지워 "Core Members", "우리팀 리스트 멤버"는 보존
+  [/^(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)\s*[\-·•:|]+\s*/i, ''],
+  [/\s*[\-·•:|]+\s*(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)$/i, ''],
+  // 괄호 속 태그: "리스트명 (@username)", "리스트명(@username)", "(by me@x)"
+  [/\s*\(\s*@[A-Za-z0-9_]+\s*\)/g, ''],
+  [/\s*\([^\)]*@[^\)]*\)/g, ''],
+  // 구분 기호 뒤 태그: "리스트명 · @username", "리스트명 - @username", "리스트명 | @username"
+  [/\s*[·\-\/|•·]\s*@[A-Za-z0-9_]+/g, ''],
+  // "by @username"
+  [/\s+by\s+@[A-Za-z0-9_]+/gi, ''],
+  // 끝에 공백과 함께 붙은 "@username" ("연락처 me@site" 처럼 단어 중간의 @ 는 보존)
+  [/\s+@[A-Za-z0-9_]+$/g, ''],
+  // 앞에 붙은 "@username /", "@username :", "@username/"
+  [/^@[A-Za-z0-9_]+[\s\/:·•'-]+/g, '']
+];
+
+// 리스트 화면의 탭 이름
+var AG_MEMBER_TAB_NAMES = ['구성원', '멤버', 'Members'];
+var AG_SUGGESTED_TAB_NAMES = ['추천', 'Suggested'];
+
+// "/user/lists/..." 형식에서 user 자리에 올 수 없는 경로
+var AG_NON_USER_LIST_PATHS = ['i', 'lists', 'home', 'explore', 'notifications', 'messages'];
+
+// 멤버 셀의 링크 중 사용자 프로필이 아닌 경로 (멤버 추출 시 건너뜀)
+var AG_MEMBER_LINK_IGNORE = ['home', 'explore', 'notifications', 'messages', 'lists', 'bookmarks', 'settings', 'i'];
+// 화면 구조 진단에서 "사용자 링크"로 세지 않는 경로 (메뉴 링크가 많아 위 목록보다 넓음)
+var AG_NAV_PATHS = ['home', 'explore', 'notifications', 'messages', 'lists', 'bookmarks', 'settings', 'i',
+  'search', 'compose', 'jobs', 'premium', 'communities', 'tos', 'privacy'];
+
+// 추천 영역 제목/aria-label (전체 일치로 비교)
+var AG_RECO_LABELS = ['팔로우 추천', 'Who to follow', '추천 사용자', '추천', 'Suggested', 'Connect',
+  '팔로우할 만한 계정', '회원님을 위한 추천', 'You might like'];
+
+// 팝업 [가져오기]가 동작하는 탭 주소
+var AG_X_URL_RE = /^https?:\/\/([^\/]+\.)?(x|twitter)\.com\//;
+
+// 백업 파일
+var AG_BACKUP_APP = 'banmo_tag';
+var AG_FONT_FAMILIES = ['system', "'Arial', sans-serif", "'Roboto', sans-serif", "'Noto Sans KR', sans-serif",
+  "'Pretendard', sans-serif", 'monospace', "'Georgia', serif"];
+
+// 화면 구조 진단 영역별 팝업 표시 이름
+var AG_HEALTH_AREA_LABELS = { members: '멤버 수집', timeline: '타임라인 배지' };
+
+// ==========================================
+// 1. 공통 유틸
+// ==========================================
+
+// 마지막 호출 후 wait(ms) 동안 다시 호출되지 않으면 한 번 실행
 function debounce(func, wait) {
-  var timeout;
-  return function () {
-    var context = this;
-    var args = arguments;
-    clearTimeout(timeout);
-    timeout = setTimeout(function () {
-      func.apply(context, args);
-    }, wait);
+  let timer;
+  return function (...args) {
+    clearTimeout(timer);
+    timer = setTimeout(() => func.apply(this, args), wait);
   };
 }
 
-// 대소문자 구분 없이 핸들 배열을 병합하고 중복을 제거 (기존 대소문자 표기 우선 보존)
+// 핸들 배열 두 개를 대소문자 구분 없이 합치고 중복 제거 (먼저 나온 표기를 유지)
 function mergeHandles(existing, incoming) {
-  var seen = new Set();
-  var out = [];
-  var add = function (h) {
-    if (typeof h !== 'string') return;
-    var trimmed = h.trim();
+  const seen = new Set();
+  const out = [];
+  const add = (handle) => {
+    if (typeof handle !== 'string') return;
+    const trimmed = handle.trim();
     if (!trimmed) return;
-    var lower = trimmed.toLowerCase();
+    const lower = trimmed.toLowerCase();
     if (seen.has(lower)) return;
     seen.add(lower);
     out.push(trimmed);
@@ -39,163 +126,309 @@ function mergeHandles(existing, incoming) {
   return out;
 }
 
-// 특정 리스트에서 개별 멤버 핸들 제거 (순수 헬퍼)
-function removeMemberFromLists(lists, listName, handleToRemove) {
-  if (!lists || !lists[listName] || !Array.isArray(lists[listName].members)) return false;
-  var target = String(handleToRemove || '').trim().toLowerCase();
-  if (!target) return false;
-  var before = lists[listName].members.length;
-  lists[listName].members = lists[listName].members.filter(function (h) {
-    return String(h).toLowerCase() !== target;
-  });
-  return lists[listName].members.length !== before;
+function isHexColor(value) {
+  return typeof value === 'string' && AG_HEX_COLOR_RE.test(value);
+}
+
+function isValidMode(value) {
+  return AG_VALID_MODES.indexOf(value) !== -1;
+}
+
+// 프로필 링크 "/handle" 에서 handle(앞의 @ 없이)을 꺼냄. 프로필 링크 모양이 아니면 null
+function getHandleFromProfileHref(href) {
+  const match = String(href || '').match(AG_PROFILE_HREF_RE);
+  return match ? match[1] : null;
 }
 
 // ==========================================
-// 1. 리스트 이름 정제 / 검증
+// 2. 리스트 이름
 // ==========================================
 
-// 시스템/네비게이션 단어 판별 (절대 리스트 이름이 될 수 없는 키워드)
+// 화면·메뉴 단어라서 리스트 이름이 될 수 없으면 true
 function isSystemListName(name) {
   if (!name) return true;
-  var trimmed = String(name).trim();
+  const trimmed = String(name).trim();
   if (trimmed.length === 0 || trimmed === 'Unknown List') return true;
 
-  var systemWords = [
-    '리스트', '멤버 관리', '구성원 관리', '리스트 멤버', '멤버', '구성원', '추천', '팔로우 추천',
-    '목록', '홈', '탐색하기', '알림', '쪽지', '북마크', '설정', '게시하기',
-    'Lists', 'Manage members', 'List members', 'Members', 'Suggested', 'Who to follow',
-    'Home', 'Explore', 'Notifications', 'Messages', 'Bookmarks', 'Settings',
-    'X', 'Twitter', 'Post', '타임라인', 'Timeline',
-    'リスト', 'メンバーの管理', 'リストメンバー', 'おすすめ'
-  ];
-  var lower = trimmed.toLowerCase();
-  if (systemWords.some(function (sw) { return sw.toLowerCase() === lower; })) return true;
-  if (/^[\s\-·•:—\/]*(리스트|리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members|구성원|멤버|추천|Suggested|Who to follow|팔로우 추천)[\s\-·•:—\/]*$/i.test(trimmed)) return true;
-  return false;
+  const lower = trimmed.toLowerCase();
+  if (AG_SYSTEM_LIST_NAMES.some(word => word.toLowerCase() === lower)) return true;
+  return AG_SYSTEM_NAME_WITH_PUNCT_RE.test(trimmed);
 }
 
 function isValidListName(text) {
   return !isSystemListName(text);
 }
 
-// 리스트 이름에서 내 태그/핸들(@username), 알림 카운트, 부가 정보 말끔히 제거
+// 페이지 제목·헤딩에서 읽은 문자열을 순수한 리스트 이름으로 정리
+// (내 @핸들, 알림 카운트, " / X", "리스트 멤버 - " 같은 부가 정보 제거)
 function cleanListName(rawName) {
   if (!rawName) return 'Unknown List';
-  var name = String(rawName).trim();
+  let name = String(rawName).trim();
 
-  var prev = '';
-  var iterations = 0;
-  while (prev !== name && iterations < 5) {
-    prev = name;
-    iterations++;
-
-    // 1. " / X", " / Twitter" 접미사 제거
-    name = name.replace(/\s*\/\s*(X|Twitter)$/i, '');
-    // 2. 브라우저 탭 알림 카운트 제거: "(3) ", "[5] ", "(99+) " 등
-    name = name.replace(/^\s*[\(\[]\d+\+?[\)\]]\s*/g, '');
-    // 2-1. X 의 화면 읽기용 제목 접두사 제거: "타임라인: 리스트 멤버", "Timeline: List members"
-    name = name.replace(/^(타임라인|Timeline)\s*:\s*/i, '');
-    // 3. 시스템 접두사/접미사 정리 — 구분자(- · • : |)가 있을 때만 제거해 "Core Members", "우리팀 리스트 멤버" 같은 실제 이름을 보존
-    name = name.replace(/^(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)\s*[\-·•:|]+\s*/i, '');
-    name = name.replace(/\s*[\-·•:|]+\s*(리스트 멤버|List members|구성원 관리|멤버 관리|Manage members|Members)$/i, '');
-    // 4. 괄호로 둘러싸인 태그 제거: "리스트명 (@username)", "리스트명(@username)" 등
-    name = name.replace(/\s*\(\s*@[A-Za-z0-9_]+\s*\)/g, '');
-    name = name.replace(/\s*\([^\)]*@[^\)]*\)/g, '');
-    // 5. 구분 기호 뒤에 붙은 태그 제거: "리스트명 · @username", "리스트명 - @username", "리스트명 | @username"
-    name = name.replace(/\s*[\u00b7\-\/|•·]\s*@[A-Za-z0-9_]+/g, '');
-    // 6. "by @username" 제거
-    name = name.replace(/\s+by\s+@[A-Za-z0-9_]+/gi, '');
-    // 7. 끝에 공백과 함께 붙은 "@username" 제거 ("연락처 me@site" 처럼 단어 중간의 @ 는 보존)
-    name = name.replace(/\s+@[A-Za-z0-9_]+$/g, '');
-    // 8. 앞에 붙은 "@username /", "@username :", "@username/" 제거
-    name = name.replace(/^@[A-Za-z0-9_]+[\s\/:·•'-]+/g, '');
-
+  for (let round = 0; round < 5; round++) {
+    const before = name;
+    AG_LIST_NAME_CLEANUP_RULES.forEach(([pattern, replacement]) => {
+      name = name.replace(pattern, replacement);
+    });
     name = name.trim();
+    if (name === before) break;
   }
 
   return name || String(rawName).trim();
 }
 
-// 저장된 리스트 목록 객체의 태그 붙은 이름 정리, 중복 병합, 시스템 단어 리스트 삭제
-// - 정제 후 이름이 겹쳐도 listId 가 서로 다르면 별개 리스트이므로 resolveListKey 규칙(접미사)으로 분리
-// - 이미 깨끗한 키를 먼저 처리해, 원래 그 이름을 쓰던 리스트가 이름을 유지하도록 함
-function sanitizeListsObject(lists) {
-  var modified = false;
-  var newLists = {};
-  var src = lists || {};
-  var keys = Object.keys(src);
-  var cleanFirst = keys.filter(function (k) { return cleanListName(k) === k; })
-    .concat(keys.filter(function (k) { return cleanListName(k) !== k; }));
+// 리스트 이름을 못 읽었을 때 쓰는 임시 이름("리스트 (123)")인지
+function isFallbackListName(name) {
+  return /^리스트 \([^)]+\)$/.test(String(name || ''));
+}
 
-  cleanFirst.forEach(function (key) {
-    var val = src[key];
-    // 1. 키 자체 또는 정제된 키가 시스템 단어인 경우(예: '멤버 관리') 제거
-    //    단, 사용자가 직접 추가한 리스트(manual: true)는 "X", "Home" 같은 이름도 허용
-    var cleanKey = cleanListName(key);
-    var isManual = !!(val && val.manual === true);
+// 팝업 "직접 리스트 추가"의 이름 검사. 문제가 없으면 null.
+// 자동 수집과 달리 "X", "Home", "리스트" 같은 이름도 허용 (사용자가 직접 정한 이름이므로).
+function getManualListNameError(rawName) {
+  const name = String(rawName || '').trim();
+  if (!name || name === 'Unknown List') return '리스트 이름을 입력해주세요.';
+  if (name.length > 50) return '리스트 이름은 50자 이하로 입력해주세요.';
+  return null;
+}
+
+// ==========================================
+// 3. 리스트 데이터 (저장 형식: { [리스트 이름]: { color, mode, members, listId?, manual? } })
+// ==========================================
+
+// 저장된 리스트를 정리: 태그 붙은 이름 정제, 같은 리스트 병합, 시스템 단어 리스트 삭제.
+// - 정제 후 이름이 같아도 listId 가 다르면 별개 리스트이므로 resolveListKey 규칙(접미사)으로 분리
+// - 이미 깨끗한 키를 먼저 처리해, 원래 그 이름을 쓰던 리스트가 이름을 유지하도록 함
+// - 사용자가 직접 추가한 리스트(manual: true)는 "X", "Home" 같은 이름도 유지
+// 반환: { newLists, modified } (입력은 바꾸지 않음)
+function sanitizeListsObject(lists) {
+  const src = lists || {};
+  const keys = Object.keys(src);
+  const cleanKeysFirst = keys.filter(k => cleanListName(k) === k)
+    .concat(keys.filter(k => cleanListName(k) !== k));
+
+  const newLists = {};
+  let modified = false;
+
+  cleanKeysFirst.forEach((key) => {
+    const val = src[key];
+    const isManual = !!(val && val.manual === true);
+    let cleanKey = cleanListName(key);
+
     if (!isManual && (isSystemListName(key) || isSystemListName(cleanKey))) {
-      modified = true;
+      modified = true; // 시스템 단어 리스트 삭제
       return;
     }
     if (isManual && (!cleanKey || cleanKey === 'Unknown List')) cleanKey = key;
-    var listId = val && val.listId;
-    var targetKey = newLists[cleanKey] ? resolveListKey(newLists, cleanKey, listId).key : cleanKey;
+
+    const listId = val && val.listId;
+    const targetKey = newLists[cleanKey] ? resolveListKey(newLists, cleanKey, listId).key : cleanKey;
     if (targetKey !== key) modified = true;
 
-    var target = newLists[targetKey];
+    const target = newLists[targetKey];
     if (target) {
       target.members = mergeHandles(target.members, val && val.members);
       if (!target.listId && listId) target.listId = listId;
     } else {
-      newLists[targetKey] = Object.assign({}, val, {
-        members: mergeHandles([], val && val.members)
-      });
+      newLists[targetKey] = Object.assign({}, val, { members: mergeHandles([], val && val.members) });
     }
   });
-  return { newLists: newLists, modified: modified };
+
+  return { newLists, modified };
+}
+
+// 새로 저장할 리스트(listName, listId)를 어느 키에 저장할지 결정.
+// - 같은 listId 가 다른 이름으로 저장돼 있으면 그 키를 사용 (중복 생성 방지)
+//   · 기존이 임시 이름("리스트 (ID)")이고 새 이름이 실제 이름이면 { key: 새 이름, renameFrom: 기존 키 }
+// - 같은 이름인데 다른 listId 를 가진 별개 리스트가 있으면 "이름 (ID 끝 4자리)" 로 구분
+function resolveListKey(lists, listName, listId) {
+  if (!listId) return { key: listName, renameFrom: null };
+  const map = lists || {};
+
+  for (const key of Object.keys(map)) {
+    if (!map[key] || map[key].listId !== listId) continue;
+    if (key === listName) return { key: listName, renameFrom: null };
+    if (isFallbackListName(listName)) return { key, renameFrom: null };
+    if (isFallbackListName(key)) return { key: listName, renameFrom: key };
+    return { key, renameFrom: null };
+  }
+
+  const sameName = map[listName];
+  if (sameName && sameName.listId && sameName.listId !== listId) {
+    let candidateKey = `${listName} (${String(listId).slice(-4)})`;
+    if (map[candidateKey] && map[candidateKey].listId !== listId) {
+      candidateKey = `${listName} (${listId})`;
+    }
+    return { key: candidateKey, renameFrom: null };
+  }
+  return { key: listName, renameFrom: null };
+}
+
+// resolveListKey 가 renameFrom 을 돌려준 경우, 임시 이름 리스트를 새 이름으로 옮김
+// (색상·모드는 그대로, 새 이름에 이미 리스트가 있으면 멤버만 합침). 옮겼으면 true
+function moveRenamedList(lists, fromKey, toKey) {
+  if (!fromKey || !lists[fromKey]) return false;
+  const old = lists[fromKey];
+  delete lists[fromKey];
+  const target = lists[toKey];
+  lists[toKey] = target
+    ? Object.assign({}, target, { members: mergeHandles(target.members, old.members) })
+    : old;
+  return true;
+}
+
+// 저장·교체에 쓸 리스트 이름과 멤버 검사. 실패하면 { error }, 성공하면 { cleanedName, members }
+function prepareIncomingMembers(rawListName, incomingMembers, emptyMessage) {
+  const cleanedName = cleanListName(rawListName);
+  if (isSystemListName(cleanedName)) {
+    return { error: '시스템 단어는 리스트 이름으로 저장할 수 없습니다.' };
+  }
+  const members = (Array.isArray(incomingMembers) ? incomingMembers : [])
+    .filter(m => typeof m === 'string' && AG_HANDLE_RE.test(m));
+  if (members.length === 0) return { error: emptyMessage };
+  return { cleanedName, members };
+}
+
+// 저장할 리스트 키를 정하고(이름 변경 포함) 항목이 없으면 기본값으로 만듦. listId 는 호출한 쪽에서 설정
+function prepareListEntry(lists, cleanedName, listId) {
+  const resolved = resolveListKey(lists, cleanedName, listId);
+  const renamed = moveRenamedList(lists, resolved.renameFrom, resolved.key);
+  if (!lists[resolved.key]) {
+    lists[resolved.key] = { color: AG_DEFAULT_LIST_COLOR, mode: 'normal', members: [] };
+  }
+  return { listName: resolved.key, renamed };
+}
+
+// 자동 수집 결과 저장: 기존 멤버에 새 멤버를 더함 (background.js 에서 사용)
+// 반환: { success, lists, listName, count, added, noChange } 또는 { success: false, message }
+function applyListSave(rawLists, rawListName, incomingMembers, listId) {
+  const incoming = prepareIncomingMembers(rawListName, incomingMembers, '저장할 멤버가 없습니다.');
+  if (incoming.error) return { success: false, message: incoming.error };
+
+  const sanitized = sanitizeListsObject(rawLists || {});
+  const lists = sanitized.newLists;
+  const { listName, renamed } = prepareListEntry(lists, incoming.cleanedName, listId);
+
+  const idChanged = !!listId && lists[listName].listId !== listId;
+  if (listId) lists[listName].listId = listId;
+
+  const existing = lists[listName].members || [];
+  const merged = mergeHandles(existing, incoming.members);
+  const added = merged.length - existing.length;
+
+  if (added === 0 && !sanitized.modified && !renamed && !idChanged) {
+    return { success: true, lists, listName, count: existing.length, added: 0, noChange: true };
+  }
+
+  lists[listName].members = merged;
+  return { success: true, lists, listName, count: merged.length, added, noChange: false };
+}
+
+// 교체 동기화: 리스트 멤버를 "이번에 확인한 멤버"로 바꿈 (X 리스트에서 뺀 멤버 정리용)
+// - 확인된 기존 멤버는 기존 표기 유지, 확인되지 않은 멤버는 삭제, 새로 확인된 멤버는 추가
+// - 색상/모드/listId 는 유지. 임시 이름("리스트 (ID)")이면 실제 이름으로 승격
+// - 입력을 바꾸지 않고 새 lists 를 반환하므로 미리보기에도 그대로 사용 가능
+function applyListReplace(rawLists, rawListName, seenMembers, listId) {
+  const incoming = prepareIncomingMembers(rawListName, seenMembers,
+    '확인한 멤버가 없습니다. 리스트의 멤버 화면을 열어 끝까지 스크롤해주세요.');
+  if (incoming.error) return { success: false, message: incoming.error };
+
+  const lists = sanitizeListsObject(JSON.parse(JSON.stringify(rawLists || {}))).newLists;
+  const { listName } = prepareListEntry(lists, incoming.cleanedName, listId);
+  if (listId) lists[listName].listId = listId;
+
+  const seen = new Set(incoming.members.map(m => m.toLowerCase()));
+  const isSeen = handle => seen.has(String(handle).toLowerCase());
+  const existing = lists[listName].members || [];
+  const kept = existing.filter(isSeen);
+  const removed = existing.filter(h => !isSeen(h));
+  const merged = mergeHandles(kept, incoming.members);
+
+  lists[listName].members = merged;
+  return {
+    success: true,
+    lists,
+    listName,
+    previousCount: existing.length,
+    count: merged.length,
+    added: merged.length - kept.length,
+    removed
+  };
+}
+
+// 팝업 "직접 리스트 추가": 이미 있는 리스트면 멤버만 추가하고 색상/모드는 유지.
+// 새로 만든 리스트에는 manual: true 를 붙여, "X"·"Home" 같은 이름도 정리 과정에서 지워지지 않게 함.
+function applyManualAdd(lists, listName, handles, color, mode) {
+  const existing = lists[listName];
+  if (existing) {
+    existing.members = mergeHandles(existing.members, handles);
+    return { created: false, total: existing.members.length };
+  }
+  lists[listName] = {
+    color: isHexColor(color) ? color : AG_DEFAULT_LIST_COLOR,
+    mode: isValidMode(mode) ? mode : 'normal',
+    members: mergeHandles([], handles),
+    manual: true
+  };
+  return { created: true, total: lists[listName].members.length };
+}
+
+// 리스트에서 멤버 한 명 제거 (대소문자 무시). 실제로 지웠으면 true
+function removeMemberFromLists(lists, listName, handleToRemove) {
+  const list = lists && lists[listName];
+  if (!list || !Array.isArray(list.members)) return false;
+  const target = String(handleToRemove || '').trim().toLowerCase();
+  if (!target) return false;
+  const before = list.members.length;
+  list.members = list.members.filter(h => String(h).toLowerCase() !== target);
+  return list.members.length !== before;
 }
 
 // ==========================================
-// 2. URL / 화면 판별
+// 4. URL · 수집 정책
 // ==========================================
 
-// URL 경로 분석: /i/lists/:id[/members|/followers] 또는 /:user/lists/:slug[/...] (전체 URL 또는 pathname 모두 지원)
+// 리스트 주소 분석. 전체 URL 과 pathname 모두 지원.
+//   /i/lists/:id[/members|/followers]  또는  /:user/lists/:slug[/members|/followers]
+// 반환: { listId, isMembers, isFollowers, isMain } 또는 리스트 주소가 아니면 null
 function parseListUrl(pathnameOrUrl) {
-  var path = String(pathnameOrUrl || '').replace(/^https?:\/\/[^\/]+/i, '').split(/[?#]/)[0].replace(/\/+$/, '');
+  const path = String(pathnameOrUrl || '')
+    .replace(/^https?:\/\/[^\/]+/i, '')
+    .split(/[?#]/)[0]
+    .replace(/\/+$/, '');
 
-  var iMatch = path.match(/^\/i\/lists\/([^\/]+)(?:\/(members|followers))?/);
-  if (iMatch) {
-    return { listId: iMatch[1], isMembers: iMatch[2] === 'members', isFollowers: iMatch[2] === 'followers', isMain: !iMatch[2] };
-  }
+  const toListInfo = (listId, subpage) => ({
+    listId,
+    isMembers: subpage === 'members',
+    isFollowers: subpage === 'followers',
+    isMain: !subpage
+  });
 
-  var userMatch = path.match(/^\/([^\/]+)\/lists\/([^\/]+)(?:\/(members|followers))?/);
-  if (userMatch && ['i', 'lists', 'home', 'explore', 'notifications', 'messages'].indexOf(userMatch[1]) === -1) {
-    return { listId: userMatch[2], isMembers: userMatch[3] === 'members', isFollowers: userMatch[3] === 'followers', isMain: !userMatch[3] };
-  }
+  const byId = path.match(/^\/i\/lists\/([^\/]+)(?:\/(members|followers))?/);
+  if (byId) return toListInfo(byId[1], byId[2]);
+
+  const byUser = path.match(/^\/([^\/]+)\/lists\/([^\/]+)(?:\/(members|followers))?/);
+  if (byUser && AG_NON_USER_LIST_PATHS.indexOf(byUser[1]) === -1) return toListInfo(byUser[2], byUser[3]);
+
   return null;
 }
 
-// 활성화된 탭 텍스트 ("구성원" / "추천" 등). 탭이 없으면 null
+// 선택된 탭의 글자 ("구성원" / "추천" 등). 탭이 없으면 null
 function getActiveTabText(root) {
   if (!root || !root.querySelector) return null;
-  var tab = root.querySelector('[role="tab"][aria-selected="true"]');
+  const tab = root.querySelector('[role="tab"][aria-selected="true"]');
   return tab ? tab.textContent.trim() : null;
 }
 
-var AG_MEMBER_TAB_NAMES = ['구성원', '멤버', 'Members'];
-var AG_SUGGESTED_TAB_NAMES = ['추천', 'Suggested'];
-
-// 수집 정책: 수집하면 안 되는 경우 사유 문자열, 허용이면 null
-// - 리스트 URL 이 아니면 차단 (좋아요/재게시 등 무관한 모달 배제)
-// - 리스트 팔로워 페이지 차단 (팔로워는 멤버가 아님)
-// - "추천" 탭 차단 (멤버가 아닌 추천 계정)
-// - 자동 수집은 멤버 화면(또는 멤버 모달)에서, 탭이 있다면 "구성원" 탭일 때만 허용
+// 지금 화면에서 멤버를 수집하면 안 되는 이유. 수집해도 되면 null
+// - 리스트 주소가 아님 (좋아요/재게시 목록 등 무관한 창 배제)
+// - 리스트 팔로워 화면 (팔로워는 멤버가 아님)
+// - "추천" 탭 (멤버가 아닌 추천 계정)
+// - 자동 수집은 멤버 화면(또는 멤버 창)에서, 탭이 있다면 "구성원" 탭일 때만
 function getScrapeBlockReason(urlInfo, root, dialog, isManual) {
   if (!urlInfo) return '리스트 페이지가 아닙니다. 리스트의 멤버 화면에서 시도해주세요.';
   if (urlInfo.isFollowers) return '리스트 팔로워는 멤버가 아니므로 수집하지 않습니다.';
 
-  var activeTab = getActiveTabText(root);
+  const activeTab = getActiveTabText(root);
   if (activeTab && AG_SUGGESTED_TAB_NAMES.indexOf(activeTab) !== -1) {
     return '"추천" 탭에서는 수집하지 않습니다. "구성원" 탭을 선택해주세요.';
   }
@@ -207,255 +440,127 @@ function getScrapeBlockReason(urlInfo, root, dialog, isManual) {
   return null;
 }
 
-// ID 폴백 이름 ("리스트 (123)") 여부
-function isFallbackListName(name) {
-  return /^리스트 \([^)]+\)$/.test(String(name || ''));
-}
-
-// 같은 리스트(listId)가 다른 이름으로 이미 저장돼 있으면 그 키를 사용해 중복 생성을 막음.
-// - 기존이 폴백 이름이고 새 이름이 실제 이름이면 { key: 새 이름, renameFrom: 기존 키 }
-// - 반대로 이름은 같은데 서로 다른 listId 를 가진 별개 리스트라면 접미사를 붙여 충돌을 방지함.
-function resolveListKey(lists, listName, listId) {
-  if (!listId) return { key: listName, renameFrom: null };
-  var map = lists || {};
-  var keys = Object.keys(map);
-  for (var i = 0; i < keys.length; i++) {
-    var k = keys[i];
-    if (!map[k] || map[k].listId !== listId) continue;
-    if (k === listName) return { key: listName, renameFrom: null };
-    if (isFallbackListName(listName)) return { key: k, renameFrom: null };
-    if (isFallbackListName(k)) return { key: listName, renameFrom: k };
-    return { key: k, renameFrom: null };
-  }
-  // 동일 이름이 이미 존재하는데 다른 listId 를 가지고 있다면 서로 다른 리스트이므로 키를 구분
-  if (map[listName] && map[listName].listId && map[listName].listId !== listId) {
-    var shortSuffix = String(listId).slice(-4);
-    var candidateKey = listName + ' (' + shortSuffix + ')';
-    if (map[candidateKey] && map[candidateKey].listId !== listId) {
-      candidateKey = listName + ' (' + listId + ')';
-    }
-    return { key: candidateKey, renameFrom: null };
-  }
-  return { key: listName, renameFrom: null };
-}
-
-// 리스트 멤버 저장/병합/승격 순수 로직 (background.js 및 테스트 러너 공용)
-function applyListSave(rawLists, rawListName, incomingMembers, listId) {
-  var cleanedName = cleanListName(rawListName);
-  if (isSystemListName(cleanedName)) {
-    return { success: false, message: '시스템 단어는 리스트 이름으로 저장할 수 없습니다.' };
-  }
-
-  var members = (Array.isArray(incomingMembers) ? incomingMembers : [])
-    .filter(function (m) { return typeof m === 'string' && AG_HANDLE_RE.test(m); });
-  if (members.length === 0) {
-    return { success: false, message: '저장할 멤버가 없습니다.' };
-  }
-
-  var sanitized = sanitizeListsObject(rawLists || {});
-  var lists = sanitized.newLists;
-  var migrated = sanitized.modified;
-
-  var resolved = resolveListKey(lists, cleanedName, listId);
-  var listName = resolved.key;
-  var renameFrom = resolved.renameFrom;
-  var renamed = false;
-
-  if (renameFrom && lists[renameFrom]) {
-    var old = lists[renameFrom];
-    delete lists[renameFrom];
-    var target = lists[listName];
-    lists[listName] = target
-      ? Object.assign({}, target, { members: mergeHandles(target.members, old.members) })
-      : old;
-    renamed = true;
-  }
-
-  if (!lists[listName]) {
-    lists[listName] = { color: AG_DEFAULT_LIST_COLOR, mode: 'normal', members: [] };
-  }
-  var idChanged = !!listId && lists[listName].listId !== listId;
-  if (listId) lists[listName].listId = listId;
-
-  var existing = lists[listName].members || [];
-  var merged = mergeHandles(existing, members);
-  var addedCount = merged.length - existing.length;
-
-  if (addedCount === 0 && !migrated && !renamed && !idChanged) {
-    return { success: true, lists: lists, listName: listName, count: existing.length, added: 0, noChange: true };
-  }
-
-  lists[listName].members = merged;
-  return { success: true, lists: lists, listName: listName, count: merged.length, added: addedCount, noChange: false };
-}
-
-// 리스트 멤버를 "이번에 확인한 멤버"로 교체 (X 리스트에서 뺀 멤버 정리용).
-// - 기존 멤버 중 확인된 사람은 기존 표기를 유지하고, 확인되지 않은 사람은 삭제, 새로 확인된 사람은 추가.
-// - 색상/모드/listId 는 유지. 폴백 이름("리스트 (ID)")이면 실제 이름으로 승격.
-// - 입력 객체를 바꾸지 않고 새 lists 를 반환하므로 미리보기에도 그대로 사용 가능.
-function applyListReplace(rawLists, rawListName, seenMembers, listId) {
-  var cleanedName = cleanListName(rawListName);
-  if (isSystemListName(cleanedName)) {
-    return { success: false, message: '시스템 단어는 리스트 이름으로 저장할 수 없습니다.' };
-  }
-  var members = (Array.isArray(seenMembers) ? seenMembers : [])
-    .filter(function (m) { return typeof m === 'string' && AG_HANDLE_RE.test(m); });
-  if (members.length === 0) {
-    return { success: false, message: '확인한 멤버가 없습니다. 리스트의 멤버 화면을 열어 끝까지 스크롤해주세요.' };
-  }
-
-  var lists = sanitizeListsObject(JSON.parse(JSON.stringify(rawLists || {}))).newLists;
-  var resolved = resolveListKey(lists, cleanedName, listId);
-  var listName = resolved.key;
-
-  if (resolved.renameFrom && lists[resolved.renameFrom]) {
-    var old = lists[resolved.renameFrom];
-    delete lists[resolved.renameFrom];
-    var target = lists[listName];
-    lists[listName] = target
-      ? Object.assign({}, target, { members: mergeHandles(target.members, old.members) })
-      : old;
-  }
-  if (!lists[listName]) {
-    lists[listName] = { color: AG_DEFAULT_LIST_COLOR, mode: 'normal', members: [] };
-  }
-  if (listId) lists[listName].listId = listId;
-
-  var seen = new Set(members.map(function (m) { return m.toLowerCase(); }));
-  var existing = lists[listName].members || [];
-  var kept = existing.filter(function (h) { return seen.has(String(h).toLowerCase()); });
-  var removed = existing.filter(function (h) { return !seen.has(String(h).toLowerCase()); });
-  var merged = mergeHandles(kept, members);
-
-  lists[listName].members = merged;
-  return {
-    success: true,
-    lists: lists,
-    listName: listName,
-    previousCount: existing.length,
-    count: merged.length,
-    added: merged.length - kept.length,
-    removed: removed
-  };
+// 팝업 [가져오기] 대상 탭 검사. 문제가 없으면 null.
+// tabs 권한이 없어서 X 가 아닌 탭은 url 이 비어 있음 → "X 페이지가 아님"으로 안내
+function getSyncTabError(tab) {
+  if (!tab || tab.id === undefined || tab.id === null) return '활성화된 탭을 찾을 수 없습니다.';
+  if (!tab.url || !AG_X_URL_RE.test(tab.url)) return '현재 탭이 X(Twitter) 페이지가 아닙니다.';
+  return null;
 }
 
 // ==========================================
-// 3. 멤버 추출
+// 5. 멤버 추출
 // ==========================================
 
-var AG_RECO_LABELS = ['팔로우 추천', 'Who to follow', '추천 사용자', '추천', 'Suggested', 'Connect',
-  '팔로우할 만한 계정', '회원님을 위한 추천', 'You might like'];
-
-// 제목/aria-label 이 "추천 영역" 표기인지 판별.
-// 부분 문자열이 아니라 전체 일치로 비교해 "추천 작가", "Connected" 같은 실제 리스트 이름은 오탐하지 않음.
-// "타임라인: 팔로우 추천" 처럼 콜론 앞 접두사가 붙은 경우 마지막 부분만 비교.
+// 제목/aria-label 이 "추천 영역" 표기인지.
+// 부분 문자열이 아니라 전체 일치로 비교해 "추천 작가", "Connected" 같은 실제 이름은 오탐하지 않음.
+// "타임라인: 팔로우 추천" 처럼 콜론 접두사가 있으면 마지막 부분만 비교.
 function isRecoLabel(text) {
-  var t = String(text || '').trim();
-  if (!t) return false;
-  var last = t.split(':').pop().trim().toLowerCase();
-  return AG_RECO_LABELS.some(function (kw) { return kw.toLowerCase() === last; });
+  const trimmed = String(text || '').trim();
+  if (!trimmed) return false;
+  const last = trimmed.split(':').pop().trim().toLowerCase();
+  return AG_RECO_LABELS.some(label => label.toLowerCase() === last);
 }
 
-// 가상 스크롤 목록에서 셀보다 앞에 있는 가장 가까운 섹션 제목 텍스트 (없으면 null)
-// - 목록 전체가 아니라 "이 셀이 속한 구간"의 제목만 보므로, 아래쪽 추천 블록이 위쪽 멤버를 지우지 않음
+// 가상 스크롤 목록에서 셀 앞쪽의 가장 가까운 구간 제목 (없으면 null).
+// 목록 전체가 아니라 "이 셀이 속한 구간"의 제목만 보므로, 아래쪽 추천 블록이 위쪽 멤버를 지우지 않음.
 function getPrecedingSectionHeading(cell) {
-  var inner = cell.closest('div[data-testid="cellInnerDiv"]');
+  const inner = cell.closest('div[data-testid="cellInnerDiv"]');
   if (!inner) return null;
-  for (var sib = inner.previousElementSibling; sib; sib = sib.previousElementSibling) {
-    var h = sib.matches('h1, h2, h3, [role="heading"]') ? sib : sib.querySelector('h1, h2, h3, [role="heading"]');
-    if (h) return h.textContent.trim();
+  for (let sib = inner.previousElementSibling; sib; sib = sib.previousElementSibling) {
+    const heading = sib.matches(AG_HEADING_SELECTOR) ? sib : sib.querySelector(AG_HEADING_SELECTOR);
+    if (heading) return heading.textContent.trim();
   }
   return null;
 }
 
-// 팔로우 추천 및 모달 창 뒤쪽 배경의 유저 셀 판별
+// section 안에서 셀보다 앞에 있는 마지막 제목 (가상 스크롤 셀이 아닌 구조용)
+function getLastHeadingBefore(section, cell) {
+  let lastBefore = null;
+  section.querySelectorAll(AG_HEADING_SELECTOR).forEach((heading) => {
+    // DOCUMENT_POSITION_FOLLOWING(4): cell 이 제목보다 뒤에 있음
+    if (heading.compareDocumentPosition(cell) & 4) lastBefore = heading;
+  });
+  return lastBefore;
+}
+
+// 멤버가 아닌 셀(추천 계정, 멤버 창 뒤쪽 화면, 사이드바)이면 true
 function isExcludedUserCell(cell, dialog) {
-  // 1. 멤버 모달이 열려있으면 모달 외부(배경/사이드바)의 셀은 무조건 제외
+  // 1. 멤버 창이 열려 있으면 창 밖(뒤쪽 화면/사이드바)의 셀은 제외
   if (dialog && !dialog.contains(cell)) return true;
 
-  // 2. 우측 사이드바 컬럼 내부 셀 제외
+  // 2. 오른쪽 사이드바
   if (cell.closest('[data-testid="sidebarColumn"]') || cell.closest('aside')) return true;
 
-  // 3. 추천 영역 표기(aria-label)를 가진 부모 컨테이너 제외 (전체 일치)
-  for (var el = cell.parentElement; el; el = el.parentElement) {
+  // 3. 부모 중 aria-label 이 추천 영역 표기인 컨테이너 (멤버 창 밖으로는 올라가지 않음)
+  for (let el = cell.parentElement; el; el = el.parentElement) {
     if (el.hasAttribute && el.hasAttribute('aria-label') && isRecoLabel(el.getAttribute('aria-label'))) return true;
     if (dialog && el === dialog) break;
   }
 
-  // 4. 모달 내부에서도 "추천(Suggested)" 탭이 활성화된 경우 제외
+  // 4. 멤버 창 안에서 "추천" 탭이 선택된 경우
   if (dialog) {
-    var activeTab = dialog.querySelector('[role="tab"][aria-selected="true"]');
+    const activeTab = dialog.querySelector('[role="tab"][aria-selected="true"]');
     if (activeTab && AG_SUGGESTED_TAB_NAMES.indexOf(activeTab.textContent.trim()) !== -1) return true;
   }
 
-  // 5. 셀 바로 앞 구간 제목이 "팔로우 추천" 등이면 제외
+  // 5. 셀 바로 앞 구간 제목이 "팔로우 추천" 등
   if (isRecoLabel(getPrecedingSectionHeading(cell))) return true;
 
-  // 6. 가상 스크롤 셀이 아닌 구조: 셀을 감싼 section 안에서 셀보다 앞에 있는 마지막 제목이 추천 영역이면 제외
+  // 6. 가상 스크롤 셀이 아니면: 감싼 section 에서 셀 앞의 마지막 제목이 추천 영역
   if (!cell.closest('div[data-testid="cellInnerDiv"]')) {
-    var section = cell.closest('section');
+    const section = cell.closest('section');
     if (section && (!dialog || dialog.contains(section))) {
-      var hs = section.querySelectorAll('h1, h2, h3, [role="heading"]');
-      var lastBefore = null;
-      for (var i = 0; i < hs.length; i++) {
-        // DOCUMENT_POSITION_FOLLOWING(4): cell 이 제목보다 뒤에 있음
-        if (hs[i].compareDocumentPosition(cell) & 4) lastBefore = hs[i];
-      }
-      if (lastBefore && isRecoLabel(lastBefore.textContent)) return true;
+      const heading = getLastHeadingBefore(section, cell);
+      if (heading && isRecoLabel(heading.textContent)) return true;
     }
   }
   return false;
 }
 
-// 컨테이너 내부 UserCell 에서 순수 멤버 핸들 추출 (팔로우 추천 차단)
+// 셀 하나에서 멤버 핸들("@handle") 찾기: 프로필 링크 → 없으면 "@handle" 글자
+function getHandleFromUserCell(cell) {
+  for (const link of cell.querySelectorAll('a[role="link"], a[href^="/"]')) {
+    const handle = getHandleFromProfileHref(link.getAttribute('href'));
+    if (handle && AG_MEMBER_LINK_IGNORE.indexOf(handle.toLowerCase()) === -1) return '@' + handle;
+  }
+  for (const el of cell.querySelectorAll('span, div')) {
+    const match = el.textContent.trim().match(/^@([A-Za-z0-9_]{1,15})$/);
+    if (match) return '@' + match[1];
+  }
+  return null;
+}
+
+// 컨테이너 안 UserCell 들에서 멤버 핸들 목록 추출 (추천 계정 등은 제외, 중복 제거)
 function extractMembersFromContainer(container, dialog) {
   if (!container) return [];
-  var members = new Set();
-  var ignoreList = ['home', 'explore', 'notifications', 'messages', 'lists', 'bookmarks', 'settings', 'i'];
-
-  container.querySelectorAll('[data-testid="UserCell"]').forEach(function (cell) {
+  const members = new Set();
+  container.querySelectorAll('[data-testid="UserCell"]').forEach((cell) => {
     if (isExcludedUserCell(cell, dialog || null)) return;
-
-    // 1-1. href 분석
-    var links = cell.querySelectorAll('a[role="link"], a[href^="/"]');
-    for (var i = 0; i < links.length; i++) {
-      var match = (links[i].getAttribute('href') || '').match(/^\/([A-Za-z0-9_]{1,15})$/);
-      if (match && ignoreList.indexOf(match[1].toLowerCase()) === -1) {
-        members.add('@' + match[1]);
-        return;
-      }
-    }
-    // 1-2. 텍스트 @ 분석
-    var els = cell.querySelectorAll('span, div');
-    for (var j = 0; j < els.length; j++) {
-      var m = els[j].textContent.trim().match(/^@([A-Za-z0-9_]{1,15})$/);
-      if (m) {
-        members.add('@' + m[1]);
-        return;
-      }
-    }
+    const handle = getHandleFromUserCell(cell);
+    if (handle) members.add(handle);
   });
   return Array.from(members);
 }
 
-// 같은 리스트/멤버 조합을 반복 전송하지 않도록 순서 무관한 서명 생성
+// 같은 리스트·멤버 조합을 다시 보내지 않기 위한 서명 (순서·대소문자 무관)
 function buildScrapeSignature(listName, members) {
-  var sorted = (members || []).map(function (m) { return String(m).toLowerCase(); }).sort();
+  const sorted = (members || []).map(m => String(m).toLowerCase()).sort();
   return listName + '|' + sorted.join(',');
 }
 
 // ==========================================
-// 4. 타임라인 배지
+// 6. 타임라인 배지
 // ==========================================
 
-// 빠른 검색을 위한 핸들(소문자) → 리스트 정보 배열 매핑
+// 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color, mode }])
 function buildHandleMap(listData) {
-  var map = {};
-  Object.keys(listData || {}).forEach(function (listName) {
-    var info = listData[listName];
+  const map = {};
+  Object.keys(listData || {}).forEach((listName) => {
+    const info = listData[listName];
     if (!info || !Array.isArray(info.members)) return;
-    info.members.forEach(function (handle) {
-      var lower = String(handle).toLowerCase();
+    info.members.forEach((handle) => {
+      const lower = String(handle).toLowerCase();
       if (!map[lower]) map[lower] = [];
       map[lower].push({ name: listName, color: info.color || AG_DEFAULT_LIST_COLOR, mode: info.mode || 'normal' });
     });
@@ -463,17 +568,15 @@ function buildHandleMap(listData) {
   return map;
 }
 
-// 두 핸들 맵(buildHandleMap 결과)을 비교해 배지 표시가 달라지는 핸들 목록을 반환.
-// 리스트가 바뀔 때 화면의 모든 트윗이 아니라 이 핸들이 쓴 트윗만 다시 그리기 위해 사용.
+// 두 핸들 맵을 비교해 배지 표시가 달라지는 핸들 목록.
+// 리스트가 바뀔 때 화면 전체가 아니라 이 핸들이 쓴 트윗만 다시 그리기 위해 사용.
 function diffHandleMaps(oldMap, newMap) {
-  var a = oldMap || {};
-  var b = newMap || {};
-  var seen = {};
-  var changed = [];
-  Object.keys(a).concat(Object.keys(b)).forEach(function (h) {
-    if (seen[h]) return;
-    seen[h] = true;
-    if (JSON.stringify(a[h] || null) !== JSON.stringify(b[h] || null)) changed.push(h);
+  const a = oldMap || {};
+  const b = newMap || {};
+  const allHandles = new Set(Object.keys(a).concat(Object.keys(b)));
+  const changed = [];
+  allHandles.forEach((handle) => {
+    if (JSON.stringify(a[handle] || null) !== JSON.stringify(b[handle] || null)) changed.push(handle);
   });
   return changed;
 }
@@ -481,74 +584,83 @@ function diffHandleMaps(oldMap, newMap) {
 // 트윗 처리 서명(dataset.agProcessed = "@a,@b")에 바뀐 핸들이 하나라도 있으면 true
 function isTweetAffected(handlesKey, changedHandles) {
   if (!handlesKey) return false;
-  var set = changedHandles instanceof Set ? changedHandles : new Set(changedHandles || []);
-  if (set.size === 0) return false;
-  return String(handlesKey).split(',').some(function (h) { return h && set.has(h); });
+  const changed = changedHandles instanceof Set ? changedHandles : new Set(changedHandles || []);
+  if (changed.size === 0) return false;
+  return String(handlesKey).split(',').some(h => h && changed.has(h));
 }
 
-// 배지에 사용자 스타일 적용 (CSS 변수 및 인라인 !important 동시 지원).
+// 배지를 붙일 위치: 이름 링크(<a>)의 부모, 링크가 없으면(인용 트윗 등) 이름 영역의 첫 요소
+function getBadgeAnchor(userInfoDiv) {
+  if (!userInfoDiv) return null;
+  const link = userInfoDiv.querySelector('a');
+  if (link && link.parentNode) return link.parentNode;
+  return userInfoDiv.firstElementChild || userInfoDiv;
+}
+
+// 배지에 사용자 스타일 적용 (X 의 CSS 에 덮이지 않도록 CSS 변수 + 인라인 !important)
 function applyBadgeStyle(badge, bgColor, settings, isMainAuthor) {
-  var s = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, settings || {});
-  var size = isMainAuthor ? s.fontSize : Math.max(8, s.fontSize - 2);
-  var finalBg = bgColor || AG_DEFAULT_LIST_COLOR;
-  badge.style.setProperty('--ag-badge-bg', finalBg);
-  badge.style.setProperty('--ag-badge-fg', s.textColor);
-  badge.style.setProperty('--ag-badge-fs', size + 'px');
-  badge.style.setProperty('background-color', finalBg, 'important');
-  badge.style.setProperty('color', s.textColor, 'important');
-  badge.style.setProperty('font-size', size + 'px', 'important');
+  const s = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, settings || {});
+  const size = (isMainAuthor ? s.fontSize : Math.max(8, s.fontSize - 2)) + 'px';
+  const background = bgColor || AG_DEFAULT_LIST_COLOR;
+  const style = badge.style;
+
+  style.setProperty('--ag-badge-bg', background);
+  style.setProperty('--ag-badge-fg', s.textColor);
+  style.setProperty('--ag-badge-fs', size);
+  style.setProperty('background-color', background, 'important');
+  style.setProperty('color', s.textColor, 'important');
+  style.setProperty('font-size', size, 'important');
+
   if (s.fontFamily && s.fontFamily !== 'system') {
-    badge.style.setProperty('--ag-badge-ff', s.fontFamily);
-    badge.style.setProperty('font-family', s.fontFamily, 'important');
+    style.setProperty('--ag-badge-ff', s.fontFamily);
+    style.setProperty('font-family', s.fontFamily, 'important');
   } else {
-    badge.style.removeProperty('--ag-badge-ff');
-    badge.style.removeProperty('font-family');
+    style.removeProperty('--ag-badge-ff');
+    style.removeProperty('font-family');
   }
 }
 
-// MutationObserver 가 확장 프로그램 자신이 삽입한 노드(배지)에 반응하지 않도록 판별
+// 확장 프로그램이 직접 넣은 배지 노드인지 (MutationObserver 가 자기 변경에 반응하지 않도록)
 function isOwnInjectedNode(node) {
   if (!node || node.nodeType !== 1) return false;
-  var cls = node.classList;
+  const cls = node.classList;
   return !!cls && (cls.contains('ag-badges-wrapper') || cls.contains('ag-list-badge'));
 }
 
 // ==========================================
-// 5. 팝업 입력 처리
+// 7. 입력 · 백업
 // ==========================================
 
-// 쉼표/공백/줄바꿈으로 구분된 핸들 입력을 유효한 @handle 배열로 변환 (중복 제거)
+// 쉼표/공백/줄바꿈으로 구분된 입력을 올바른 "@handle" 배열로 (앞의 @ 생략 가능, 중복 제거)
 function parseHandles(raw) {
-  var seen = new Set();
-  var out = [];
-  String(raw || '').split(/[\s,]+/).forEach(function (h) {
-    h = h.trim();
-    if (!h) return;
-    if (h.charAt(0) !== '@') h = '@' + h;
-    if (!AG_HANDLE_RE.test(h)) return;
-    var key = h.toLowerCase();
+  const seen = new Set();
+  const out = [];
+  String(raw || '').split(/[\s,]+/).forEach((token) => {
+    let handle = token.trim();
+    if (!handle) return;
+    if (handle.charAt(0) !== '@') handle = '@' + handle;
+    if (!AG_HANDLE_RE.test(handle)) return;
+    const key = handle.toLowerCase();
     if (seen.has(key)) return;
     seen.add(key);
-    out.push(h);
+    out.push(handle);
   });
   return out;
 }
 
-// 가져오기(Import) JSON 검증 및 정규화. 형식이 잘못되면 null 반환 (listId 보존).
+// 백업 파일의 리스트 객체 검증·정리. 형식이 잘못되면 null (listId, manual 표시는 보존)
 function normalizeImportedLists(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
-  var result = {};
-  Object.keys(obj).forEach(function (key) {
-    var val = obj[key];
-    var members = (val && Array.isArray(val.members)) ? val.members : [];
-    var entry = {
-      color: (val && typeof val.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(val.color)) ? val.color : AG_DEFAULT_LIST_COLOR,
-      mode: (val && AG_VALID_MODES.indexOf(val.mode) !== -1) ? val.mode : 'normal',
-      members: parseHandles(members.filter(function (m) { return typeof m === 'string'; }).join(' '))
+  const result = {};
+  Object.keys(obj).forEach((key) => {
+    const val = obj[key];
+    const members = (val && Array.isArray(val.members)) ? val.members : [];
+    const entry = {
+      color: val && isHexColor(val.color) ? val.color : AG_DEFAULT_LIST_COLOR,
+      mode: val && isValidMode(val.mode) ? val.mode : 'normal',
+      members: parseHandles(members.filter(m => typeof m === 'string').join(' '))
     };
-    if (val && typeof val.listId === 'string' && /^[A-Za-z0-9_-]+$/.test(val.listId)) {
-      entry.listId = val.listId;
-    }
+    if (val && typeof val.listId === 'string' && /^[A-Za-z0-9_-]+$/.test(val.listId)) entry.listId = val.listId;
     if (val && val.manual === true) entry.manual = true;
     result[key] = entry;
   });
@@ -558,92 +670,35 @@ function normalizeImportedLists(obj) {
 // 가져온 리스트를 기존 데이터에 병합 (기존 색상/모드 유지, 멤버만 합침).
 // 이름이 같아도 listId 가 다르면 별개 리스트로 분리하고, 같은 listId 는 이름이 달라도 한 리스트로 합침.
 function mergeImportedLists(lists, data) {
-  Object.keys(data || {}).forEach(function (name) {
-    var incoming = data[name];
+  Object.keys(data || {}).forEach((name) => {
+    const incoming = data[name];
     if (!incoming) return;
-    var resolved = resolveListKey(lists, name, incoming.listId);
-    var key = resolved.key;
-    if (resolved.renameFrom && lists[resolved.renameFrom]) {
-      var old = lists[resolved.renameFrom];
-      delete lists[resolved.renameFrom];
-      lists[key] = lists[key]
-        ? Object.assign({}, lists[key], { members: mergeHandles(lists[key].members, old.members) })
-        : old;
-    }
-    var cur = lists[key];
-    if (!cur) {
-      lists[key] = Object.assign({}, incoming, { members: mergeHandles([], incoming.members) });
+    const resolved = resolveListKey(lists, name, incoming.listId);
+    moveRenamedList(lists, resolved.renameFrom, resolved.key);
+
+    const current = lists[resolved.key];
+    if (!current) {
+      lists[resolved.key] = Object.assign({}, incoming, { members: mergeHandles([], incoming.members) });
       return;
     }
-    cur.members = mergeHandles(cur.members, incoming.members);
-    if (!cur.listId && incoming.listId) cur.listId = incoming.listId;
+    current.members = mergeHandles(current.members, incoming.members);
+    if (!current.listId && incoming.listId) current.listId = incoming.listId;
   });
   return lists;
 }
 
-// 팝업 "직접 리스트 추가" 처리. 이미 있는 리스트면 멤버만 추가하고 사용자가 정해둔 색상/모드는 유지.
-// 새로 만든 리스트에는 manual: true 를 붙여, "X"·"Home" 같은 이름도 정제 과정에서 지워지지 않게 함.
-function applyManualAdd(lists, listName, handles, color, mode) {
-  var existing = lists[listName];
-  if (existing) {
-    existing.members = mergeHandles(existing.members, handles);
-    return { created: false, total: existing.members.length };
-  }
-  lists[listName] = {
-    color: (typeof color === 'string' && /^#[0-9a-fA-F]{6}$/.test(color)) ? color : AG_DEFAULT_LIST_COLOR,
-    mode: AG_VALID_MODES.indexOf(mode) !== -1 ? mode : 'normal',
-    members: mergeHandles([], handles),
-    manual: true
-  };
-  return { created: true, total: lists[listName].members.length };
-}
-
-// 직접 추가할 리스트 이름 검사. 문제가 없으면 null.
-// 자동 수집과 달리 "X", "Home", "리스트" 같은 이름도 허용 (사용자가 직접 정한 이름이므로).
-function getManualListNameError(rawName) {
-  var name = String(rawName || '').trim();
-  if (!name || name === 'Unknown List') return '리스트 이름을 입력해주세요.';
-  if (name.length > 50) return '리스트 이름은 50자 이하로 입력해주세요.';
-  return null;
-}
-
-// 팝업 [⚡ 가져오기] 대상 탭 검사. 문제가 없으면 null.
-// tabs 권한이 없으므로 host_permissions 밖(X 가 아닌) 탭은 url 이 비어서 들어옴 → "X 페이지가 아님"으로 안내.
-var AG_X_URL_RE = /^https?:\/\/([^\/]+\.)?(x|twitter)\.com\//;
-function getSyncTabError(tab) {
-  if (!tab || tab.id === undefined || tab.id === null) return '활성화된 탭을 찾을 수 없습니다.';
-  if (!tab.url || !AG_X_URL_RE.test(tab.url)) return '현재 탭이 X(Twitter) 페이지가 아닙니다.';
-  return null;
-}
-
-// 배지 래퍼를 붙일 위치. 이름 링크(<a>)가 있으면 그 부모, 없으면(인용 트윗 등) 이름 영역 자체.
-function getBadgeAnchor(userInfoDiv) {
-  if (!userInfoDiv) return null;
-  var link = userInfoDiv.querySelector('a');
-  if (link && link.parentNode) return link.parentNode;
-  return userInfoDiv.firstElementChild || userInfoDiv;
-}
-
-// ==========================================
-// 6. 백업 파일 (리스트 + 배지 설정)
-// ==========================================
-
-var AG_BACKUP_APP = 'banmo_tag';
-var AG_FONT_FAMILIES = ['system', "'Arial', sans-serif", "'Roboto', sans-serif", "'Noto Sans KR', sans-serif",
-  "'Pretendard', sans-serif", 'monospace', "'Georgia', serif"];
-
 // 배지 설정 검증 (잘못된 값은 기본값으로)
-function normalizeBadgeSettings(s) {
-  var out = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS);
-  if (!s || typeof s !== 'object') return out;
-  if (typeof s.textColor === 'string' && /^#[0-9a-fA-F]{6}$/.test(s.textColor)) out.textColor = s.textColor;
-  var size = parseInt(s.fontSize, 10);
+function normalizeBadgeSettings(settings) {
+  const out = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS);
+  if (!settings || typeof settings !== 'object') return out;
+  if (isHexColor(settings.textColor)) out.textColor = settings.textColor;
+  const size = parseInt(settings.fontSize, 10);
   if (size >= 8 && size <= 20) out.fontSize = size;
-  if (AG_FONT_FAMILIES.indexOf(s.fontFamily) !== -1) out.fontFamily = s.fontFamily;
+  if (AG_FONT_FAMILIES.indexOf(settings.fontFamily) !== -1) out.fontFamily = settings.fontFamily;
   return out;
 }
 
-// 내보내기 파일 내용 생성
+// 내보내기 파일 내용
 function buildBackup(lists, badgeSettings) {
   return {
     app: AG_BACKUP_APP,
@@ -655,82 +710,77 @@ function buildBackup(lists, badgeSettings) {
 }
 
 // 가져오기 파일 해석. 새 형식({ app, lists, badgeSettings })과 구버전 형식(리스트 객체만) 모두 지원.
-// 잘못된 형식이면 null, 아니면 { lists, badgeSettings(없으면 null) }
+// 반환: { lists, badgeSettings(없으면 null) }, 형식이 잘못되면 null
 function parseBackup(obj) {
-  if (obj && typeof obj === 'object' && obj.app === AG_BACKUP_APP && obj.lists && typeof obj.lists === 'object') {
-    var lists = normalizeImportedLists(obj.lists);
+  const isNewFormat = obj && typeof obj === 'object' && obj.app === AG_BACKUP_APP &&
+    obj.lists && typeof obj.lists === 'object';
+  if (isNewFormat) {
+    const lists = normalizeImportedLists(obj.lists);
     if (!lists) return null;
-    return { lists: lists, badgeSettings: obj.badgeSettings ? normalizeBadgeSettings(obj.badgeSettings) : null };
+    return { lists, badgeSettings: obj.badgeSettings ? normalizeBadgeSettings(obj.badgeSettings) : null };
   }
-  var legacy = normalizeImportedLists(obj);
+  const legacy = normalizeImportedLists(obj);
   return legacy ? { lists: legacy, badgeSettings: null } : null;
 }
 
 // ==========================================
-// 7. X 화면 구조 변화 감지
+// 8. 화면 구조 진단 (X 가 화면 구조를 바꿨는지)
 // ==========================================
 
-var AG_NAV_PATHS = ['home', 'explore', 'notifications', 'messages', 'lists', 'bookmarks', 'settings', 'i',
-  'search', 'compose', 'jobs', 'premium', 'communities', 'tos', 'privacy'];
-
-// 컨테이너 안의 프로필 링크(/handle) 개수 (중복 제외)
+// 컨테이너 안의 사용자 프로필 링크(/handle) 수 (중복·메뉴 링크 제외)
 function countProfileLinks(container) {
   if (!container || !container.querySelectorAll) return 0;
-  var seen = new Set();
-  container.querySelectorAll('a[href^="/"]').forEach(function (a) {
-    var m = (a.getAttribute('href') || '').match(/^\/([A-Za-z0-9_]{1,15})$/);
-    if (m && AG_NAV_PATHS.indexOf(m[1].toLowerCase()) === -1) seen.add(m[1].toLowerCase());
+  const handles = new Set();
+  container.querySelectorAll('a[href^="/"]').forEach((a) => {
+    const handle = getHandleFromProfileHref(a.getAttribute('href'));
+    if (handle && AG_NAV_PATHS.indexOf(handle.toLowerCase()) === -1) handles.add(handle.toLowerCase());
   });
-  return seen.size;
+  return handles.size;
 }
 
-// 확장 프로그램이 기대하는 X 화면 구조가 보이는지 진단.
-// - { area: 'members'|'timeline', ok: true } : 정상
-// - { area, ok: false, message } : 사용자 정보는 보이는데 기대한 구조(UserCell, User-Name 등)가 없음 → X 구조 변경 의심
-// - null : 판단할 수 없음 (로딩 중, 트윗이 없는 화면 등)
+// 확장 프로그램이 기대하는 화면 구조가 보이는지 진단.
+// - { area: 'members'|'timeline', ok: true }   정상
+// - { area, ok: false, message }                사용자 정보는 보이는데 기대한 구조가 없음 → X 구조 변경 의심
+// - null                                        판단할 수 없음 (로딩 중, 트윗이 거의 없는 화면 등)
 function diagnoseStructure(doc, urlInfo, dialog) {
   if (!doc || !doc.querySelectorAll) return null;
-
-  if (urlInfo && (urlInfo.isMembers || dialog)) {
-    var container = dialog || doc.querySelector('[data-testid="primaryColumn"], main[role="main"]');
-    if (!container) {
-      return countProfileLinks(doc) >= 3
-        ? { area: 'members', ok: false, message: '본문 영역(primaryColumn)을 찾지 못했습니다.' }
-        : null;
-    }
-    if (container.querySelector('[data-testid="UserCell"]')) return { area: 'members', ok: true };
-    return countProfileLinks(container) >= 3
-      ? { area: 'members', ok: false, message: '멤버 목록에서 사용자 셀(UserCell)을 찾지 못했습니다.' }
-      : null;
-  }
-
-  var articles = doc.querySelectorAll('article');
-  var tweets = doc.querySelectorAll('article[data-testid="tweet"]');
-  if (tweets.length === 0) {
-    return articles.length >= 3
-      ? { area: 'timeline', ok: false, message: '타임라인에서 트윗(article[data-testid="tweet"])을 찾지 못했습니다.' }
-      : null;
-  }
-  var named = 0;
-  for (var i = 0; i < tweets.length; i++) {
-    if (tweets[i].querySelector('[data-testid="User-Name"]')) named++;
-  }
-  if (named > 0) return { area: 'timeline', ok: true };
-  return tweets.length >= 3
-    ? { area: 'timeline', ok: false, message: '트윗에서 작성자 이름 영역(User-Name)을 찾지 못했습니다.' }
-    : null;
+  if (urlInfo && (urlInfo.isMembers || dialog)) return diagnoseMembersView(doc, dialog);
+  return diagnoseTimeline(doc);
 }
 
-// 팝업에 보여줄 구조 경고 목록 (최근 maxAgeDays 일 이내의 ok:false 항목)
+function diagnoseMembersView(doc, dialog) {
+  const suspect = message => ({ area: 'members', ok: false, message });
+  const container = dialog || doc.querySelector('[data-testid="primaryColumn"], main[role="main"]');
+  if (!container) {
+    return countProfileLinks(doc) >= 3 ? suspect('본문 영역(primaryColumn)을 찾지 못했습니다.') : null;
+  }
+  if (container.querySelector('[data-testid="UserCell"]')) return { area: 'members', ok: true };
+  return countProfileLinks(container) >= 3 ? suspect('멤버 목록에서 사용자 셀(UserCell)을 찾지 못했습니다.') : null;
+}
+
+function diagnoseTimeline(doc) {
+  const suspect = message => ({ area: 'timeline', ok: false, message });
+  const tweets = doc.querySelectorAll('article[data-testid="tweet"]');
+  if (tweets.length === 0) {
+    return doc.querySelectorAll('article').length >= 3
+      ? suspect('타임라인에서 트윗(article[data-testid="tweet"])을 찾지 못했습니다.')
+      : null;
+  }
+  const hasAuthorName = Array.from(tweets).some(t => t.querySelector('[data-testid="User-Name"]'));
+  if (hasAuthorName) return { area: 'timeline', ok: true };
+  return tweets.length >= 3 ? suspect('트윗에서 작성자 이름 영역(User-Name)을 찾지 못했습니다.') : null;
+}
+
+// 팝업에 보여줄 구조 경고 (최근 maxAgeDays 일 안에 기록된 ok:false 항목)
 function getStructureWarnings(health, nowMs, maxAgeDays) {
-  var out = [];
-  var now = typeof nowMs === 'number' ? nowMs : Date.now();
-  var maxAge = (maxAgeDays || 14) * 24 * 60 * 60 * 1000;
-  ['members', 'timeline'].forEach(function (area) {
-    var h = health && health[area];
+  const now = typeof nowMs === 'number' ? nowMs : Date.now();
+  const maxAgeMs = (maxAgeDays || 14) * 24 * 60 * 60 * 1000;
+  const warnings = [];
+  ['members', 'timeline'].forEach((area) => {
+    const h = health && health[area];
     if (!h || h.ok !== false || typeof h.at !== 'number') return;
-    if (now - h.at > maxAge) return;
-    out.push({ area: area, label: area === 'members' ? '멤버 수집' : '타임라인 배지', message: h.message || '', at: h.at });
+    if (now - h.at > maxAgeMs) return;
+    warnings.push({ area, label: AG_HEALTH_AREA_LABELS[area], message: h.message || '', at: h.at });
   });
-  return out;
+  return warnings;
 }

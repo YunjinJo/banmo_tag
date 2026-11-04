@@ -1,28 +1,101 @@
-// popup.js
+// popup.js — 확장 프로그램 팝업 화면
 // 공통 로직(cleanListName, sanitizeListsObject, parseHandles 등)은 popup.html 에서 먼저 로드되는 shared.js 에 있습니다.
-// shared.js 가 없으면 아무 기능도 동작하지 않으므로, 증상을 숨기는 폴백 대신 시작 시 원인을 분명하게 알립니다.
+//
+// 목차
+//   0. 상태
+//   1. 시작
+//   2. 공통 UI (상태 메시지, 확인 상자)
+//   3. 리스트 저장 (순서대로 처리)
+//   4. X 탭 연동 ([⚡ 가져오기], [🔄 교체 동기화])
+//   5. X 화면 구조 경고
+//   6. 직접 리스트 추가
+//   7. 백업 · 복원 · 초기화
+//   8. 리스트 목록
+//   9. 배지 스타일 설정
+
+// ==========================================
+// 0. 상태
+// ==========================================
+
+// shared.js 가 없으면 아무 기능도 동작하지 않으므로, 증상을 숨기는 폴백 대신 시작 시 원인을 알림
 const SHARED_LOADED = typeof sanitizeListsObject === 'function';
 
 let badgeSettings = SHARED_LOADED ? { ...AG_DEFAULT_BADGE_SETTINGS } : {};
-// 펼쳐진 리스트 이름 (다시 그려도 아코디언 상태 유지)
+// 펼쳐 둔 리스트 이름 (목록을 다시 그려도 펼침 상태 유지)
 const expandedLists = new Set();
-// 파일에서 읽어 병합/덮어쓰기 선택을 기다리는 데이터 ({ lists, badgeSettings })
+// 파일에서 읽어 [병합]/[덮어쓰기] 선택을 기다리는 데이터 ({ lists, badgeSettings })
 let pendingImport = null;
 let statusTimer = null;
-
-// 팝업 안의 확인 상자 (브라우저 confirm() 대신 사용). 확인하면 true 로 resolve.
+// 확인 상자가 열려 있을 때 답을 전달하는 함수
 let resolveConfirm = null;
+
+const byId = id => document.getElementById(id);
+
+// ==========================================
+// 1. 시작
+// ==========================================
+
+document.addEventListener('DOMContentLoaded', () => {
+  if (!SHARED_LOADED) {
+    document.body.textContent = 'shared.js 를 불러오지 못했습니다. chrome://extensions 에서 banmo_tag 를 새로고침해주세요.';
+    console.error('[banmo_tag] shared.js not loaded');
+    return;
+  }
+
+  // 팝업을 열면 아이콘의 ✔ 알림 지우기
+  chrome.action.setBadgeText({ text: '' }).catch(() => {});
+
+  setupConfirmBox();
+  loadLists();
+  loadHealthWarning();
+  setupSyncButtons();
+  setupManualAdd();
+  setupBackupRestore();
+  loadBadgeSettings();
+  setupBadgeSettings();
+
+  // 리스트가 바뀌면(자동 수집 포함) 바로 다시 그림. 연속 변경은 묶어서 한 번만.
+  // 정제된 데이터는 다시 정제해도 바뀌지 않으므로 저장 → 변경 감지 → 저장의 무한 반복이 생기지 않음
+  const debouncedLoad = debounce(loadLists, 100);
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace !== 'local') return;
+    if (changes.lists) debouncedLoad();
+    if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
+  });
+});
+
+// ==========================================
+// 2. 공통 UI (상태 메시지, 확인 상자)
+// ==========================================
+
+// 상단 상태 메시지 (5초 뒤 사라짐)
+function showSyncStatus(message, isError = false) {
+  const statusEl = byId('sync-status');
+  if (!statusEl) return;
+  statusEl.className = 'sync-status ' + (isError ? 'error' : 'success');
+  statusEl.textContent = message;
+  statusEl.style.display = 'block';
+
+  clearTimeout(statusTimer);
+  statusTimer = setTimeout(() => {
+    statusEl.style.display = 'none';
+  }, 5000);
+}
+
+// 팝업 안의 확인 상자 (브라우저 confirm() 대신). 확인하면 true, 취소하면 false
 function askConfirm(message, okLabel = '확인') {
-  const box = document.getElementById('confirm-box');
-  const text = document.getElementById('confirm-text');
-  const okBtn = document.getElementById('confirm-ok-btn');
+  const box = byId('confirm-box');
+  const text = byId('confirm-text');
+  const okBtn = byId('confirm-ok-btn');
   if (!box || !text || !okBtn) return Promise.resolve(false);
+
   if (resolveConfirm) resolveConfirm(false); // 이전 확인 요청은 취소로 처리
   text.textContent = message;
   okBtn.textContent = okLabel;
   box.style.display = 'flex';
   okBtn.focus();
-  return new Promise(resolve => {
+
+  return new Promise((resolve) => {
     resolveConfirm = (answer) => {
       resolveConfirm = null;
       box.style.display = 'none';
@@ -32,19 +105,29 @@ function askConfirm(message, okLabel = '확인') {
 }
 
 function setupConfirmBox() {
-  document.getElementById('confirm-ok-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(true));
-  document.getElementById('confirm-cancel-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(false));
+  byId('confirm-ok-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(true));
+  byId('confirm-cancel-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(false));
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && resolveConfirm) resolveConfirm(false);
   });
 }
 
+// 버튼을 잠그고 작업을 실행한 뒤 다시 풀어 줌 (연타 방지)
+async function withButtonDisabled(button, task) {
+  button.disabled = true;
+  try {
+    await task();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 // ==========================================
-// 1. 스토리지 쓰기 (직렬화)
+// 3. 리스트 저장 (순서대로 처리)
 // ==========================================
 
 // 모든 리스트 변경은 이 함수를 거칩니다.
-// get → 수정 → set 이 겹치면 앞선 변경이 사라지므로 Promise 큐로 순서대로 처리합니다.
+// 읽기 → 수정 → 쓰기가 겹치면 앞선 변경이 사라지므로 Promise 큐로 하나씩 처리합니다.
 // mutator 가 false 를 반환하면 저장하지 않습니다. 화면은 storage.onChanged 에서 다시 그립니다.
 let writeQueue = Promise.resolve();
 
@@ -57,7 +140,7 @@ function updateLists(mutator) {
     return true;
   });
   writeQueue = run.catch(() => {});
-  return run.catch(err => {
+  return run.catch((err) => {
     console.error('[banmo_tag] 저장 실패:', err);
     showSyncStatus('저장에 실패했습니다: ' + (err && err.message ? err.message : err), true);
     return false;
@@ -65,57 +148,16 @@ function updateLists(mutator) {
 }
 
 // ==========================================
-// 2. 초기화
+// 4. X 탭 연동 ([⚡ 가져오기], [🔄 교체 동기화])
 // ==========================================
 
-document.addEventListener('DOMContentLoaded', () => {
-  if (!SHARED_LOADED) {
-    document.body.textContent = 'shared.js 를 불러오지 못했습니다. chrome://extensions 에서 banmo_tag 를 새로고침해주세요.';
-    console.error('[banmo_tag] shared.js not loaded');
-    return;
-  }
+const TAB_CONNECTION_ERROR = '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.';
+const TAB_TIMEOUT_ERROR = '응답 시간이 초과되었습니다. 트위터 탭을 새로고침(F5) 후 다시 시도해주세요.';
 
-  // 팝업 열릴 때 뱃지 알림 지우기
-  chrome.action.setBadgeText({ text: '' }).catch(() => {});
-
-  setupConfirmBox();
-  loadLists();
-  loadHealthWarning();
-  setupSyncButton();
-  setupManualAdd();
-  setupBackupRestore();
-  loadBadgeSettings();
-  setupBadgeSettings();
-
-  // 리스트 변경(background 의 자동 수집 포함) 시 실시간 재렌더링.
-  // 연속 변경을 묶어서 한 번만 그립니다. 정제된 데이터는 다시 정제해도 바뀌지 않으므로 무한 루프가 생기지 않습니다.
-  const debouncedLoad = debounce(loadLists, 100);
-  chrome.storage.onChanged.addListener((changes, namespace) => {
-    if (namespace !== 'local') return;
-    if (changes.lists) debouncedLoad();
-    if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
-  });
-});
-
-function showSyncStatus(message, isError = false) {
-  const statusEl = document.getElementById('sync-status');
-  if (!statusEl) return;
-  statusEl.className = 'sync-status ' + (isError ? 'error' : 'success');
-  statusEl.textContent = message;
-  statusEl.style.display = 'block';
-
-  clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    statusEl.style.display = 'none';
-  }, 5000);
-}
-
-// ==========================================
-// 3. 현재 트위터 탭에서 즉시 수집
-// ==========================================
-
+// 탭의 content script 에 메시지를 보내고 응답을 기다림.
+// 연결 실패는 { connectionError: true }, 시간 초과는 { timeoutError: true }
 function sendTabMessage(tabId, message, timeoutMs = 8000) {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     let settled = false;
     const timer = setTimeout(() => {
       if (settled) return;
@@ -127,20 +169,19 @@ function sendTabMessage(tabId, message, timeoutMs = 8000) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (chrome.runtime.lastError) resolve({ connectionError: true });
-      else resolve(response);
+      resolve(chrome.runtime.lastError ? { connectionError: true } : response);
     });
   });
 }
 
-// 확장 프로그램 설치/새로고침 전에 열려 있던 탭에는 content script 가 없으므로 직접 주입
+// 확장 프로그램 설치/새로고침 전에 열려 있던 탭에는 content script 가 없으므로 직접 넣음
 async function injectContentScript(tabId) {
   await chrome.scripting.insertCSS({ target: { tabId }, files: ['styles.css'] });
   await chrome.scripting.executeScript({ target: { tabId }, files: ['shared.js', 'content.js'] });
 }
 
-// 현재 X 탭에 메시지를 보내고 응답을 받음. content script 가 없으면 한 번 주입 후 재시도.
-// 연결/시간 초과 문제는 { error: '안내 문구' } 로 정리해서 반환.
+// 현재 X 탭에 요청을 보내고 응답을 받음. content script 가 없으면 한 번 넣고 다시 시도.
+// 연결·시간 초과 문제는 { error: '안내 문구' } 로 정리해서 반환
 async function requestFromActiveTab(message) {
   const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
   const tabError = getSyncTabError(activeTab);
@@ -150,71 +191,59 @@ async function requestFromActiveTab(message) {
   if (response && response.connectionError) {
     try {
       await injectContentScript(activeTab.id);
-    } catch (e) {
-      return { error: '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.' };
+    } catch {
+      return { error: TAB_CONNECTION_ERROR };
     }
     response = await sendTabMessage(activeTab.id, message);
   }
-  if (response && response.timeoutError) {
-    return { error: '응답 시간이 초과되었습니다. 트위터 탭을 새로고침(F5) 후 다시 시도해주세요.' };
-  }
-  if (!response || response.connectionError) {
-    return { error: '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.' };
-  }
+  if (response && response.timeoutError) return { error: TAB_TIMEOUT_ERROR };
+  if (!response || response.connectionError) return { error: TAB_CONNECTION_ERROR };
   return response;
 }
 
-function setupSyncButton() {
-  const syncBtn = document.getElementById('sync-current-tab-btn');
-  const resyncBtn = document.getElementById('resync-replace-btn');
-
-  syncBtn?.addEventListener('click', async () => {
-    syncBtn.disabled = true;
-    showSyncStatus('데이터 수집 중...', false);
-    try {
-      const response = await requestFromActiveTab({ action: 'scrapeNow' });
-      if (response.error) {
-        showSyncStatus(response.error, true);
-      } else if (response.success) {
-        const detail = response.added > 0 ? `새로 ${response.added}명 추가` : '새 멤버 없음';
-        showSyncStatus(`'${response.listName}' 총 ${response.count}명 (${detail})`, false);
-      } else {
-        showSyncStatus(response.message || '리스트 멤버를 찾을 수 없습니다. 멤버 화면을 열어주세요.', true);
-      }
-    } finally {
-      syncBtn.disabled = false;
-    }
-  });
-
-  // 교체 동기화: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
-  resyncBtn?.addEventListener('click', async () => {
-    resyncBtn.disabled = true;
-    try {
-      const preview = await requestFromActiveTab({ action: 'replacePreview' });
-      if (preview.error || !preview.success) {
-        showSyncStatus(preview.error || preview.message || '교체 동기화를 준비하지 못했습니다.', true);
-        return;
-      }
-      const removedCount = preview.removed.length;
-      if (removedCount === 0 && preview.added === 0) {
-        showSyncStatus(`'${preview.listName}' 멤버 목록이 이미 최신입니다. (${preview.seenCount}명)`, false);
-        return;
-      }
-      if (!await askConfirm(buildReplaceConfirmText(preview), '교체')) return;
-
-      const saved = await requestFromActiveTab({ action: 'replaceNow' });
-      if (saved.error || !saved.success) {
-        showSyncStatus(saved.error || saved.message || '교체 동기화에 실패했습니다.', true);
-        return;
-      }
-      showSyncStatus(`'${saved.listName}' 멤버를 교체했습니다. 총 ${saved.count}명 (추가 ${saved.added}명, 삭제 ${saved.removedCount}명)`, false);
-    } finally {
-      resyncBtn.disabled = false;
-    }
-  });
+function setupSyncButtons() {
+  const syncBtn = byId('sync-current-tab-btn');
+  const resyncBtn = byId('resync-replace-btn');
+  syncBtn?.addEventListener('click', () => withButtonDisabled(syncBtn, syncCurrentTab));
+  resyncBtn?.addEventListener('click', () => withButtonDisabled(resyncBtn, replaceSyncCurrentTab));
 }
 
-// 교체 확인 문구 (삭제될 핸들 일부 표시, 절반 이상 삭제되면 강하게 경고)
+// [⚡ 가져오기]: 현재 화면의 멤버를 저장
+async function syncCurrentTab() {
+  showSyncStatus('데이터 수집 중...', false);
+  const response = await requestFromActiveTab({ action: 'scrapeNow' });
+  if (response.error) {
+    showSyncStatus(response.error, true);
+  } else if (response.success) {
+    const detail = response.added > 0 ? `새로 ${response.added}명 추가` : '새 멤버 없음';
+    showSyncStatus(`'${response.listName}' 총 ${response.count}명 (${detail})`, false);
+  } else {
+    showSyncStatus(response.message || '리스트 멤버를 찾을 수 없습니다. 멤버 화면을 열어주세요.', true);
+  }
+}
+
+// [🔄 교체 동기화]: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
+async function replaceSyncCurrentTab() {
+  const preview = await requestFromActiveTab({ action: 'replacePreview' });
+  if (preview.error || !preview.success) {
+    showSyncStatus(preview.error || preview.message || '교체 동기화를 준비하지 못했습니다.', true);
+    return;
+  }
+  if (preview.removed.length === 0 && preview.added === 0) {
+    showSyncStatus(`'${preview.listName}' 멤버 목록이 이미 최신입니다. (${preview.seenCount}명)`, false);
+    return;
+  }
+  if (!await askConfirm(buildReplaceConfirmText(preview), '교체')) return;
+
+  const saved = await requestFromActiveTab({ action: 'replaceNow' });
+  if (saved.error || !saved.success) {
+    showSyncStatus(saved.error || saved.message || '교체 동기화에 실패했습니다.', true);
+    return;
+  }
+  showSyncStatus(`'${saved.listName}' 멤버를 교체했습니다. 총 ${saved.count}명 (추가 ${saved.added}명, 삭제 ${saved.removedCount}명)`, false);
+}
+
+// 교체 확인 문구 (삭제될 핸들 일부를 보여 주고, 절반 이상 삭제되면 강하게 경고)
 function buildReplaceConfirmText(preview) {
   const removed = preview.removed || [];
   const shown = removed.slice(0, 5).join(', ') + (removed.length > 5 ? ` 외 ${removed.length - 5}명` : '');
@@ -229,23 +258,24 @@ function buildReplaceConfirmText(preview) {
 }
 
 // ==========================================
-// 3-1. X 화면 구조 변화 경고
+// 5. X 화면 구조 경고
 // ==========================================
 
 function renderHealthWarning(health) {
-  const el = document.getElementById('health-warning');
+  const el = byId('health-warning');
   if (!el) return;
+  el.textContent = '';
+
   const warnings = getStructureWarnings(health, Date.now(), 14);
   if (warnings.length === 0) {
     el.style.display = 'none';
-    el.textContent = '';
     return;
   }
-  el.textContent = '';
+
   const title = document.createElement('strong');
   title.textContent = '⚠️ X 화면 구조가 바뀌었을 수 있습니다';
   el.appendChild(title);
-  warnings.forEach(w => {
+  warnings.forEach((w) => {
     const line = document.createElement('div');
     line.textContent = `• ${w.label}: ${w.message} (${new Date(w.at).toLocaleString()})`;
     el.appendChild(line);
@@ -262,18 +292,17 @@ async function loadHealthWarning() {
 }
 
 // ==========================================
-// 4. 직접 리스트 추가
+// 6. 직접 리스트 추가
 // ==========================================
 
 function setupManualAdd() {
-  const toggleBtn = document.getElementById('toggle-manual-add-btn');
-  const form = document.getElementById('manual-add-form');
-  const saveBtn = document.getElementById('manual-save-btn');
-  const nameInput = document.getElementById('manual-name');
-  const membersInput = document.getElementById('manual-members');
-  const colorInput = document.getElementById('manual-color');
-  const modeSelect = document.getElementById('manual-mode');
-
+  const toggleBtn = byId('toggle-manual-add-btn');
+  const form = byId('manual-add-form');
+  const saveBtn = byId('manual-save-btn');
+  const nameInput = byId('manual-name');
+  const membersInput = byId('manual-members');
+  const colorInput = byId('manual-color');
+  const modeSelect = byId('manual-mode');
   if (!toggleBtn || !form || !saveBtn) return;
 
   const setFormOpen = (open) => {
@@ -281,12 +310,12 @@ function setupManualAdd() {
     toggleBtn.textContent = open ? '- 접기' : '+ 직접 리스트 추가';
     toggleBtn.setAttribute('aria-expanded', String(open));
   };
-
   toggleBtn.addEventListener('click', () => setFormOpen(form.style.display === 'none'));
 
   saveBtn.addEventListener('click', async () => {
-    // 직접 추가는 "X", "Home" 같은 이름도 허용 (자동 수집에서만 시스템 단어를 막음)
-    const listName = nameInput.value.trim() ? cleanListName(nameInput.value.trim()) : '';
+    // 직접 추가는 "X", "Home" 같은 이름도 허용 (시스템 단어는 자동 수집에서만 막음)
+    const rawName = nameInput.value.trim();
+    const listName = rawName ? cleanListName(rawName) : '';
     const nameError = getManualListNameError(listName);
     if (nameError) {
       showSyncStatus(nameError, true);
@@ -301,286 +330,313 @@ function setupManualAdd() {
       return;
     }
 
-    // 이미 있는 리스트면 멤버만 추가하고 색상/모드는 유지 (shared.js applyManualAdd)
+    // 이미 있는 리스트면 멤버만 추가하고 색상/모드는 유지
     let outcome = null;
-    const saved = await updateLists(lists => {
+    const saved = await updateLists((lists) => {
       outcome = applyManualAdd(lists, listName, handles, colorInput.value, modeSelect.value);
     });
+    if (!saved || !outcome) return;
 
-    if (saved && outcome) {
-      showSyncStatus(outcome.created
-        ? `'${listName}' 리스트가 저장되었습니다! (${outcome.total}명)`
-        : `기존 '${listName}' 리스트에 추가했습니다. (${outcome.total}명, 색상/모드는 유지)`, false);
-      nameInput.value = '';
-      membersInput.value = '';
-      setFormOpen(false);
-    }
+    showSyncStatus(outcome.created
+      ? `'${listName}' 리스트가 저장되었습니다! (${outcome.total}명)`
+      : `기존 '${listName}' 리스트에 추가했습니다. (${outcome.total}명, 색상/모드는 유지)`, false);
+    nameInput.value = '';
+    membersInput.value = '';
+    setFormOpen(false);
   });
 }
 
 // ==========================================
-// 5. 백업 / 복원 / 초기화
+// 7. 백업 · 복원 · 초기화
 // ==========================================
 
 function setupBackupRestore() {
-  const resetBtn = document.getElementById('reset-btn');
-  if (resetBtn) {
-    resetBtn.addEventListener('click', async () => {
-      if (!await askConfirm('모든 리스트 데이터를 초기화할까요? 되돌릴 수 없습니다.', '초기화')) return;
-      const ok = await updateLists(lists => {
-        Object.keys(lists).forEach(k => delete lists[k]);
-      });
-      if (ok) {
-        expandedLists.clear();
-        showSyncStatus('초기화되었습니다.', false);
-      }
+  setupResetButton();
+  setupExportButton();
+  setupImport();
+}
+
+function setupResetButton() {
+  byId('reset-btn')?.addEventListener('click', async () => {
+    if (!await askConfirm('모든 리스트 데이터를 초기화할까요? 되돌릴 수 없습니다.', '초기화')) return;
+    const ok = await updateLists((lists) => {
+      Object.keys(lists).forEach(k => delete lists[k]);
     });
-  }
+    if (ok) {
+      expandedLists.clear();
+      showSyncStatus('초기화되었습니다.', false);
+    }
+  });
+}
 
-  const exportBtn = document.getElementById('export-btn');
-  if (exportBtn) {
-    exportBtn.addEventListener('click', async () => {
-      // 리스트와 배지 스타일 설정을 함께 내보냄 (shared.js buildBackup)
-      const result = await chrome.storage.local.get(['lists', 'badgeSettings']);
-      const jsonStr = JSON.stringify(buildBackup(result.lists || {}, result.badgeSettings), null, 2);
-      const url = URL.createObjectURL(new Blob([jsonStr], { type: 'application/json' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `banmo_tag_backup_${new Date().toISOString().slice(0, 10)}.json`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    });
-  }
+// 객체를 JSON 파일로 내려받기
+function downloadJson(filename, data) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
 
-  const importBtn = document.getElementById('import-btn');
-  const importFile = document.getElementById('import-file');
-  const choiceEl = document.getElementById('import-choice');
-  const choiceText = document.getElementById('import-choice-text');
+// 📤 내보내기: 리스트와 배지 스타일 설정을 함께 저장
+function setupExportButton() {
+  byId('export-btn')?.addEventListener('click', async () => {
+    const result = await chrome.storage.local.get(['lists', 'badgeSettings']);
+    const date = new Date().toISOString().slice(0, 10);
+    downloadJson(`banmo_tag_backup_${date}.json`, buildBackup(result.lists || {}, result.badgeSettings));
+  });
+}
 
-  const closeChoice = () => {
-    pendingImport = null;
-    if (choiceEl) choiceEl.style.display = 'none';
-  };
-
+// 📥 가져오기: 파일 읽기 → [병합] / [덮어쓰기] / [취소] 선택
+function setupImport() {
+  const importBtn = byId('import-btn');
+  const importFile = byId('import-file');
   if (importBtn && importFile) {
     importBtn.addEventListener('click', () => importFile.click());
     importFile.addEventListener('change', (e) => {
       const file = e.target.files[0];
-      e.target.value = '';
-      if (!file) return;
-
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        let parsed;
-        try {
-          parsed = parseBackup(JSON.parse(ev.target.result));
-        } catch {
-          parsed = null;
-        }
-        if (!parsed) {
-          showSyncStatus('잘못된 파일 형식입니다. banmo_tag 백업 파일(JSON)을 선택해주세요.', true);
-          return;
-        }
-        const count = Object.keys(parsed.lists).length;
-        if (count === 0 && !parsed.badgeSettings) {
-          showSyncStatus('가져올 리스트가 없습니다.', true);
-          return;
-        }
-        pendingImport = parsed;
-        if (choiceText) {
-          choiceText.textContent = `${count}개 리스트를 가져옵니다.` +
-            (parsed.badgeSettings ? ' (배지 스타일 설정 포함: 덮어쓰기 때 적용)' : '') + ' 방식을 선택하세요.';
-        }
-        if (choiceEl) choiceEl.style.display = 'flex';
-      };
-      reader.readAsText(file);
+      e.target.value = ''; // 같은 파일을 다시 골라도 change 가 일어나도록
+      if (file) readBackupFile(file);
     });
   }
 
-  document.getElementById('import-merge-btn')?.addEventListener('click', async () => {
-    const data = pendingImport;
-    closeChoice();
-    if (!data) return;
-    // 병합: 기존 리스트의 색상/모드와 현재 배지 설정은 유지하고 멤버만 합침.
-    // 이름이 같아도 listId 가 다르면 별개 리스트로 분리 (shared.js mergeImportedLists)
-    const ok = await updateLists(lists => {
-      mergeImportedLists(lists, data.lists);
-    });
-    if (ok) showSyncStatus('기존 데이터와 병합했습니다.', false);
-  });
+  byId('import-merge-btn')?.addEventListener('click', mergeImport);
+  byId('import-replace-btn')?.addEventListener('click', replaceImport);
+  byId('import-cancel-btn')?.addEventListener('click', closeImportChoice);
+}
 
-  document.getElementById('import-replace-btn')?.addEventListener('click', async () => {
-    const data = pendingImport;
-    closeChoice();
-    if (!data) return;
-    if (!await askConfirm('기존 리스트를 모두 지우고 파일 내용으로 바꿉니다. 계속할까요?', '덮어쓰기')) return;
-    const ok = await updateLists(lists => {
-      Object.keys(lists).forEach(k => delete lists[k]);
-      Object.assign(lists, data.lists);
-    });
-    if (!ok) return;
-    expandedLists.clear();
-    if (data.badgeSettings) {
-      try {
-        await chrome.storage.local.set({ badgeSettings: data.badgeSettings });
-        badgeSettings = { ...data.badgeSettings };
-        applyBadgeSettingsUI();
-      } catch (err) {
-        showSyncStatus('리스트는 복원했지만 배지 설정 저장에 실패했습니다.', true);
-        return;
-      }
+function readBackupFile(file) {
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    let parsed;
+    try {
+      parsed = parseBackup(JSON.parse(ev.target.result));
+    } catch {
+      parsed = null;
     }
-    showSyncStatus(data.badgeSettings ? '파일 내용(리스트 + 배지 설정)으로 덮어썼습니다.' : '파일 내용으로 덮어썼습니다.', false);
-  });
+    if (!parsed) {
+      showSyncStatus('잘못된 파일 형식입니다. banmo_tag 백업 파일(JSON)을 선택해주세요.', true);
+      return;
+    }
+    const count = Object.keys(parsed.lists).length;
+    if (count === 0 && !parsed.badgeSettings) {
+      showSyncStatus('가져올 리스트가 없습니다.', true);
+      return;
+    }
+    openImportChoice(parsed, count);
+  };
+  reader.readAsText(file);
+}
 
-  document.getElementById('import-cancel-btn')?.addEventListener('click', closeChoice);
+function openImportChoice(parsed, count) {
+  pendingImport = parsed;
+  const choiceText = byId('import-choice-text');
+  if (choiceText) {
+    choiceText.textContent = `${count}개 리스트를 가져옵니다.` +
+      (parsed.badgeSettings ? ' (배지 스타일 설정 포함: 덮어쓰기 때 적용)' : '') + ' 방식을 선택하세요.';
+  }
+  const choiceEl = byId('import-choice');
+  if (choiceEl) choiceEl.style.display = 'flex';
+}
+
+function closeImportChoice() {
+  pendingImport = null;
+  const choiceEl = byId('import-choice');
+  if (choiceEl) choiceEl.style.display = 'none';
+}
+
+// [병합]: 기존 리스트의 색상/모드와 현재 배지 설정은 유지하고 멤버만 합침
+// (이름이 같아도 listId 가 다르면 별개 리스트로 분리)
+async function mergeImport() {
+  const data = pendingImport;
+  closeImportChoice();
+  if (!data) return;
+  const ok = await updateLists((lists) => {
+    mergeImportedLists(lists, data.lists);
+  });
+  if (ok) showSyncStatus('기존 데이터와 병합했습니다.', false);
+}
+
+// [덮어쓰기]: 리스트를 파일 내용으로 바꾸고, 파일에 배지 설정이 있으면 그것도 복원
+async function replaceImport() {
+  const data = pendingImport;
+  closeImportChoice();
+  if (!data) return;
+  if (!await askConfirm('기존 리스트를 모두 지우고 파일 내용으로 바꿉니다. 계속할까요?', '덮어쓰기')) return;
+
+  const ok = await updateLists((lists) => {
+    Object.keys(lists).forEach(k => delete lists[k]);
+    Object.assign(lists, data.lists);
+  });
+  if (!ok) return;
+  expandedLists.clear();
+
+  if (data.badgeSettings) {
+    try {
+      await chrome.storage.local.set({ badgeSettings: data.badgeSettings });
+      badgeSettings = { ...data.badgeSettings };
+      applyBadgeSettingsUI();
+    } catch {
+      showSyncStatus('리스트는 복원했지만 배지 설정 저장에 실패했습니다.', true);
+      return;
+    }
+  }
+  showSyncStatus(data.badgeSettings ? '파일 내용(리스트 + 배지 설정)으로 덮어썼습니다.' : '파일 내용으로 덮어썼습니다.', false);
 }
 
 // ==========================================
-// 6. 리스트 목록 렌더링
+// 8. 리스트 목록
 // ==========================================
+
+const MODE_OPTIONS = [['normal', '기본'], ['highlight', '강조'], ['dim', '흐리게']];
 
 async function loadLists() {
   const result = await chrome.storage.local.get(['lists']);
   const { newLists, modified } = sanitizeListsObject(result.lists || {});
-  // 태그 붙은 이름/시스템 단어 리스트가 남아있으면 정리해서 저장 (onChanged 로 다시 그려짐)
+  // 태그 붙은 이름이나 시스템 단어 리스트가 남아 있으면 정리해서 저장 (onChanged 로 다시 그려짐)
   if (modified) updateLists(() => {});
   renderLists(newLists);
 }
 
 function renderLists(lists) {
-  const container = document.getElementById('list-container');
+  const container = byId('list-container');
   if (!container) return;
   container.textContent = '';
 
   const listNames = Object.keys(lists).filter(n => lists[n] && Array.isArray(lists[n].members));
   if (listNames.length === 0) {
-    const empty = document.createElement('div');
-    empty.className = 'empty-state';
-    empty.append('저장된 리스트가 없습니다.', document.createElement('br'),
-      '트위터 리스트의 멤버 화면을 열거나 상단 [가져오기]를 누르거나, 직접 추가해주세요.');
-    container.appendChild(empty);
+    container.appendChild(createEmptyState());
     return;
   }
 
   // 사라진 리스트의 펼침 상태 정리
-  [...expandedLists].forEach(n => { if (!lists[n]) expandedLists.delete(n); });
+  [...expandedLists].forEach((n) => { if (!lists[n]) expandedLists.delete(n); });
 
-  listNames.forEach((name, idx) => {
-    const list = lists[name];
-    const membersId = 'members-' + idx;
-    const isOpen = expandedLists.has(name);
+  listNames.forEach((name, idx) => container.appendChild(createListRow(name, lists[name], idx)));
+}
 
-    const wrapperEl = document.createElement('div');
-    wrapperEl.className = 'list-wrapper';
+function createEmptyState() {
+  const empty = document.createElement('div');
+  empty.className = 'empty-state';
+  empty.append('저장된 리스트가 없습니다.', document.createElement('br'),
+    '트위터 리스트의 멤버 화면을 열거나 상단 [가져오기]를 누르거나, 직접 추가해주세요.');
+  return empty;
+}
 
-    const itemEl = document.createElement('div');
-    itemEl.className = 'list-item';
+// 작은 DOM 생성 도우미. type 이 있으면(버튼·입력란) 가장 먼저 지정
+function makeElement(tag, className, text, type) {
+  const el = document.createElement(tag);
+  if (type) el.type = type;
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
 
-    // 펼치기 버튼 (키보드로도 조작 가능)
-    const toggleBtn = document.createElement('button');
-    toggleBtn.type = 'button';
-    toggleBtn.className = 'list-toggle';
-    toggleBtn.setAttribute('aria-expanded', String(isOpen));
-    toggleBtn.setAttribute('aria-controls', membersId);
+function memberCountText(list, open) {
+  return `${list.members.length}명 등록됨 (클릭하여 ${open ? '접기' : '펼치기'})`;
+}
 
-    const nameEl = document.createElement('div');
-    nameEl.className = 'list-name';
-    nameEl.textContent = name;
+// 리스트 한 줄: [이름·인원 (펼치기 버튼)] [모드] [색상] [삭제] + 펼치면 보이는 멤버 목록
+function createListRow(name, list, idx) {
+  const membersId = 'members-' + idx;
+  const isOpen = expandedLists.has(name);
 
-    const countEl = document.createElement('div');
-    countEl.className = 'list-info';
-    countEl.textContent = `${list.members.length}명 등록됨 (클릭하여 ${isOpen ? '접기' : '펼치기'})`;
+  const toggleBtn = makeElement('button', 'list-toggle', undefined, 'button');
+  toggleBtn.setAttribute('aria-expanded', String(isOpen));
+  toggleBtn.setAttribute('aria-controls', membersId);
+  const countEl = makeElement('div', 'list-info', memberCountText(list, isOpen));
+  toggleBtn.append(makeElement('div', 'list-name', name), countEl);
 
-    toggleBtn.append(nameEl, countEl);
+  const controlsDiv = makeElement('div', 'list-controls');
+  controlsDiv.append(createModeSelect(name, list), createColorInput(name, list), createDeleteButton(name));
 
-    // 모드 선택 (기본, 강조, 흐리게)
-    const modeSelect = document.createElement('select');
-    modeSelect.className = 'mode-select';
-    modeSelect.setAttribute('aria-label', `'${name}' 표시 모드`);
-    [['normal', '기본'], ['highlight', '강조'], ['dim', '흐리게']].forEach(([value, text]) => {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = text;
-      opt.selected = (list.mode || 'normal') === value;
-      modeSelect.appendChild(opt);
-    });
-    modeSelect.addEventListener('change', (e) => {
-      const mode = e.target.value;
-      updateLists(l => { if (!l[name]) return false; l[name].mode = mode; });
-    });
+  const itemEl = makeElement('div', 'list-item');
+  itemEl.append(toggleBtn, controlsDiv);
 
-    const colorInput = document.createElement('input');
-    colorInput.type = 'color';
-    colorInput.className = 'color-picker';
-    colorInput.value = list.color || AG_DEFAULT_LIST_COLOR;
-    colorInput.setAttribute('aria-label', `'${name}' 배지 색상`);
-    colorInput.addEventListener('change', (e) => {
-      const color = e.target.value;
-      updateLists(l => { if (!l[name]) return false; l[name].color = color; });
-    });
+  const membersListEl = createMembersList(name, list, membersId, isOpen);
 
-    const deleteBtn = document.createElement('button');
-    deleteBtn.type = 'button';
-    deleteBtn.className = 'delete-list-btn';
-    deleteBtn.textContent = '×';
-    deleteBtn.title = '이 리스트 삭제';
-    deleteBtn.setAttribute('aria-label', `'${name}' 리스트 삭제`);
-    deleteBtn.addEventListener('click', async () => {
-      if (!await askConfirm(`'${name}' 리스트를 삭제할까요?`, '삭제')) return;
-      expandedLists.delete(name);
-      updateLists(l => { if (!l[name]) return false; delete l[name]; });
-    });
-
-    const controlsDiv = document.createElement('div');
-    controlsDiv.className = 'list-controls';
-    controlsDiv.append(modeSelect, colorInput, deleteBtn);
-
-    itemEl.append(toggleBtn, controlsDiv);
-
-    // 멤버 목록
-    const membersListEl = document.createElement('div');
-    membersListEl.className = 'members-list' + (isOpen ? ' show' : '');
-    membersListEl.id = membersId;
-    if (list.members.length === 0) {
-      membersListEl.textContent = '멤버가 없습니다.';
-    } else {
-      list.members.forEach(member => {
-        const mSpan = document.createElement('span');
-        mSpan.className = 'member-handle';
-        mSpan.textContent = member;
-
-        const removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'remove-member-btn';
-        removeBtn.textContent = '×';
-        removeBtn.title = `'${member}' 제거`;
-        removeBtn.setAttribute('aria-label', `'${member}' 제거`);
-        removeBtn.addEventListener('click', () => {
-          updateLists(l => removeMemberFromLists(l, name, member));
-        });
-
-        mSpan.appendChild(removeBtn);
-        membersListEl.appendChild(mSpan);
-      });
-    }
-
-    toggleBtn.addEventListener('click', () => {
-      const open = membersListEl.classList.toggle('show');
-      if (open) expandedLists.add(name); else expandedLists.delete(name);
-      toggleBtn.setAttribute('aria-expanded', String(open));
-      countEl.textContent = `${list.members.length}명 등록됨 (클릭하여 ${open ? '접기' : '펼치기'})`;
-    });
-
-    wrapperEl.append(itemEl, membersListEl);
-    container.appendChild(wrapperEl);
+  toggleBtn.addEventListener('click', () => {
+    const open = membersListEl.classList.toggle('show');
+    if (open) expandedLists.add(name); else expandedLists.delete(name);
+    toggleBtn.setAttribute('aria-expanded', String(open));
+    countEl.textContent = memberCountText(list, open);
   });
+
+  const wrapperEl = makeElement('div', 'list-wrapper');
+  wrapperEl.append(itemEl, membersListEl);
+  return wrapperEl;
+}
+
+// 표시 모드 선택 (기본 / 강조 / 흐리게)
+function createModeSelect(name, list) {
+  const select = makeElement('select', 'mode-select');
+  select.setAttribute('aria-label', `'${name}' 표시 모드`);
+  MODE_OPTIONS.forEach(([value, text]) => {
+    const opt = makeElement('option', null, text);
+    opt.value = value;
+    opt.selected = (list.mode || 'normal') === value;
+    select.appendChild(opt);
+  });
+  select.addEventListener('change', (e) => {
+    const mode = e.target.value;
+    updateLists((l) => { if (!l[name]) return false; l[name].mode = mode; });
+  });
+  return select;
+}
+
+// 배지 색상 선택
+function createColorInput(name, list) {
+  const input = makeElement('input', 'color-picker', undefined, 'color');
+  input.value = list.color || AG_DEFAULT_LIST_COLOR;
+  input.setAttribute('aria-label', `'${name}' 배지 색상`);
+  input.addEventListener('change', (e) => {
+    const color = e.target.value;
+    updateLists((l) => { if (!l[name]) return false; l[name].color = color; });
+  });
+  return input;
+}
+
+function createDeleteButton(name) {
+  const button = makeElement('button', 'delete-list-btn', '×', 'button');
+  button.title = '이 리스트 삭제';
+  button.setAttribute('aria-label', `'${name}' 리스트 삭제`);
+  button.addEventListener('click', async () => {
+    if (!await askConfirm(`'${name}' 리스트를 삭제할까요?`, '삭제')) return;
+    expandedLists.delete(name);
+    updateLists((l) => { if (!l[name]) return false; delete l[name]; });
+  });
+  return button;
+}
+
+function createMembersList(name, list, membersId, isOpen) {
+  const membersListEl = makeElement('div', 'members-list' + (isOpen ? ' show' : ''));
+  membersListEl.id = membersId;
+  if (list.members.length === 0) {
+    membersListEl.textContent = '멤버가 없습니다.';
+  } else {
+    list.members.forEach(member => membersListEl.appendChild(createMemberChip(name, member)));
+  }
+  return membersListEl;
+}
+
+// 멤버 한 명: "@handle ×"
+function createMemberChip(listName, member) {
+  const chip = makeElement('span', 'member-handle', member);
+  const removeBtn = makeElement('button', 'remove-member-btn', '×', 'button');
+  removeBtn.title = `'${member}' 제거`;
+  removeBtn.setAttribute('aria-label', `'${member}' 제거`);
+  removeBtn.addEventListener('click', () => {
+    updateLists(l => removeMemberFromLists(l, listName, member));
+  });
+  chip.appendChild(removeBtn);
+  return chip;
 }
 
 // ==========================================
-// 7. 배지 스타일 설정
+// 9. 배지 스타일 설정
 // ==========================================
 
 async function loadBadgeSettings() {
@@ -589,18 +645,19 @@ async function loadBadgeSettings() {
   applyBadgeSettingsUI();
 }
 
-// 컬러 피커는 드래그 중 input 이벤트가 연속 발생하므로 묶어서 저장
+// 컬러 피커는 드래그하는 동안 input 이벤트가 계속 일어나므로 묶어서 저장
 const saveBadgeSettings = debounce(() => {
-  chrome.storage.local.set({ badgeSettings }).catch(err => {
+  chrome.storage.local.set({ badgeSettings }).catch((err) => {
     showSyncStatus('배지 설정 저장에 실패했습니다.', true);
     console.error(err);
   });
 }, 150);
 
+// 현재 설정값을 입력란과 미리보기에 반영
 function applyBadgeSettingsUI() {
-  const colorInput = document.getElementById('badge-text-color');
-  const sizeInput = document.getElementById('badge-font-size');
-  const fontInput = document.getElementById('badge-font-family');
+  const colorInput = byId('badge-text-color');
+  const sizeInput = byId('badge-font-size');
+  const fontInput = byId('badge-font-family');
   if (colorInput) colorInput.value = badgeSettings.textColor;
   if (sizeInput) sizeInput.value = badgeSettings.fontSize;
   if (fontInput) fontInput.value = badgeSettings.fontFamily;
@@ -609,16 +666,21 @@ function applyBadgeSettingsUI() {
 
 // 미리보기도 타임라인과 같은 함수로 스타일 적용
 function updateBadgePreview() {
-  const preview = document.getElementById('badge-preview');
-  if (!preview) return;
-  applyBadgeStyle(preview, AG_DEFAULT_LIST_COLOR, badgeSettings, true);
+  const preview = byId('badge-preview');
+  if (preview) applyBadgeStyle(preview, AG_DEFAULT_LIST_COLOR, badgeSettings, true);
+}
+
+// 설정 하나를 바꾸고 미리보기·저장
+function updateBadgeSetting(key, value) {
+  badgeSettings[key] = value;
+  updateBadgePreview();
+  saveBadgeSettings();
 }
 
 function setupBadgeSettings() {
-  const toggleBtn = document.getElementById('toggle-badge-settings');
-  const settingsBody = document.getElementById('badge-settings-body');
-  const arrow = document.getElementById('settings-arrow');
-
+  const toggleBtn = byId('toggle-badge-settings');
+  const settingsBody = byId('badge-settings-body');
+  const arrow = byId('settings-arrow');
   if (toggleBtn && settingsBody) {
     toggleBtn.addEventListener('click', () => {
       const open = settingsBody.classList.toggle('show');
@@ -627,28 +689,16 @@ function setupBadgeSettings() {
     });
   }
 
-  document.getElementById('badge-text-color')?.addEventListener('input', (e) => {
-    badgeSettings.textColor = e.target.value;
-    updateBadgePreview();
-    saveBadgeSettings();
+  byId('badge-text-color')?.addEventListener('input', e => updateBadgeSetting('textColor', e.target.value));
+
+  byId('badge-font-size')?.addEventListener('input', (e) => {
+    const size = parseInt(e.target.value, 10);
+    if (size >= 8 && size <= 20) updateBadgeSetting('fontSize', size);
   });
 
-  document.getElementById('badge-font-size')?.addEventListener('input', (e) => {
-    const val = parseInt(e.target.value, 10);
-    if (val >= 8 && val <= 20) {
-      badgeSettings.fontSize = val;
-      updateBadgePreview();
-      saveBadgeSettings();
-    }
-  });
+  byId('badge-font-family')?.addEventListener('change', e => updateBadgeSetting('fontFamily', e.target.value));
 
-  document.getElementById('badge-font-family')?.addEventListener('change', (e) => {
-    badgeSettings.fontFamily = e.target.value;
-    updateBadgePreview();
-    saveBadgeSettings();
-  });
-
-  document.getElementById('badge-reset-btn')?.addEventListener('click', () => {
+  byId('badge-reset-btn')?.addEventListener('click', () => {
     badgeSettings = { ...AG_DEFAULT_BADGE_SETTINGS };
     applyBadgeSettingsUI();
     saveBadgeSettings();

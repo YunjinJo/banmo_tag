@@ -1,9 +1,27 @@
-// content.js
-// 공통 순수 로직은 shared.js 에 있으며 manifest 에서 먼저 로드됩니다.
-// 전체를 IIFE 로 감싸 팝업의 재주입(chrome.scripting) 시 중복 실행/재선언 오류를 방지합니다.
+// content.js — X(x.com / twitter.com) 페이지 안에서 실행
+//   1) 리스트 멤버 화면에서 멤버를 읽어 저장 (background.js 로 전송)
+//   2) 타임라인 트윗 작성자 옆에 리스트 배지를 붙이고 강조/흐리게 표시
+//   3) X 화면 구조가 바뀌었는지 점검해 팝업 경고용으로 기록
+// 공통 로직은 manifest 에서 먼저 로드되는 shared.js 에 있습니다.
+// 전체를 즉시 실행 함수로 감싸, 팝업이 다시 주입(chrome.scripting)해도 두 번 실행되지 않게 합니다.
+//
+// 목차
+//   0. 시작 조건 / 상수 / 상태
+//   1. 확장 프로그램 연결 · 타이머
+//   2. 저장 데이터 불러오기 · 변경 반영
+//   3. 리스트 이름 읽기
+//   4. 멤버 수집 · 교체 동기화
+//   5. 팝업 메시지 처리
+//   6. 타임라인 배지
+//   7. 화면 구조 점검
+//   8. 화면 변화 감지 · 시작
 (() => {
+  // ==========================================
+  // 0. 시작 조건 / 상수 / 상태
+  // ==========================================
+
   if (window.__agContentLoaded) return;
-  // shared.js 가 없으면 어떤 기능도 동작할 수 없으므로 증상을 숨기지 말고 원인을 분명히 남기고 중단
+  // shared.js 가 없으면 어떤 기능도 동작할 수 없으므로, 원인을 분명히 남기고 중단
   if (typeof sanitizeListsObject !== 'function') {
     console.error('[banmo_tag] shared.js 가 로드되지 않았습니다. 확장 프로그램을 새로고침해주세요.');
     return;
@@ -11,35 +29,46 @@
   window.__agContentLoaded = true;
 
   const DEFAULT_BADGE_SETTINGS = AG_DEFAULT_BADGE_SETTINGS;
+  const TWEET_SELECTOR = 'article[data-testid="tweet"]';
+  const USER_NAME_SELECTOR = '[data-testid="User-Name"]';
+  // 한 번에 모아 둘 "변경된 트윗" 최대 수. 넘으면 전체를 다시 훑는 편이 빠름
+  const MAX_PENDING_TWEETS = 300;
+  // 화면 구조 점검: 같은 결과가 이 시간 이상 유지될 때만 기록 (로딩 중 일시적인 상태 무시)
+  const HEALTH_SETTLE_MS = 2500;
 
-  // 1. 캐싱된 리스트 데이터
+  // 저장된 리스트 (정제된 상태)
   let listData = {};
-  // 사용자 핸들을 리스트 정보 배열로 매핑 (예: '@elonmusk': [{name: 'Tech', color: '#f00', mode}])
+  // 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color: '#f00', mode }])
   let handleToListsMap = {};
-  // 배지 스타일 설정
   let badgeSettings = { ...DEFAULT_BADGE_SETTINGS };
-  // 마지막으로 background 에 보낸 (리스트명 + 멤버) 서명 — 동일 데이터 반복 전송 방지
+  // 마지막으로 background 에 보낸 (리스트명 + 멤버) 서명 — 같은 데이터 반복 전송 방지
   let lastSentSignature = '';
   let lastUrl = location.href;
   let isShutDown = false;
   const pendingTimers = new Set();
-  // 이번 방문에서 멤버 화면에 나타난 멤버 누적 (listId → { listName, handles: Map<lower, 원래 표기> })
-  // X 목록은 가상 스크롤이라 화면 밖 멤버는 DOM 에서 사라지므로, "교체 동기화"는 이 누적 목록을 사용
+
+  // 이번 방문에서 멤버 화면에 나타난 멤버 누적: listId → { listName, handles: Map<소문자, 원래 표기> }
+  // X 목록은 가상 스크롤이라 화면 밖 멤버는 DOM 에서 사라지므로, "교체 동기화"는 이 누적 목록을 씀
   const seenByList = new Map();
-  // X 화면 구조 진단 상태 (storage 의 structureHealth 와 동기화)
+
+  // 화면 구조 점검 상태: storage 의 structureHealth, 그리고 아직 기록하지 않은 최근 결과(area → { ok, message, firstAt })
   let storedHealth = {};
-  const pendingHealth = {}; // area → { ok, message, firstAt } : 같은 결과가 일정 시간 유지될 때만 기록
+  const pendingHealth = {};
+
+  // DOM 변경으로 다시 처리할 트윗 (전체를 매번 훑지 않기 위해 모아 둠)
+  const pendingTweets = new Set();
+  let needsFullScan = true;
 
   // ==========================================
-  // 0. 확장 프로그램 컨텍스트 관리
+  // 1. 확장 프로그램 연결 · 타이머
   // ==========================================
 
   // 확장 프로그램이 업데이트/새로고침되면 기존 탭의 content script 는 고아 상태가 되어
-  // chrome.* 호출마다 "Extension context invalidated" 오류를 냅니다. 이를 감지해 스스로 정지합니다.
+  // chrome.* 호출마다 "Extension context invalidated" 오류를 냅니다. 이를 감지해 스스로 멈춥니다.
   function isContextValid() {
     try {
       return !!(chrome.runtime && chrome.runtime.id);
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -54,6 +83,7 @@
     window.__agContentLoaded = false;
   }
 
+  // shutdown 때 한꺼번에 취소할 수 있는 setTimeout
   function schedule(fn, delay) {
     const id = setTimeout(() => {
       pendingTimers.delete(id);
@@ -63,213 +93,215 @@
   }
 
   function safeSessionGet(key) {
-    try { return sessionStorage.getItem(key); } catch (e) { return null; }
+    try { return sessionStorage.getItem(key); } catch { return null; }
   }
 
   function safeSessionSet(key, value) {
-    try { sessionStorage.setItem(key, value); } catch (e) { /* 용량 초과 등은 무시 */ }
+    try { sessionStorage.setItem(key, value); } catch { /* 용량 초과 등은 무시 */ }
   }
 
   // ==========================================
-  // 1. 데이터 로드 및 스토리지 동기화
+  // 2. 저장 데이터 불러오기 · 변경 반영
   // ==========================================
 
+  // 저장 형식 정리(마이그레이션) 결과를 저장하는 일은 background/popup 이 하고, 여기서는 메모리에서만 정제
   function applyLists(rawLists) {
-    // 마이그레이션 저장은 background/popup 이 담당하고, 여기서는 메모리에서만 정제해 사용
     listData = sanitizeListsObject(rawLists || {}).newLists;
     handleToListsMap = buildHandleMap(listData);
   }
 
-  // 초기 데이터 로드
   function loadData() {
     chrome.storage.local.get(['lists', 'badgeSettings', 'structureHealth'], (result) => {
       if (chrome.runtime.lastError) return;
       applyLists(result.lists);
       badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(result.badgeSettings || {}) };
       storedHealth = result.structureHealth || {};
-      // 데이터 로드 전에 빈 데이터로 처리된 트윗이 있을 수 있으므로 초기화 후 재처리
+      // 데이터가 오기 전에 빈 데이터로 처리된 트윗이 있을 수 있으므로 초기화 후 다시 처리
       clearProcessedStyles();
       processTimeline();
     });
   }
 
-  // 스토리지 변경 감지
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local' || isShutDown) return;
+
     if (changes.structureHealth) {
       storedHealth = changes.structureHealth.newValue || {};
     }
+
     let changedHandles = null;
     if (changes.lists) {
       const oldMap = handleToListsMap;
       applyLists(changes.lists.newValue);
-      // 리스트가 삭제/수정되었을 수 있으므로, 현재 화면 멤버를 다시 보낼 수 있게 서명 초기화
+      // 리스트가 지워졌거나 바뀌었을 수 있으므로, 현재 화면의 멤버를 다시 보낼 수 있게 서명 초기화
       lastSentSignature = '';
       changedHandles = diffHandleMaps(oldMap, handleToListsMap);
     }
+
     if (changes.badgeSettings) {
       // 배지 모양은 모든 배지에 영향을 주므로 전체 다시 그리기
       badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(changes.badgeSettings.newValue || {}) };
       clearProcessedStyles();
       processTimeline();
     } else if (changedHandles && changedHandles.length > 0) {
-      // 리스트 변경은 표시가 달라진 핸들이 쓴 트윗만 다시 그림 (멤버 화면 스크롤 중 잦은 저장에도 가볍게)
+      // 리스트 변경은 표시가 달라진 사람의 트윗만 다시 그림 (멤버 화면 스크롤 중 잦은 저장에도 가볍게)
       refreshTweetsByHandles(changedHandles);
     }
   });
 
-  // 바뀐 핸들이 포함된 트윗만 초기화 후 다시 처리
-  function refreshTweetsByHandles(changedHandles) {
-    const changed = new Set(changedHandles);
-    const affected = [];
-    document.querySelectorAll('article[data-testid="tweet"]').forEach(t => {
-      if (isTweetAffected(t.dataset.agProcessed, changed)) {
-        resetTweetStyle(t);
-        affected.push(t);
-      }
-    });
-    if (affected.length > 0) processTimeline(affected);
-  }
-
-  // 개별 트윗에 적용된 배지/강조 스타일 초기화 (가상 스크롤 DOM 재사용 대응)
-  function resetTweetStyle(t) {
-    delete t.dataset.agProcessed;
-    t.style.borderLeft = '';
-    t.style.opacity = '';
-    t.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
-  }
-
-  // 기존에 처리된 스타일을 리셋하기 위해 변경 시 속성 제거
-  function clearProcessedStyles() {
-    document.querySelectorAll('article[data-testid="tweet"]').forEach(resetTweetStyle);
-  }
-
   // ==========================================
-  // 2. 리스트 멤버 추출 로직 (List Sync)
+  // 3. 리스트 이름 읽기
   // ==========================================
 
-  // 현재 화면에 떠있는 리스트 멤버 모달 다이얼로그(창) 탐색
+  // 화면에 떠 있는 리스트 멤버 창(모달)
   function getMemberListDialog() {
-    const dialogs = document.querySelectorAll('div[role="dialog"]');
-    for (const dialog of dialogs) {
+    for (const dialog of document.querySelectorAll('div[role="dialog"]')) {
       const heading = dialog.querySelector('h2, h1, [role="heading"]');
       const headingText = heading ? heading.textContent : '';
-      // 한국어 및 영어 키워드 또는 UserCell 포함 여부 확인
-      const isMemberDialog =
+      const looksLikeMemberDialog =
         headingText.includes('멤버') ||
         headingText.includes('구성원') ||
         headingText.includes('Member') ||
         dialog.querySelector('[data-testid="UserCell"]') !== null;
-      if (isMemberDialog) return dialog;
+      if (looksLikeMemberDialog) return dialog;
     }
     return null;
   }
 
-  // 페이지에서 순수 리스트 이름 추출 (내 태그 및 불필요한 접미사 배제, 하이픈 포함 리스트명 보존)
+  // 요소들의 글자를 정제해 처음으로 나오는 올바른 리스트 이름
+  function firstValidCleanName(elements, skipRaw) {
+    for (const el of elements) {
+      const raw = el.textContent.trim();
+      if (skipRaw && skipRaw(raw)) continue;
+      const name = cleanListName(raw);
+      if (isValidListName(name)) return name;
+    }
+    return '';
+  }
+
+  const isRecommendationTitle = text => text.includes('팔로우 추천') || text.includes('Who to follow');
+
+  // 리스트 이름을 찾는 곳 (위에서부터 차례로 시도).
+  // reliable: false 인 곳(표시 이름 등 엉뚱한 글자일 수 있음)에서 찾은 이름은 세션 캐시에 저장하지 않음
+  const LIST_NAME_SOURCES = [
+    {
+      // 1. 멤버 창의 제목
+      reliable: true,
+      find: ({ dialog }) => (dialog ? firstValidCleanName(dialog.querySelectorAll('h2, h1, [role="heading"]')) : '')
+    },
+    {
+      // 2. 본문 제목 (가장 믿을 만함)
+      reliable: true,
+      find: () => firstValidCleanName(
+        document.querySelectorAll('[data-testid="primaryColumn"] h2, main h2, h1[role="heading"]'),
+        isRecommendationTitle
+      )
+    },
+    {
+      // 3. 리스트 메인 화면에서 저장해 둔 이름 (멤버 화면 등 하위 화면에서만)
+      reliable: true,
+      find: ({ urlInfo, cacheKey }) => {
+        if (!cacheKey || urlInfo.isMain) return '';
+        const cached = safeSessionGet(cacheKey);
+        return cached && isValidListName(cached) ? cached : '';
+      }
+    },
+    {
+      // 4. 브라우저 탭 제목 (" - " 로 자르지 않고 시스템 문구만 지워 "AI - 연구자" 같은 이름 보존)
+      reliable: true,
+      find: () => {
+        const name = cleanListName(document.title || '');
+        return isValidListName(name) ? name : '';
+      }
+    },
+    {
+      // 5. 상단 바의 짧은 글자
+      reliable: false,
+      find: () => {
+        const topNavBar = document.querySelector('[data-testid="TopNavBar"], header[role="banner"]');
+        if (!topNavBar) return '';
+        for (const el of topNavBar.querySelectorAll('span, div[dir="auto"]')) {
+          const text = el.textContent.trim();
+          const usable = text && text.length < 50 && isValidListName(text) &&
+            !text.includes('팔로우 추천') && !text.includes('뒤로') &&
+            !text.includes('Back') && !text.startsWith('@');
+          if (usable) return text;
+        }
+        return '';
+      }
+    }
+  ];
+
+  // 화면에서 순수한 리스트 이름 읽기. 못 찾으면 "리스트 (ID)" 임시 이름
   function getListNameFromPage(urlInfo, dialog) {
-    let candidate = '';
-    // 이름의 출처. 신뢰할 수 있는 출처(헤딩/캐시/title)에서 얻은 이름만 세션 캐시에 저장
-    let reliable = true;
     const cacheKey = urlInfo && urlInfo.listId ? 'ag_list_name_' + urlInfo.listId : null;
+    const context = { urlInfo, dialog, cacheKey };
 
-    // 1. 모달 창 내부의 헤딩 (시스템 단어 배제)
-    if (dialog) {
-      for (const h of dialog.querySelectorAll('h2, h1, [role="heading"]')) {
-        const text = cleanListName(h.textContent.trim());
-        if (isValidListName(text)) {
-          candidate = text;
-          break;
-        }
+    let candidate = '';
+    let reliable = true;
+    for (const source of LIST_NAME_SOURCES) {
+      candidate = source.find(context);
+      if (candidate) {
+        reliable = source.reliable;
+        break;
       }
     }
 
-    // 2. DOM 내 메인 헤딩 요소 (primaryColumn / main) - 가장 신뢰도 높은 출처
-    if (!candidate) {
-      for (const h of document.querySelectorAll('[data-testid="primaryColumn"] h2, main h2, h1[role="heading"]')) {
-        const raw = h.textContent.trim();
-        if (raw.includes('팔로우 추천') || raw.includes('Who to follow')) continue;
-        const text = cleanListName(raw);
-        if (isValidListName(text)) {
-          candidate = text;
-          break;
-        }
-      }
-    }
-
-    // 3. 리스트 메인 페이지에서 저장해둔 이름 캐시 (멤버 하위 페이지에서 사용)
-    if (!candidate && cacheKey && !urlInfo.isMain) {
-      const cachedName = safeSessionGet(cacheKey);
-      if (cachedName && isValidListName(cachedName)) candidate = cachedName;
-    }
-
-    // 4. document.title 분석 (' - ' 로 무조건 자르지 않고 cleanListName 으로 시스템 접두사만 제거하여 'AI - 연구자' 등 보존)
-    if (!candidate) {
-      const titleCleaned = cleanListName(document.title || '');
-      if (isValidListName(titleCleaned)) candidate = titleCleaned;
-    }
-
-    // 5. TopNavBar 내 서브타이틀
-    if (!candidate) {
-      const topNavBar = document.querySelector('[data-testid="TopNavBar"], header[role="banner"]');
-      if (topNavBar) {
-        for (const span of topNavBar.querySelectorAll('span, div[dir="auto"]')) {
-          const text = span.textContent.trim();
-          if (text && text.length < 50 && isValidListName(text) &&
-              !text.includes('팔로우 추천') && !text.includes('뒤로') &&
-              !text.includes('Back') && !text.startsWith('@')) {
-            candidate = text;
-            reliable = false; // 표시 이름 등 엉뚱한 텍스트일 수 있으므로 캐시하지 않음
-            break;
-          }
-        }
-      }
-    }
-
-    // 6. listId 폴백
     const idFallback = urlInfo && urlInfo.listId ? '리스트 (' + urlInfo.listId + ')' : 'Unknown List';
     let finalName = cleanListName(candidate || idFallback);
-
-    // 최종 검증: 정제 결과가 시스템 단어이면 ID 폴백 사용
     if (isSystemListName(finalName)) finalName = idFallback;
 
-    // 신뢰할 수 있는 실제 리스트 이름일 때만 세션 캐시에 저장 (폴백 이름은 캐시하지 않음)
+    // 믿을 만한 곳에서 찾은 실제 이름만 캐시 (임시 이름은 캐시하지 않음)
     if (cacheKey && reliable && finalName !== 'Unknown List' && !isFallbackListName(finalName)) {
       safeSessionSet(cacheKey, finalName);
     }
     return finalName;
   }
 
-  // 화면 요소에서 순수 멤버 유저 핸들 추출 (팔로우 추천 철저히 차단)
+  // ==========================================
+  // 4. 멤버 수집 · 교체 동기화
+  // ==========================================
+
+  // 화면의 멤버 핸들 (멤버 창이 열려 있으면 창 안만, 아니면 본문만)
   function extractMembersFromPage(dialog) {
-    // 모달이 열려있으면 모달 내부만, 아니면 메인 콘텐츠 영역만 탐색
     const container = dialog || document.querySelector('[data-testid="primaryColumn"], main[role="main"]');
     return extractMembersFromContainer(container, dialog);
   }
 
-  // 현재 화면에서 수집 가능한 멤버를 읽고, 이번 방문 누적 목록(seenByList)에 더함.
+  // 멤버 화면에서 본 멤버를 이번 방문 누적 목록에 더함
+  function rememberSeenMembers(listId, listName, members) {
+    let seen = seenByList.get(listId);
+    if (!seen) {
+      seen = { listName, handles: new Map() };
+      seenByList.set(listId, seen);
+    }
+    seen.listName = listName;
+    members.forEach((member) => {
+      const lower = member.toLowerCase();
+      if (!seen.handles.has(lower)) seen.handles.set(lower, member);
+    });
+  }
+
+  // 지금 화면에서 수집할 수 있는 멤버를 읽고 이번 방문 누적 목록에 더함.
   // 성공: { success: true, urlInfo, listName, members }, 실패: { success: false, message }
   function collectVisibleMembers(isManual) {
     const urlInfo = parseListUrl(location.pathname);
-    // 비리스트 페이지에서는 불필요한 DOM 탐색(getMemberListDialog) 전에 즉시 종료
+    // 리스트가 아닌 화면에서는 DOM 을 살펴보기 전에 바로 종료
     if (!urlInfo) {
       return { success: false, message: '리스트 페이지가 아닙니다. 리스트의 멤버 화면에서 시도해주세요.' };
     }
     const dialog = getMemberListDialog();
 
-    // 리스트 메인 페이지는 자동 수집 대상이 아니라 아래에서 차단되지만, 이름이 가장 확실히 보이는 화면이므로
-    // 차단 검사 전에 이름을 한 번 읽어 세션 캐시를 채워 둡니다 (이후 멤버 화면에서 사용).
+    // 리스트 메인 화면은 자동 수집 대상이 아니라 아래에서 막히지만, 이름이 가장 확실히 보이는 화면이므로
+    // 막기 전에 이름을 한 번 읽어 세션 캐시를 채워 둠 (이후 멤버 화면에서 사용)
     if (urlInfo.isMain && !dialog && !isManual) {
       getListNameFromPage(urlInfo, null);
     }
 
-    // 수집 정책 (shared.js): 리스트 URL 아님 / 팔로워 페이지 / 추천 탭 / 자동 수집 허용 화면 여부
     const blockReason = getScrapeBlockReason(urlInfo, dialog || document, dialog, isManual);
-    if (blockReason) {
-      return { success: false, message: blockReason };
-    }
+    if (blockReason) return { success: false, message: blockReason };
 
     const listName = getListNameFromPage(urlInfo, dialog);
-    // 시스템 단어(멤버 관리, 리스트 등)는 어떤 경우에도 리스트로 등록 불가
     if (isSystemListName(listName)) {
       return { success: false, message: '리스트 이름을 확인할 수 없습니다. 리스트 페이지에서 다시 시도해주세요.' };
     }
@@ -279,23 +311,57 @@
       return { success: false, message: '순수 멤버를 찾을 수 없습니다. 멤버 목록이 보이는 상태에서 시도해주세요.' };
     }
 
-    // 멤버 화면(또는 멤버 창)에서 본 멤버만 교체 동기화용으로 누적
-    if (urlInfo.isMembers || dialog) {
-      let seen = seenByList.get(urlInfo.listId);
-      if (!seen) {
-        seen = { listName, handles: new Map() };
-        seenByList.set(urlInfo.listId, seen);
-      }
-      seen.listName = listName;
-      members.forEach(m => {
-        const lower = m.toLowerCase();
-        if (!seen.handles.has(lower)) seen.handles.set(lower, m);
-      });
-    }
+    // 교체 동기화용 누적은 멤버 화면(또는 멤버 창)에서 본 멤버만
+    if (urlInfo.isMembers || dialog) rememberSeenMembers(urlInfo.listId, listName, members);
+
     return { success: true, urlInfo, listName, members };
   }
 
-  // 교체 동기화 준비: 이번 방문 누적 목록과 저장 데이터를 비교한 결과 (저장하지 않음)
+  // 멤버를 읽어 background 에 저장 요청
+  // - isManual: 팝업 [⚡ 가져오기] 요청 (자동 수집 화면 제한과 중복 전송 방지를 건너뜀)
+  // - onSaved: background 저장 결과를 받을 콜백 (팝업에 실제 결과를 전달할 때)
+  function scrapeListMembers(isManual = false, onSaved = null) {
+    const collected = collectVisibleMembers(isManual);
+    if (!collected.success) return collected;
+    const { urlInfo, listName, members } = collected;
+
+    // 같은 데이터는 다시 보내지 않음 (스크롤/DOM 변경마다 background 를 오가지 않게)
+    const signature = buildScrapeSignature(listName, members);
+    if (!isManual && signature === lastSentSignature) {
+      return { success: true, listName, count: members.length, unchanged: true };
+    }
+    lastSentSignature = signature;
+
+    const reportFailure = (response) => {
+      lastSentSignature = ''; // 다음 시도에서 다시 보낼 수 있게
+      if (!onSaved) return;
+      onSaved({
+        success: false,
+        message: (response && (response.message || response.error)) || '저장에 실패했습니다. 다시 시도해주세요.'
+      });
+    };
+
+    try {
+      const message = { action: 'saveListMembers', data: { listName, listId: urlInfo.listId, members } };
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError || !response || !response.success) {
+          reportFailure(response);
+          return;
+        }
+        if (onSaved) {
+          onSaved({ success: true, listName: response.listName || listName, count: response.count, added: response.added || 0 });
+        }
+      });
+    } catch {
+      lastSentSignature = '';
+      if (!isContextValid()) shutdown();
+      return { success: false, message: '확장 프로그램 연결이 끊어졌습니다. 페이지를 새로고침해주세요.' };
+    }
+
+    return { success: true, pending: true, listName, count: members.length };
+  }
+
+  // 교체 동기화 계획: 이번 방문 누적 목록과 저장 데이터를 비교 (저장하지 않음)
   function getReplacePlan() {
     const collected = collectVisibleMembers(true);
     const urlInfo = parseListUrl(location.pathname);
@@ -303,11 +369,10 @@
     if (!seen || seen.handles.size === 0) {
       return {
         success: false,
-        message: collected.success
-          ? '교체 동기화는 리스트의 "멤버" 화면에서만 할 수 있습니다.'
-          : collected.message
+        message: collected.success ? '교체 동기화는 리스트의 "멤버" 화면에서만 할 수 있습니다.' : collected.message
       };
     }
+
     const handles = Array.from(seen.handles.values());
     const plan = applyListReplace(listData, seen.listName, handles, urlInfo.listId);
     if (!plan.success) return plan;
@@ -324,196 +389,234 @@
     };
   }
 
-  // 스크래핑 및 저장 실행
-  // - isManual: 팝업의 [⚡ 가져오기] 요청 여부 (멤버 관리 화면 차단 및 중복 전송 방지를 우회)
-  // - onSaved: background 저장 결과 콜백 (수동 요청 시 실제 저장 결과를 팝업에 전달)
-  function scrapeListMembers(isManual = false, onSaved = null) {
-    const collected = collectVisibleMembers(isManual);
-    if (!collected.success) return collected;
-    const { urlInfo, listName, members } = collected;
+  // ==========================================
+  // 5. 팝업 메시지 처리
+  // ==========================================
 
-    // 동일한 데이터는 다시 보내지 않음 (스크롤/DOM 변경마다 background 왕복 방지)
-    const signature = buildScrapeSignature(listName, members);
-    if (!isManual && signature === lastSentSignature) {
-      return { success: true, listName, count: members.length, unchanged: true };
-    }
-    lastSentSignature = signature;
-
-    try {
-      chrome.runtime.sendMessage({ action: 'saveListMembers', data: { listName, listId: urlInfo.listId, members } }, (response) => {
-        if (chrome.runtime.lastError || !response || !response.success) {
-          // 실패 시 다음 시도에서 다시 전송할 수 있도록 서명 초기화
-          lastSentSignature = '';
-          if (onSaved) {
-            onSaved({
-              success: false,
-              message: (response && (response.message || response.error)) || '저장에 실패했습니다. 다시 시도해주세요.'
-            });
-          }
-          return;
-        }
-        if (onSaved) {
-          onSaved({ success: true, listName: response.listName || listName, count: response.count, added: response.added || 0 });
-        }
-      });
-    } catch (err) {
-      lastSentSignature = '';
-      if (!isContextValid()) shutdown();
-      return { success: false, message: '확장 프로그램 연결이 끊어졌습니다. 페이지를 새로고침해주세요.' };
-    }
-
-    return { success: true, pending: true, listName, count: members.length };
-  }
-
-  // 팝업 등의 외부 요청 수신
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === 'scrapeNow') {
-      const res = scrapeListMembers(true, (saved) => sendResponse(saved));
-      if (res.pending) return true; // background 저장 결과를 기다린 뒤 비동기 응답
-      sendResponse(res);
+  // 각 처리 함수는 응답을 나중에 보내면(비동기) true 를 반환
+  const messageHandlers = {
+    // [⚡ 가져오기]: 지금 화면의 멤버 저장
+    scrapeNow(sendResponse) {
+      const result = scrapeListMembers(true, saved => sendResponse(saved));
+      if (result.pending) return true; // background 저장 결과를 기다린 뒤 응답
+      sendResponse(result);
       return false;
-    }
+    },
 
-    // 교체 동기화 1단계: 미리보기 (몇 명이 삭제/추가되는지)
-    if (request.action === 'replacePreview') {
+    // [🔄 교체 동기화] 1단계: 미리보기 (몇 명이 삭제/추가되는지)
+    replacePreview(sendResponse) {
       const plan = getReplacePlan();
       if (!plan.success) {
         sendResponse(plan);
-      } else {
-        sendResponse({
-          success: true, listName: plan.listName, seenCount: plan.seenCount,
-          previousCount: plan.previousCount, added: plan.added, removed: plan.removed
-        });
+        return false;
       }
+      sendResponse({
+        success: true,
+        listName: plan.listName,
+        seenCount: plan.seenCount,
+        previousCount: plan.previousCount,
+        added: plan.added,
+        removed: plan.removed
+      });
       return false;
-    }
+    },
 
-    // 교체 동기화 2단계: 실제 저장 (background 가 저장 큐에서 처리)
-    if (request.action === 'replaceNow') {
+    // [🔄 교체 동기화] 2단계: 실제 저장 (background 저장 큐에서 처리)
+    replaceNow(sendResponse) {
       const plan = getReplacePlan();
       if (!plan.success) {
         sendResponse(plan);
         return false;
       }
       try {
-        chrome.runtime.sendMessage({
+        const message = {
           action: 'replaceListMembers',
           data: { listName: plan.rawListName, listId: plan.listId, members: plan.handles }
-        }, (response) => {
+        };
+        chrome.runtime.sendMessage(message, (response) => {
           if (chrome.runtime.lastError || !response) {
             sendResponse({ success: false, message: '저장에 실패했습니다. 다시 시도해주세요.' });
             return;
           }
           sendResponse(response);
         });
-      } catch (err) {
+      } catch {
         if (!isContextValid()) shutdown();
         sendResponse({ success: false, message: '확장 프로그램 연결이 끊어졌습니다. 페이지를 새로고침해주세요.' });
         return false;
       }
       return true;
     }
-    return false;
+  };
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    const action = request && request.action;
+    if (!Object.prototype.hasOwnProperty.call(messageHandlers, action)) return false;
+    return messageHandlers[action](sendResponse);
   });
 
   // ==========================================
-  // 3. 타임라인 뱃지 주입 로직
+  // 6. 타임라인 배지
   // ==========================================
 
+  // 트윗 작성자 이름 영역에서 "@handle"(소문자)
   function getHandleFromUserInfo(userInfoDiv) {
     const handleSpan = Array.from(userInfoDiv.querySelectorAll('span'))
       .find(span => span.textContent.trim().startsWith('@'));
     if (handleSpan) return handleSpan.textContent.trim().toLowerCase();
 
     const link = userInfoDiv.querySelector('a[href^="/"]');
-    if (link) {
-      const match = (link.getAttribute('href') || '').match(/^\/([A-Za-z0-9_]{1,15})$/);
-      if (match) return '@' + match[1].toLowerCase();
+    const handle = link && getHandleFromProfileHref(link.getAttribute('href'));
+    return handle ? '@' + handle.toLowerCase() : null;
+  }
+
+  // 트윗에 붙인 배지·테두리·투명도를 지움 (X 가 트윗 DOM 을 다른 트윗에 재사용할 때 대비)
+  function resetTweetStyle(tweet) {
+    delete tweet.dataset.agProcessed;
+    tweet.style.borderLeft = '';
+    tweet.style.opacity = '';
+    tweet.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
+  }
+
+  function clearProcessedStyles() {
+    document.querySelectorAll(TWEET_SELECTOR).forEach(resetTweetStyle);
+  }
+
+  // 바뀐 핸들이 들어 있는 트윗만 초기화 후 다시 처리
+  function refreshTweetsByHandles(changedHandles) {
+    const changed = new Set(changedHandles);
+    const affected = [];
+    document.querySelectorAll(TWEET_SELECTOR).forEach((tweet) => {
+      if (isTweetAffected(tweet.dataset.agProcessed, changed)) {
+        resetTweetStyle(tweet);
+        affected.push(tweet);
+      }
+    });
+    if (affected.length > 0) processTimeline(affected);
+  }
+
+  // 이름 영역 옆에 리스트 배지들을 붙임 (이미 있는 배지는 건너뜀)
+  function addBadges(userInfoDiv, lists, isMainAuthor) {
+    const anchor = getBadgeAnchor(userInfoDiv);
+    if (!anchor) return;
+
+    let wrapper = anchor.querySelector('.ag-badges-wrapper');
+    if (!wrapper) {
+      wrapper = document.createElement('span');
+      wrapper.className = 'ag-badges-wrapper';
+      anchor.appendChild(wrapper);
     }
-    return null;
+
+    lists.forEach((list) => {
+      const exists = Array.from(wrapper.children).some(
+        el => el.classList.contains('ag-list-badge') && el.textContent === list.name
+      );
+      if (exists) return;
+
+      const badge = document.createElement('span');
+      // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
+      badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
+      badge.textContent = list.name;
+      applyBadgeStyle(badge, list.color, badgeSettings, isMainAuthor);
+      wrapper.appendChild(badge);
+    });
+  }
+
+  // 트윗 하나 처리: 작성자(와 인용된 작성자)마다 배지, 원 작성자의 리스트 모드로 강조/흐리게
+  function renderTweet(tweet) {
+    const userInfoDivs = tweet.querySelectorAll(USER_NAME_SELECTOR);
+    if (userInfoDivs.length === 0) return;
+
+    // X 가 가상 스크롤로 트윗 DOM 을 다른 작성자 트윗에 재사용해도, 작성자 핸들 서명이 다르면 초기화 후 다시 그림
+    const handles = Array.from(userInfoDivs, getHandleFromUserInfo);
+    const handlesKey = handles.map(h => h || '').join(',') || 'none';
+    if (tweet.dataset.agProcessed === handlesKey) return;
+    if (tweet.dataset.agProcessed) resetTweetStyle(tweet);
+
+    let highlightColor = '';
+    let shouldDim = false;
+
+    userInfoDivs.forEach((userInfoDiv, index) => {
+      const handle = handles[index];
+      const lists = handle && handleToListsMap[handle];
+      if (!lists) return;
+
+      const isMainAuthor = index === 0;
+      if (isMainAuthor) {
+        lists.forEach((list) => {
+          // 여러 강조 리스트에 속하면 첫 번째 리스트 색상 사용
+          if (list.mode === 'highlight' && !highlightColor) highlightColor = list.color;
+          else if (list.mode === 'dim') shouldDim = true;
+        });
+      }
+      addBadges(userInfoDiv, lists, isMainAuthor);
+    });
+
+    // 강조가 흐리게보다 우선
+    if (highlightColor) {
+      tweet.style.borderLeft = `4px solid ${highlightColor}`;
+    } else if (shouldDim) {
+      tweet.style.opacity = '0.5';
+    }
+
+    tweet.dataset.agProcessed = handlesKey;
   }
 
   // tweets 를 넘기면 그 트윗만, 생략하면 화면의 모든 트윗을 처리
   function processTimeline(tweets) {
     if (isShutDown) return;
-    // 저장된 리스트가 없으면 DOM 을 순회할 필요가 없음
+    // 저장된 리스트가 없으면 DOM 을 훑을 필요가 없음
     if (Object.keys(handleToListsMap).length === 0) return;
-
-    (tweets || document.querySelectorAll('article[data-testid="tweet"]')).forEach(tweet => {
-      const userInfoDivs = tweet.querySelectorAll('[data-testid="User-Name"]');
-      if (userInfoDivs.length === 0) return;
-
-      // X(Twitter) 가상 스크롤이 <article> 노드를 다른 작성자 트윗에 재사용하더라도
-      // 현재 트윗 내 작성자 핸들 서명(handlesKey)을 비교해 다르면 이전 배지/스타일을 초기화 후 재처리
-      const handles = Array.from(userInfoDivs).map(getHandleFromUserInfo);
-      const handlesKey = handles.map(h => h || '').join(',') || 'none';
-      if (tweet.dataset.agProcessed === handlesKey) return;
-      if (tweet.dataset.agProcessed) {
-        resetTweetStyle(tweet);
-      }
-
-      let highlightColor = '';
-      let shouldDim = false;
-
-      userInfoDivs.forEach((userInfoDiv, index) => {
-        const isMainAuthor = index === 0;
-        const handle = handles[index];
-        const lists = handle && handleToListsMap[handle];
-        if (!lists) return;
-
-        // 인용 트윗처럼 이름에 <a> 링크가 없으면 이름 영역 자체에 붙임 (shared.js getBadgeAnchor)
-        const anchor = getBadgeAnchor(userInfoDiv);
-        if (!anchor) return;
-
-        let wrapper = anchor.querySelector('.ag-badges-wrapper');
-        if (!wrapper) {
-          wrapper = document.createElement('span');
-          wrapper.className = 'ag-badges-wrapper';
-          anchor.appendChild(wrapper);
-        }
-
-        lists.forEach(list => {
-          if (isMainAuthor) {
-            // 여러 강조 리스트에 속한 경우 첫 번째 리스트 색상을 사용
-            if (list.mode === 'highlight' && !highlightColor) highlightColor = list.color;
-            else if (list.mode === 'dim') shouldDim = true;
-          }
-
-          const exists = Array.from(wrapper.children).some(
-            el => el.classList.contains('ag-list-badge') && el.textContent === list.name
-          );
-          if (exists) return;
-
-          const badge = document.createElement('span');
-          badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
-          badge.textContent = list.name;
-          applyBadgeStyle(badge, list.color, badgeSettings, isMainAuthor);
-          wrapper.appendChild(badge);
-        });
-      });
-
-      // 강조가 흐리게보다 우선
-      if (highlightColor) {
-        tweet.style.borderLeft = `4px solid ${highlightColor}`;
-      } else if (shouldDim) {
-        tweet.style.opacity = '0.5';
-      }
-
-      tweet.dataset.agProcessed = handlesKey;
-    });
+    (tweets || document.querySelectorAll(TWEET_SELECTOR)).forEach(renderTweet);
   }
 
   // ==========================================
-  // 4. MutationObserver 및 SPA 라우팅 감지
+  // 7. 화면 구조 점검 (팝업 경고용)
   // ==========================================
 
-  // DOM 변경 시 전체 트윗을 다시 훑지 않고, 변경된 노드에 속한 트윗만 모아서 처리합니다.
-  // (첫 로드/URL 변경/설정 변경 때만 전체 처리)
-  const TWEET_SELECTOR = 'article[data-testid="tweet"]';
-  const MAX_PENDING_TWEETS = 300;
-  const pendingTweets = new Set();
-  let needsFullScan = true;
+  function saveHealth(area, ok, message, at) {
+    const next = { ...storedHealth, [area]: { ok, message, at } };
+    storedHealth = next;
+    try {
+      chrome.storage.local.set({ structureHealth: next }).catch(() => {});
+    } catch {
+      if (!isContextValid()) shutdown();
+    }
+  }
 
+  function checkStructureHealth() {
+    if (isShutDown) return;
+    const urlInfo = parseListUrl(location.pathname);
+    const result = diagnoseStructure(document, urlInfo, urlInfo ? getMemberListDialog() : null);
+    if (!result) return; // 판단할 수 없는 화면
+
+    const now = Date.now();
+    // 정상 결과에는 message 가 없으므로(undefined) 항상 문자열로 맞춰 비교
+    const message = result.message || '';
+
+    // 새 결과면 기록을 미루고, 결과가 유지되는지 나중에 한 번 더 확인
+    const pending = pendingHealth[result.area];
+    if (!pending || pending.ok !== result.ok || pending.message !== message) {
+      pendingHealth[result.area] = { ok: result.ok, message, firstAt: now };
+      schedule(checkStructureHealth, HEALTH_SETTLE_MS + 100);
+      return;
+    }
+    if (now - pending.firstAt < HEALTH_SETTLE_MS) return;
+
+    const stored = storedHealth[result.area];
+    const sameAsStored = stored && stored.ok === result.ok && (stored.message || '') === message;
+    if (sameAsStored) return;
+    // 정상 상태를 처음 확인한 경우(기록 없음)는 굳이 쓰지 않음
+    if (!stored && result.ok) return;
+
+    saveHealth(result.area, result.ok, message, now);
+  }
+
+  // ==========================================
+  // 8. 화면 변화 감지 · 시작
+  // ==========================================
+
+  // 추가된 노드에 속한 트윗을 다시 처리할 목록에 모음
   function collectTweets(node) {
     if (needsFullScan || node.nodeType !== 1) return;
     const own = node.closest(TWEET_SELECTOR);
@@ -525,6 +628,7 @@
     }
   }
 
+  // DOM 변경을 200ms 묶어서: 배지 처리 → 멤버 자동 수집 → 화면 구조 점검
   const debouncedProcess = debounce(() => {
     if (isShutDown) return;
     if (!isContextValid()) {
@@ -544,90 +648,52 @@
     checkStructureHealth();
   }, 200);
 
-  // ==========================================
-  // 5. X 화면 구조 변화 감지 (팝업 경고용)
-  // ==========================================
-
-  // 같은 진단 결과가 이 시간 이상 유지될 때만 기록 (페이지 로딩 중 일시적인 상태 무시)
-  const HEALTH_SETTLE_MS = 2500;
-
-  function checkStructureHealth() {
-    if (isShutDown) return;
-    const urlInfo = parseListUrl(location.pathname);
-    const result = diagnoseStructure(document, urlInfo, urlInfo ? getMemberListDialog() : null);
-    if (!result) return;
-
-    const now = Date.now();
-    // 정상 결과에는 message 가 없으므로(undefined) 항상 문자열로 맞춰 비교
-    const message = result.message || '';
-    const pending = pendingHealth[result.area];
-    if (!pending || pending.ok !== result.ok || pending.message !== message) {
-      pendingHealth[result.area] = { ok: result.ok, message, firstAt: now };
-      // 결과가 유지되는지 나중에 한 번 더 확인
-      schedule(checkStructureHealth, HEALTH_SETTLE_MS + 100);
-      return;
-    }
-    if (now - pending.firstAt < HEALTH_SETTLE_MS) return;
-
-    const stored = storedHealth[result.area];
-    const sameAsStored = stored && stored.ok === result.ok && (stored.message || '') === message;
-    if (sameAsStored) return;
-    // 정상 상태를 처음 확인한 경우(저장된 기록 없음)는 굳이 쓰지 않음
-    if (!stored && result.ok) return;
-
-    const next = { ...storedHealth, [result.area]: { ok: result.ok, message, at: now } };
-    storedHealth = next;
-    try {
-      chrome.storage.local.set({ structureHealth: next }).catch(() => {});
-    } catch (e) {
-      if (!isContextValid()) shutdown();
-    }
-  }
-
   function requestFullScan() {
     needsFullScan = true;
     debouncedProcess();
   }
 
-  // SPA 라우팅 감지.
-  // content script 는 격리된 world 에서 실행되므로 history.pushState 를 덮어써도 페이지의 내비게이션을
-  // 가로챌 수 없습니다. 대신 DOM 변경(라우팅 시 항상 발생)과 popstate 시점에 URL 을 비교합니다.
+  // SPA 화면 이동 감지.
+  // content script 는 페이지와 분리된 공간에서 실행되어 history.pushState 를 가로챌 수 없으므로,
+  // DOM 변경(화면 이동 때 항상 발생)과 popstate 때 URL 을 비교합니다.
   function checkUrlChange() {
     if (location.href === lastUrl) return;
     lastUrl = location.href;
     lastSentSignature = '';
-    // 다른 화면으로 이동하면 "이번 방문" 누적 멤버를 비움 (같은 리스트의 멤버 화면에 머무는 경우만 유지)
+
+    // 다른 화면으로 가면 "이번 방문" 누적 멤버를 비움 (같은 리스트의 멤버 화면에 머무는 경우만 유지)
     const info = parseListUrl(location.pathname);
     for (const id of Array.from(seenByList.keys())) {
       if (!info || info.listId !== id || !info.isMembers) seenByList.delete(id);
     }
+
     schedule(requestFullScan, 300);
     schedule(requestFullScan, 1200);
   }
 
-  // MutationObserver 콜백은 비동기로 전달되므로 처리 중 플래그로는 자기 트리거를 막을 수 없습니다.
-  // 대신 확장 프로그램이 직접 삽입한 배지 노드만 추가된 변경은 무시합니다.
+  // MutationObserver 콜백은 비동기라 "처리 중" 표시로는 자기 변경을 걸러낼 수 없으므로,
+  // 확장 프로그램이 직접 넣은 배지 노드만 추가된 변경은 무시합니다.
   const observer = new MutationObserver((mutations) => {
     checkUrlChange();
     let hasRelevantChange = false;
-    for (const m of mutations) {
-      for (const n of m.addedNodes) {
-        if (n.nodeType !== 1 || isOwnInjectedNode(n)) continue;
+    for (const mutation of mutations) {
+      for (const node of mutation.addedNodes) {
+        if (node.nodeType !== 1 || isOwnInjectedNode(node)) continue;
         hasRelevantChange = true;
-        collectTweets(n);
+        collectTweets(node);
       }
     }
     if (hasRelevantChange) debouncedProcess();
   });
 
   function init() {
-    // 이전 버전이 남긴 하단 알림 및 플로팅 버튼 요소 잔여물 정리
+    // 이전 버전이 남긴 하단 알림·플로팅 버튼 정리
     document.getElementById('ag-floating-sync-btn')?.remove();
     document.getElementById('ag-toast')?.remove();
 
     loadData();
 
-    // 첫 로드 시 바로 스크래핑 및 뱃지 처리 시도 (늦게 렌더링되는 화면 대응)
+    // 늦게 그려지는 화면에 대비해 여러 번 처리
     requestFullScan();
     schedule(requestFullScan, 500);
     schedule(requestFullScan, 1500);
