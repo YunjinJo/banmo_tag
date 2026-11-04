@@ -21,9 +21,9 @@ jobs:
     name: 정적 검사
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
 
@@ -34,7 +34,7 @@ jobs:
     name: 테스트 및 빌드
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       # build.ps1: 버전 일치 확인 → 자동 테스트(headless Chrome) → dist/banmo_tag-v<버전>.zip
       - name: 테스트 + 패키징
@@ -50,7 +50,7 @@ jobs:
           "### 빌드 결과`n`n- 버전: v$v`n- 파일: banmo_tag-v$v.zip" >> $env:GITHUB_STEP_SUMMARY
 
       - name: 배포 zip 업로드
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: banmo_tag-v${{ steps.version.outputs.version }}
           path: dist/banmo_tag-v${{ steps.version.outputs.version }}.zip
@@ -68,13 +68,23 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: 빌드된 zip 받기
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v8
         with:
           name: banmo_tag-v${{ needs.build.outputs.version }}
           path: dist
+
+      # 릴리스를 건너뛰는 실행에서도 artifact 전달이 정상인지 매번 확인
+      - name: zip 확인
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          zip="dist/banmo_tag-v$VERSION.zip"
+          test -f "$zip" || { echo "::error::$zip 이 없습니다"; ls -R dist; exit 1; }
+          unzip -l "$zip"
+          unzip -l "$zip" | grep -q ' manifest.json$' || { echo "::error::zip 안에 manifest.json 이 없습니다"; exit 1; }
 
       - name: 릴리스 생성
         env:
