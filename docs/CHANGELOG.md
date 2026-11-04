@@ -23,7 +23,8 @@
 - **`shared.js` 폴백 제거**: `popup.js`/`content.js`가 폴백 상수로 로드 실패를 가리지 않고, 시작 시 원인을 분명히 알리고 중단합니다.
 - **변경된 트윗만 처리 (`content.js`)**: DOM이 바뀔 때마다 모든 트윗을 훑지 않고, 추가된 노드에 속한 트윗만 처리합니다. 첫 로드·URL 변경·설정 변경 때만 전체를 처리합니다.
 - **빌드 산출물 정리 (`build.ps1`)**: 같은 내용의 zip 두 개 대신 `dist/banmo_tag-v<버전>.zip` 하나만 만듭니다.
-- **저장소 구조 정리 (GitHub 비공개 저장소 구성)**: 원본 폴더를 `extension/`(Chrome 로드·배포 대상) 하나로 합치고, 테스트는 `tests/`, 빌드 스크립트는 `scripts/`, 문서는 `docs/`로 분리했습니다. 루트 복사(mirror) 단계를 없앴고, 문서 안의 `file:///` 절대 경로 링크를 상대 경로로 바꿨습니다. `main` push·PR 마다 GitHub Actions(`test.yml`)로 자동 테스트를 실행하며, 개인정보 처리방침(`docs/PRIVACY.md`)을 추가했습니다.
+- **저장소 구조 정리 (GitHub 비공개 저장소 구성)**: 원본 폴더를 `extension/`(Chrome 로드·배포 대상) 하나로 합치고, 테스트는 `tests/`, 빌드 스크립트는 `scripts/`, 문서는 `docs/`로 분리했습니다. 루트 복사(mirror) 단계를 없앴고, 문서 안의 로컬 절대 경로 링크를 상대 경로로 바꿨습니다. 개인정보 처리방침(`docs/PRIVACY.md`)을 추가했습니다.
+- **CI/CD (`.github/workflows/ci.yml`, `scripts/validate.js`)**: `main` push·PR 마다 정적 검사(manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반, `eval`/원격 코드 금지, 문서 링크)와 자동 테스트·배포 zip 빌드를 실행합니다. `main` push 에서 새 버전이면 CHANGELOG 의 해당 버전 내용을 릴리스 노트로 GitHub Release 를 만들고 zip 을 첨부합니다.
 - **Antigravity 흔적 정리**: `run-tests.ps1`, `test-runner.html` 제목, `README.md`.
 
 ### 🧪 Tests (테스트 추가)

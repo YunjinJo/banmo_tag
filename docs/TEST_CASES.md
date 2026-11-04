@@ -15,7 +15,7 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
   ```
 - **탐색기 원클릭**:
   - `tests\run-tests.bat` 파일을 더블 클릭
-- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/test.yml`](../.github/workflows/test.yml)이 Windows 러너에서 같은 테스트를 실행합니다.
+- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정적 검사([`scripts/validate.js`](../scripts/validate.js))와 같은 테스트(Windows 러너)를 실행하고 배포 zip 을 빌드합니다.
 - **작동 원리**:
   1. 시스템에 설치된 Chrome 또는 Edge의 Headless 모드(`--headless=new --dump-dom`)를 백그라운드로 실행.
   2. `test-runner.html`이 [`shared.js`](../extension/shared.js)를 직접 로드하여 **73개 단위 테스트**를 브라우저 환경에서 고속 실행(평균 10~15ms).

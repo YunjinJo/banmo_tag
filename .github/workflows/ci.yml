@@ -1,0 +1,96 @@
+name: CI/CD
+
+# main 에 push 할 때마다: 정적 검사 → 자동 테스트 + 배포 zip 빌드 → (새 버전이면) GitHub Release 생성
+# PR 에서는 검사·테스트·빌드까지만 실행합니다.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # PR 은 새 커밋이 오면 이전 실행을 취소, main 은 순서대로 모두 실행
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  validate:
+    name: 정적 검사
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+
+      - name: manifest / 파일 참조 / JS 문법 / CSP / 문서 링크 검사
+        run: node scripts/validate.js
+
+  build:
+    name: 테스트 및 빌드
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # build.ps1: 버전 일치 확인 → 자동 테스트(headless Chrome) → dist/banmo_tag-v<버전>.zip
+      - name: 테스트 + 패키징
+        shell: powershell
+        run: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
+
+      - name: 버전 확인
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "### 빌드 결과`n`n- 버전: v$v`n- 파일: banmo_tag-v$v.zip" >> $env:GITHUB_STEP_SUMMARY
+
+      - name: 배포 zip 업로드
+        uses: actions/upload-artifact@v5
+        with:
+          name: banmo_tag-v${{ steps.version.outputs.version }}
+          path: dist/banmo_tag-v${{ steps.version.outputs.version }}.zip
+          if-no-files-found: error
+          retention-days: 30
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+  release:
+    name: GitHub Release (새 버전일 때만)
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [validate, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: 빌드된 zip 받기
+        uses: actions/download-artifact@v6
+        with:
+          name: banmo_tag-v${{ needs.build.outputs.version }}
+          path: dist
+
+      - name: 릴리스 생성
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          tag="v$VERSION"
+          if gh release view "$tag" > /dev/null 2>&1; then
+            echo "릴리스 $tag 이(가) 이미 있어 건너뜁니다. (새 릴리스를 만들려면 manifest.json 과 CHANGELOG.md 의 버전을 올리세요)"
+            echo "- 릴리스 $tag 이미 있음 → 건너뜀" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          # CHANGELOG.md 에서 해당 버전 섹션만 잘라 릴리스 노트로 사용
+          awk -v head="## [$tag]" 'index($0, head) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' docs/CHANGELOG.md > notes.md
+          gh release create "$tag" "dist/banmo_tag-$tag.zip" \
+            --title "banmo_tag $tag" \
+            --notes-file notes.md \
+            --target "$GITHUB_SHA"
+          echo "- 릴리스 $tag 생성 완료" >> "$GITHUB_STEP_SUMMARY"

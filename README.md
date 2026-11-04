@@ -58,9 +58,21 @@ powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
 
 - 탐색기에서 `tests\run-tests.bat` 더블 클릭으로도 실행됩니다.
 - 브라우저에서 보기: `tests\test-runner.html` 열기
-- `main` push 및 PR 마다 GitHub Actions 에서 같은 테스트가 자동으로 실행됩니다.
-
 테스트 목록과 수동 확인 시나리오는 [docs/TEST_CASES.md](docs/TEST_CASES.md)에 있습니다.
+
+## CI/CD (GitHub Actions)
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)이 `main` push 와 PR 마다 자동으로 실행됩니다.
+
+| 단계 | 러너 | 내용 |
+|---|---|---|
+| 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 |
+| 테스트 및 빌드 | Windows | `scripts/build.ps1`: 자동 테스트(headless Chrome) → `banmo_tag-v<버전>.zip` 을 실행 결과(Artifacts)에 업로드 |
+| 릴리스 | Ubuntu | `main` push 이고 **새 버전**일 때만 GitHub Release `v<버전>` 생성, zip 첨부, CHANGELOG 내용을 릴리스 노트로 사용 |
+
+**새 버전 배포 방법**: `extension/manifest.json`의 `version`과 `docs/CHANGELOG.md` 맨 위 `## [vX.Y.Z]`를 함께 올려 `main`에 push 하면 됩니다. 버전이 같으면 검사·테스트·빌드만 하고 릴리스는 건너뜁니다.
+
+정적 검사는 로컬에서도 실행할 수 있습니다(Node.js 필요): `node scripts/validate.js`
 
 ## 빌드
 
