@@ -50,7 +50,7 @@ module.exports = [
     rules: { 'no-unused-vars': unusedLocalOnly }
   },
   {
-    files: ['scripts/**/*.js', 'tests/**/*.js', '*.config.js'],
+    files: ['scripts/**/*.js', 'tests/**/*.js', '*.config.js', '.claude/hooks/**/*.js'],
     ignores: ['tests/fixtures/**'],
     languageOptions: { sourceType: 'commonjs', globals: { ...globals.node } }
   },

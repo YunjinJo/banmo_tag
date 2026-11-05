@@ -19,6 +19,7 @@
 - **파이어폭스 검사·테스트**: CI 정적 검사에 Mozilla 부가 기능 사이트와 같은 검사(`web-ext lint`)를 추가하고, 실제 Firefox 에 임시 설치해 19가지 동작을 확인하는 `npm run test:firefox` 와 CI 작업을 추가했습니다.
 
 ### 🛠️ Changed (변경 및 개선)
+- **Claude Code 작업 설정 (`CLAUDE.md`, `.claude/`)**: 작업 규칙·명령·코드 규칙을 담은 `CLAUDE.md`, main 직접 커밋·push 를 막는 훅과 `.js` 수정 후 ESLint 훅, 읽기 전용 명령 허용 목록, 스킬 `/banmo-pr`(브랜치→PR) · `/banmo-release`(릴리스 준비) · `/x-snapshot`(실제 X 화면 스냅샷)을 추가했습니다.
 - **릴리스는 GitHub 에서 직접 (`.github/workflows/ci.yml`)**: CI 가 더 이상 GitHub Release 와 배포 zip(Artifacts)을 만들지 않습니다. CI 는 검사·테스트·zip 패키징 확인만 하며 저장소 쓰기 권한도 없습니다. 릴리스 방법은 README 의 "릴리스 (수동)" 참고.
 - **CHANGELOG `[Unreleased]` 항목**: 릴리스 전 변경 사항은 이 항목에 모으고, `npm run bump -- X.Y.Z` 가 이 항목을 새 버전 항목으로 바꿉니다. 버전 올리기 스크립트는 모든 변경을 계산한 뒤 한꺼번에 저장하도록 바꿔, 중간에 실패해도 `manifest.json` 만 바뀌는 일이 없습니다.
 
