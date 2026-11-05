@@ -85,6 +85,17 @@ TS-13 은 v1.5.0 에서 "타임라인:" 제목 처리 1건이 추가되어 5건�
 
 검사 도구(WebDriver BiDi) 제약으로 파일 선택 창 자체는 자동화하지 못해, 파일을 읽는 단계부터 같은 함수(`readBackupFile`)로 확인합니다.
 
+### 실제 x.com 에서 Firefox 확인 (수동, `npm run firefox:live` + `npm run firefox:run`)
+
+자동 테스트는 합성 페이지를 쓰므로, 로그인한 실제 x.com 에서의 동작은 화면에 보이는 Firefox 를 명령으로 조작해 확인합니다 (`tests/firefox/live-bridge.js`, 사용법은 README "실제 x.com 에서 Firefox 확인"). CI 에서는 실행하지 않습니다(로그인 필요). 확인 권장 항목:
+
+| 항목 | 기대 결과 |
+|---|---|
+| 리스트 메인 → "N 멤버" → 멤버 창 스크롤 | 리스트 이름 그대로 멤버 저장 |
+| 이름을 읽어 둔 적 없는 탭에서 `/i/lists/<ID>/members` 로 바로 | 임시 이름 `리스트 (ID)` 로 저장 ("내 홈 타임라인" 아님) |
+| 멤버 프로필·홈 타임라인 | 트윗 이름 옆 배지, 강조 모드 왼쪽 테두리 (x.com 탭이 앞에 있을 때 트윗 표시 후 약 2초 안) |
+| 팝업(`openExtensionPage('popup.html')`) | 리스트 카드에 배지·멤버 수·요약 |
+
 ### 파이어폭스 호환성 검사 (`npm run lint:firefox`)
 
 Mozilla 부가 기능 사이트(AMO) 제출 때와 같은 `web-ext lint`. 오류 0건이어야 하며, 경고 1건(`background.service_worker` 는 파이어폭스가 무시)은 의도된 것입니다.

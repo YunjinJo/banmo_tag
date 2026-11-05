@@ -89,12 +89,19 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 | `npm test` | Playwright: 실제 확장 프로그램 E2E 테스트(Chromium) + `shared.js` 단위 테스트 |
 | `npm run lint:firefox` | 파이어폭스 호환성 검사 (`web-ext lint`, Mozilla 부가 기능 사이트와 같은 검사) |
 | `npm run test:firefox` | 실제 Firefox 에 임시 설치해 주요 동작 확인 (`FIREFOX_BIN` 에 Firefox 경로 지정. 받기: `npx @puppeteer/browsers install firefox@stable`) |
+| `npm run firefox:login` / `firefox:live` / `firefox:run` | 화면에 보이는 Firefox 로 **실제 x.com** 에서 확인하는 조작 도구 (아래 "실제 x.com 에서 Firefox 확인") |
 | `npm run bump -- 1.7.0` | 릴리스할 때만: 버전 올리기 (manifest, CHANGELOG 의 `[Unreleased]` → 새 버전 항목, README, 테스트 러너 제목을 한 번에 변경) |
 
 ## 테스트
 
 - **E2E (Playwright)**: `npm test`. 실제 확장 프로그램을 Chromium 에 로드하고, `x.com` 요청에는 `tests/fixtures/` 의 HTML 로 응답해 팝업·content script·background 를 함께 검사합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
 - **실제 X 화면 스냅샷**: `tests/fixtures/real/` 에 넣으면 자동으로 검사됩니다. 만드는 법은 [tests/fixtures/README.md](tests/fixtures/README.md) 참고.
+- **실제 x.com 에서 Firefox 확인 (수동, 로그인 필요)**: 화면에 보이는 Firefox 를 명령으로 조작해, 로그인한 실제 x.com 에서 멤버 수집·배지·팝업을 확인합니다. 테스트 전용 프로필(`%LOCALAPPDATA%\banmo_tag-test\ff-live-profile`, 평소 쓰는 Firefox 와 별개)을 씁니다.
+  1. `npm run firefox:login` — 자동화 없이 Firefox 가 열리면 x.com 에 로그인하고 창을 닫습니다 (자동화 모드 창에서는 X 가 로그인을 막음). 처음 한 번만.
+  2. `npm run firefox:live` — 같은 프로필로 Firefox 를 열고 `extension/` 을 임시 설치한 뒤 명령을 기다립니다. 창을 닫으면 끝납니다.
+  3. 다른 터미널에서 `npm run firefox:run -- tests/firefox/live-example.js` 또는 `npm run firefox:run -- -e "await x('/home'); return await badges({ all: true });"`. 쓸 수 있는 도우미는 [tests/firefox/live.js](tests/firefox/live.js) 맨 위 설명 참고.
+  - Firefox 는 뒤쪽 탭의 타이머를 크게 늦춰서 배지가 수십 초 늦게 붙을 수 있으므로, 확인할 때는 x.com 탭을 앞에 둡니다(도우미 `x()`·`front()` 가 처리).
+  - 명령은 이 PC 안(127.0.0.1)에서, 실행할 때마다 새로 만드는 토큰이 있어야만 받습니다. 테스트 프로필에는 x.com 로그인 정보가 남으므로, 다 쓰면 폴더를 지워도 됩니다.
 - **`shared.js` 단위 테스트만** (Node.js 없이, Chrome 또는 Edge만 있으면 됨):
   ```powershell
   powershell -ExecutionPolicy Bypass -File .\tests\run-tests.ps1
