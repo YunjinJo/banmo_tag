@@ -1,0 +1,32 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-commit.js\"",
+            "timeout": 10,
+            "statusMessage": "main 브랜치 보호 확인"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/eslint-on-edit.js\"",
+            "timeout": 60,
+            "statusMessage": "ESLint 검사"
+          }
+        ]
+      }
+    ]
+  }
+}
