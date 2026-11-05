@@ -9,6 +9,10 @@
 
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
+---
+
+## [v1.7.0] - 2026-11-06
+
 ### 🚀 Added (새로운 기능)
 - **파이어폭스 지원 (Firefox 140 이상)**: 같은 `extension/` 폴더와 같은 zip 으로 크롬과 파이어폭스를 함께 지원합니다.
   - `manifest.json`: 크롬은 `background.service_worker`, 파이어폭스는 `background.scripts`(이벤트 페이지, `shared.js` → `background.js` 순서)를 씁니다. 파이어폭스 ID(`banmo_tag@yunjinjo`), 최소 버전, 데이터 수집 없음(`data_collection_permissions: none`)을 적었습니다.
@@ -16,8 +20,6 @@
   - **팝업 [↗] 새 탭에서 열기**: 팝업 화면을 일반 탭에서 엽니다. [현재 탭에서 가져오기]·[뺀 멤버 정리]는 열 때 보고 있던 X 탭을 대상으로 동작합니다.
   - **파이어폭스 팝업 우회**: 파이어폭스는 팝업에서 파일·색상 선택 창이나 다운로드를 열면 팝업이 닫혀 버립니다(Firefox 버그 1292701). 그래서 파이어폭스 팝업에서는 내보내기, 가져오기, 색상 선택을 누르면 같은 화면이 새 탭에서 열리고, 팝업에 그 이유를 안내합니다.
   - **x.com 접근 권한 안내**: 파이어폭스에서 사용자가 x.com 접근을 허용하지 않았으면 팝업에 안내와 [x.com 접근 허용] 버튼을 보여 줍니다(크롬은 설치할 때 허용되므로 표시되지 않음).
-- **파이어폭스 검사·테스트**: CI 정적 검사에 Mozilla 부가 기능 사이트와 같은 검사(`web-ext lint`)를 추가하고, 실제 Firefox 에 임시 설치해 19가지 동작을 확인하는 `npm run test:firefox` 와 CI 작업을 추가했습니다.
-- **실제 x.com 에서 Firefox 확인 도구 (`tests/firefox/live-bridge.js`, `live.js`)**: 화면에 보이는 Firefox 를 테스트 전용 프로필로 열어 `extension/` 을 임시 설치하고, 명령(스크립트)으로 로그인한 실제 x.com 에서 멤버 수집·배지·팝업을 확인합니다. `npm run firefox:login`(자동화 없이 로그인) → `npm run firefox:live` → `npm run firefox:run -- <스크립트>`. 개발용이며 확장 프로그램 동작은 바뀌지 않습니다.
 - **팝업 화면 새 디자인 (`popup.html`, `popup.js`)**
   - **[리스트 | 기본 스타일 | 도움말] 탭**으로 화면을 나눴습니다. 탭은 ← → Home End 키로도 오갈 수 있습니다.
   - **리스트 카드**: 실제 배지 모양, 멤버 수, "강조 · 개별 스타일 · @a, @b 외 N명" 요약을 보여 줍니다. **이름순 / 멤버 수** 정렬을 고를 수 있고 선택은 저장됩니다.
@@ -32,16 +34,17 @@
   - 긴 리스트 이름은 말줄임(…)으로 줄이고, 배지에 마우스를 올리면 전체 이름이 보입니다.
   - **흐리게** 모드는 트윗 전체 대신 프로필 사진·본문·미디어·버튼만 흐리게 해서, 이름과 배지는 또렷하게 읽힙니다. 흐리게 할 부분을 찾지 못하면 예전처럼 트윗 전체를 흐리게 합니다.
 
-### 🛠️ Changed (변경 및 개선)
-- **Claude Code 작업 설정 (`CLAUDE.md`, `.claude/`)**: 작업 규칙·명령·코드 규칙을 담은 `CLAUDE.md`, main 직접 커밋·push 를 막는 훅과 `.js` 수정 후 ESLint 훅, 읽기 전용 명령 허용 목록, 스킬 `/banmo-pr`(브랜치→PR) · `/banmo-release`(릴리스 준비) · `/x-snapshot`(실제 X 화면 스냅샷)을 추가했습니다.
-- **릴리스는 GitHub 에서 직접 (`.github/workflows/ci.yml`)**: CI 가 더 이상 GitHub Release 와 배포 zip(Artifacts)을 만들지 않습니다. CI 는 검사·테스트·zip 패키징 확인만 하며 저장소 쓰기 권한도 없습니다. 릴리스 방법은 README 의 "릴리스 (수동)" 참고.
-- **CHANGELOG `[Unreleased]` 항목**: 릴리스 전 변경 사항은 이 항목에 모으고, `npm run bump -- X.Y.Z` 가 이 항목을 새 버전 항목으로 바꿉니다. 버전 올리기 스크립트는 모든 변경을 계산한 뒤 한꺼번에 저장하도록 바꿔, 중간에 실패해도 `manifest.json` 만 바뀌는 일이 없습니다.
-
-- **정적 검사 추가 (`scripts/validate.js`)**: `popup.html` 의 `<head>` 첫 스크립트가 `theme.js` 인지, 흐리게 모드 선택자가 `shared.js` 와 `styles.css` 에서 같은지 확인합니다. 배포 zip 과 CI 패키징 확인에 `theme.js` 를 추가했습니다.
-
 ### 🐛 Fixed (버그 수정)
 - **배포 zip 의 폴더 경로가 `\` 로 저장되던 문제 (`scripts/build.ps1`)**: Windows PowerShell 5.1 의 `Compress-Archive` 가 `icons\icon16.png` 처럼 `\` 를 써서, 다른 도구나 Chrome 웹 스토어에서 `icons` 폴더로 인식되지 않을 수 있었습니다. zip 표준대로 `icons/icon16.png` 형식으로 만들고, CI 가 아이콘 포함 여부와 `\` 경로를 검사합니다.
 - **멤버 화면 주소로 바로 들어가면 리스트 이름이 "내 홈 타임라인"으로 저장되던 문제 (`content.js`)**: `x.com/i/lists/<ID>/members` 로 바로 들어가면 X 는 홈 타임라인을 배경에 깔고 그 위에 "리스트 멤버" 창을 띄웁니다. 이때 배경 화면의 제목("내 홈 타임라인")이나 탭 제목을 리스트 이름으로 읽었습니다. 이제 멤버 창이 떠 있으면 배경 화면은 읽지 않고, 리스트 메인 화면에서 읽어 둔 이름을 쓰며, 없으면 임시 이름 "리스트 (ID)" 로 저장합니다(나중에 실제 이름을 읽으면 자동으로 바뀜). E2E 테스트 2건 추가.
+
+### 🧪 Tests · 개발 환경 (확장 프로그램 동작과 무관)
+- **파이어폭스 검사·테스트**: CI 정적 검사에 Mozilla 부가 기능 사이트와 같은 검사(`web-ext lint`)를 추가하고, 실제 Firefox 에 임시 설치해 주요 동작을 확인하는 `npm run test:firefox` 와 CI 작업을 추가했습니다.
+- **실제 x.com 에서 Firefox 확인 도구 (`tests/firefox/live-bridge.js`, `live.js`)**: 화면에 보이는 Firefox 를 테스트 전용 프로필로 열어 `extension/` 을 임시 설치하고, 명령(스크립트)으로 로그인한 실제 x.com 에서 멤버 수집·배지·팝업을 확인합니다. `npm run firefox:login`(자동화 없이 로그인) → `npm run firefox:live` → `npm run firefox:run -- <스크립트>`.
+- **정적 검사 추가 (`scripts/validate.js`)**: `popup.html` 의 `<head>` 첫 스크립트가 `theme.js` 인지, 흐리게 모드 선택자가 `shared.js` 와 `styles.css` 에서 같은지 확인합니다. 배포 zip 과 CI 패키징 확인에 `theme.js` 를 추가했습니다.
+- **릴리스는 GitHub 에서 직접 (`.github/workflows/ci.yml`)**: CI 가 더 이상 GitHub Release 와 배포 zip(Artifacts)을 만들지 않습니다. CI 는 검사·테스트·zip 패키징 확인만 하며 저장소 쓰기 권한도 없습니다. 릴리스 방법은 README 의 "릴리스 (수동)" 참고.
+- **CHANGELOG `[Unreleased]` 항목**: 릴리스 전 변경 사항은 이 항목에 모으고, `npm run bump -- X.Y.Z` 가 이 항목을 새 버전 항목으로 바꿉니다. 버전 올리기 스크립트는 모든 변경을 계산한 뒤 한꺼번에 저장하도록 바꿔, 중간에 실패해도 `manifest.json` 만 바뀌는 일이 없습니다.
+- **Claude Code 작업 설정 (`CLAUDE.md`, `.claude/`)**: 작업 규칙·명령·코드 규칙을 담은 `CLAUDE.md`, main 직접 커밋·push 를 막는 훅과 `.js` 수정 후 ESLint 훅, 읽기 전용 명령 허용 목록, 스킬 `/banmo-pr`(브랜치→PR) · `/banmo-release`(릴리스 준비) · `/x-snapshot`(실제 X 화면 스냅샷)을 추가했습니다.
 
 ---
 
