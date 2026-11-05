@@ -13,7 +13,7 @@ const path = require('path');
 // stdin 의 JSON (Windows 에서 파이프로 받으면 앞에 BOM 이 붙을 수 있어 제거)
 function readStdin() {
   try {
-    return fs.readFileSync(0, 'utf8').replace(/^﻿/, '');
+    return fs.readFileSync(0, 'utf8').replace(/^\uFEFF/, '');
   } catch {
     return '';
   }
