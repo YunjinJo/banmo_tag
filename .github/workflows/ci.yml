@@ -128,7 +128,7 @@ jobs:
           $entries = $archive.Entries.FullName
           $archive.Dispose()
           $entries | ForEach-Object { Write-Host "  $_" }
-          $required = 'manifest.json', 'shared.js', 'content.js', 'background.js', 'popup.html', 'popup.js', 'styles.css',
+          $required = 'manifest.json', 'shared.js', 'content.js', 'background.js', 'popup.html', 'popup.js', 'theme.js', 'styles.css',
             'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png'
           $missing = $required | Where-Object { $entries -notcontains $_ }
           if ($missing) { Write-Error "zip 에 없는 파일: $($missing -join ', ')"; exit 1 }

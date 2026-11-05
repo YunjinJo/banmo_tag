@@ -2,628 +2,804 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
+  <meta name="color-scheme" content="light dark">
   <title>banmo_tag 설정</title>
+  <!-- 저장된 테마를 첫 화면 전에 적용 (깜빡임 방지). 다른 스크립트보다 먼저 -->
+  <script src="theme.js"></script>
   <style>
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      width: 330px;
-      padding: 16px;
-      background-color: #15202b;
-      color: #ffffff;
-      margin: 0;
-      box-sizing: border-box;
+    /* ==========================================
+       색 토큰: 라이트(기본) / 다크
+       - 테마 '시스템'(data-theme 없음)이면 운영체제 설정을 따름
+       - data-theme="light" | "dark" 이면 그 테마로 고정
+       - 본문 글자 대비 4.5:1 이상 (WCAG AA)
+       ========================================== */
+    :root {
+      color-scheme: light;
+      --bg: #ffffff;
+      --surface: #f7f9f9;
+      --surface-2: #eff3f4;
+      --border: #cfd9de;
+      --border-soft: #e1e8ed;
+      --text: #0f1419;
+      --muted: #536471;
+      --accent: #0b74c4;
+      --accent-hover: #095f9f;
+      --accent-text: #0b6bb0;
+      --accent-soft: #eef6fc;
+      --on-accent: #ffffff;
+      --invert-bg: #0f1419;
+      --invert-text: #ffffff;
+      --danger: #b4122a;
+      --danger-soft: #fdecef;
+      --success: #0a6e45;
+      --success-soft: #e7f6ef;
+      --warn-text: #6b4500;
+      --warn-soft: #fff4dc;
+      --warn-border: #e0a526;
+      --scrim: rgba(15, 20, 25, 0.38);
+      --shadow: 0 -8px 30px rgba(15, 20, 25, 0.22);
+      --card-shadow: 0 6px 24px rgba(15, 20, 25, 0.2);
+      --avatar: #cfd9de;
     }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --bg: #15202b;
+        --surface: #1c2833;
+        --surface-2: #253341;
+        --border: #3a4a58;
+        --border-soft: #2c3a47;
+        --text: #e7e9ea;
+        --muted: #9aa7b2;
+        --accent: #0b74c4;
+        --accent-hover: #1a86d8;
+        --accent-text: #6cb6ff;
+        --accent-soft: #17344d;
+        --on-accent: #ffffff;
+        --invert-bg: #e7e9ea;
+        --invert-text: #0f1419;
+        --danger: #ff6b81;
+        --danger-soft: #3a1d25;
+        --success: #4cd6a0;
+        --success-soft: #133229;
+        --warn-text: #ffd88a;
+        --warn-soft: #33290f;
+        --warn-border: #a87b14;
+        --scrim: rgba(0, 0, 0, 0.55);
+        --shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+        --card-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+        --avatar: #3a4a58;
+      }
+    }
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --bg: #15202b;
+      --surface: #1c2833;
+      --surface-2: #253341;
+      --border: #3a4a58;
+      --border-soft: #2c3a47;
+      --text: #e7e9ea;
+      --muted: #9aa7b2;
+      --accent: #0b74c4;
+      --accent-hover: #1a86d8;
+      --accent-text: #6cb6ff;
+      --accent-soft: #17344d;
+      --on-accent: #ffffff;
+      --invert-bg: #e7e9ea;
+      --invert-text: #0f1419;
+      --danger: #ff6b81;
+      --danger-soft: #3a1d25;
+      --success: #4cd6a0;
+      --success-soft: #133229;
+      --warn-text: #ffd88a;
+      --warn-soft: #33290f;
+      --warn-border: #a87b14;
+      --scrim: rgba(0, 0, 0, 0.55);
+      --shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+      --card-shadow: 0 6px 24px rgba(0, 0, 0, 0.55);
+      --avatar: #3a4a58;
+    }
+
+    /* ==========================================
+       기본
+       ========================================== */
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Apple SD Gothic Neo", "Malgun Gothic", Roboto, Helvetica, Arial, sans-serif;
+      width: 360px;
+      min-height: 440px;
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+    /* 시트가 열리면 팝업 창이 시트를 담을 만큼 커지도록 */
+    body.sheet-open { min-height: 580px; }
     /* 팝업 대신 일반 탭에서 열었을 때 (popup.html?view=tab) */
     body.tab-view {
       width: auto;
-      max-width: 520px;
+      max-width: 560px;
       margin: 0 auto;
       min-height: 100vh;
     }
-    .firefox-note {
-      font-size: 0.72rem;
-      color: #8899a6;
-      background: #192734;
-      border-radius: 6px;
-      padding: 6px 8px;
-      margin-bottom: 10px;
-      line-height: 1.4;
-    }
-    .header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid #38444d;
-      padding-bottom: 8px;
-      margin-bottom: 12px;
-    }
-    .header h1 {
-      margin: 0;
-      border: none;
-      font-size: 1.15rem;
-      color: #1d9bf0;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    .actions-bar {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      margin-bottom: 12px;
-    }
-    .sync-tab-btn {
-      width: 100%;
-      background: #1d9bf0;
-      color: white;
-      border: none;
-      padding: 8px 12px;
-      border-radius: 6px;
-      font-size: 0.85rem;
-      font-weight: bold;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: background 0.2s;
-    }
-    .sync-tab-btn:hover {
-      background: #1a8cd8;
-    }
-    .sync-status {
-      padding: 6px 10px;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      line-height: 1.3;
-      text-align: center;
-      margin-bottom: 8px;
-    }
-    .sync-status.success {
-      background: rgba(0, 186, 124, 0.2);
-      color: #00ba7c;
-      border: 1px solid #00ba7c;
-    }
-    .sync-status.error {
-      background: rgba(244, 33, 46, 0.2);
-      color: #f4212e;
-      border: 1px solid #f4212e;
-    }
-    .manual-toggle-btn {
-      width: 100%;
-      background: #22303c;
-      color: #8899a6;
-      border: 1px dashed #38444d;
-      padding: 6px;
-      border-radius: 6px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .manual-toggle-btn:hover {
-      background: #2c3e50;
-      color: #fff;
-    }
-    .manual-form {
-      background: #192734;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-    }
-    .manual-form input[type="text"],
-    .manual-form textarea {
-      width: 100%;
-      background: #22303c;
-      border: 1px solid #38444d;
-      color: white;
-      padding: 6px 8px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      box-sizing: border-box;
-      outline: none;
-    }
-    .manual-form textarea {
-      height: 54px;
-      resize: vertical;
-    }
-    .manual-form input[type="text"]:focus,
-    .manual-form textarea:focus {
-      border-color: #1d9bf0;
-    }
-    .manual-form-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 8px;
-    }
-    .list-wrapper {
-      margin-bottom: 10px;
-      background: #192734;
-      border-radius: 8px;
-      overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .list-item {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px;
-      gap: 8px;
-    }
-    .list-item:hover {
-      background: #22303c;
-    }
-    .list-toggle {
-      flex: 1;
-      background: none;
-      border: none;
-      color: inherit;
-      text-align: left;
-      padding: 0;
-      cursor: pointer;
-      font: inherit;
-      min-width: 0;
-    }
-    .list-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex-shrink: 0;
-    }
-    .list-name {
-      font-weight: bold;
-      font-size: 0.9rem;
-      word-break: break-word;
-    }
-    .list-info {
-      font-size: 0.75rem;
-      color: #8899a6;
-      margin-top: 2px;
-    }
-    .color-picker {
-      border: none;
-      width: 26px;
-      height: 26px;
-      border-radius: 4px;
-      cursor: pointer;
-      padding: 0;
-      background: none;
-    }
-    .color-picker::-webkit-color-swatch-wrapper {
-      padding: 0;
-    }
-    .color-picker::-webkit-color-swatch {
-      border: none;
-      border-radius: 4px;
-    }
-    .members-list {
-      display: none;
-      padding: 10px;
-      border-top: 1px solid #38444d;
-      font-size: 0.8rem;
-      color: #8899a6;
-      max-height: 280px;
-      overflow-y: auto;
-    }
-    /* 리스트별 배지 글자 스타일 (리스트를 펼치면 멤버 목록 위에 표시) */
-    .list-style-editor {
-      background: #22303c;
-      border-radius: 6px;
-      padding: 8px;
-      margin-bottom: 8px;
-    }
-    .list-style-title {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.75rem;
-      margin-bottom: 6px;
-    }
-    .list-style-state {
-      font-size: 0.7rem;
-      color: #8899a6;
-    }
-    .list-style-state.custom {
-      color: #ffd88a;
-    }
-    .list-style-controls {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 6px;
-    }
-    .list-style-controls select,
-    .list-style-controls input[type="number"] {
-      background: #192734;
-      color: white;
-      border: 1px solid #38444d;
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 0.75rem;
-    }
-    .list-style-controls input[type="number"] {
-      width: 46px;
-    }
-    .list-style-controls select {
-      max-width: 120px;
-    }
-    .list-style-preview {
-      margin-top: 6px;
-    }
-    .list-style-actions {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 6px;
-    }
-    .small-btn {
-      background: #192734;
-      color: #8899a6;
-      border: 1px solid #38444d;
-      border-radius: 4px;
-      padding: 3px 8px;
-      font-size: 0.72rem;
-      cursor: pointer;
-      white-space: nowrap;
-      flex-shrink: 0;
-    }
-    .small-btn:hover:not(:disabled) {
-      color: #fff;
-      border-color: #8899a6;
-    }
-    .small-btn:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-    .members-empty {
-      display: block;
-    }
-    .members-list.show {
-      display: block;
-    }
-    .member-handle {
-      display: inline-flex;
-      align-items: center;
-      margin-right: 6px;
-      margin-bottom: 4px;
-      background: #22303c;
-      padding: 2px 6px;
-      border-radius: 4px;
-      color: #1d9bf0;
-      font-size: 0.75rem;
-    }
-    .remove-member-btn {
-      background: none;
-      border: none;
-      padding: 0;
-      margin-left: 4px;
-      cursor: pointer;
-      color: #8899a6;
-      font-weight: bold;
-      font-size: 0.8rem;
-      line-height: 1;
-    }
-    .remove-member-btn:hover {
-      color: #f4212e;
-    }
-    .empty-state {
-      text-align: center;
-      color: #8899a6;
-      font-size: 0.85rem;
-      margin: 16px 0;
-      line-height: 1.5;
-    }
-    .guide {
-      font-size: 0.78rem;
-      color: #8899a6;
-      margin-top: 14px;
-      line-height: 1.4;
-      background: #192734;
-      padding: 10px;
-      border-radius: 8px;
-    }
-    .reset-btn {
-      background: #e0245e;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .reset-btn:hover {
-      background: #c91e50;
-    }
-    .util-btn {
-      background: #1d9bf0;
-      color: white;
-      border: none;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 0.8rem;
-      cursor: pointer;
-      font-weight: bold;
-    }
-    .util-btn:hover {
-      background: #1a8cd8;
-    }
-    .sync-tab-btn:disabled {
-      opacity: 0.65;
-      cursor: wait;
-    }
-    .import-choice {
-      display: none;
-      flex-direction: column;
-      gap: 6px;
-      background: #192734;
-      border: 1px solid #38444d;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 10px;
-      font-size: 0.8rem;
-    }
-    .import-choice-actions {
-      display: flex;
-      gap: 6px;
-      justify-content: flex-end;
-    }
-    .mode-select {
-      background: #22303c;
-      color: white;
-      border: 1px solid #38444d;
-      border-radius: 4px;
-      padding: 2px 4px;
-      font-size: 0.8rem;
-      cursor: pointer;
-    }
-    .delete-list-btn {
-      background: none;
-      color: #8899a6;
-      border: none;
-      cursor: pointer;
-      font-size: 1.2rem;
-      padding: 0 4px;
-      line-height: 1;
-    }
-    .delete-list-btn:hover {
-      color: #e0245e;
-    }
-    .settings-section {
-      background: #192734;
-      border-radius: 8px;
-      padding: 10px;
-      margin-bottom: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.05);
-    }
-    .settings-header {
-      /* <button> 기본 모양 제거 (키보드로 열 수 있도록 div 대신 button 사용) */
-      width: 100%;
-      background: none;
-      border: none;
-      padding: 0;
-      font-family: inherit;
-      text-align: left;
-      font-size: 0.85rem;
-      font-weight: bold;
-      color: #8899a6;
-      margin-bottom: 8px;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
+    button, select, input, textarea { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    button:disabled { opacity: 0.5; cursor: default; }
     button:focus-visible,
     select:focus-visible,
     input:focus-visible,
-    textarea:focus-visible {
-      outline: 2px solid #1d9bf0;
+    textarea:focus-visible,
+    .segmented input:focus-visible + span {
+      outline: 2px solid var(--accent);
       outline-offset: 2px;
     }
-    .health-warning {
-      background: rgba(255, 173, 31, 0.12);
-      border: 1px solid #ffad1f;
-      color: #ffd88a;
-      border-radius: 8px;
-      padding: 8px 10px;
-      font-size: 0.78rem;
-      line-height: 1.4;
-      margin-bottom: 10px;
+    [hidden] { display: none !important; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
     }
-    .resync-btn {
-      margin-top: -2px;
+    .muted { color: var(--muted); }
+
+    .app {
+      padding: 12px 16px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
     }
-    #confirm-text {
-      white-space: pre-line;
-      line-height: 1.45;
-    }
-    .settings-header:hover {
-      color: #fff;
-    }
-    .settings-body {
-      display: none;
-    }
-    .settings-body.show {
-      display: block;
-    }
-    .setting-row {
+
+    /* ==========================================
+       머리글 · 메뉴
+       ========================================== */
+    .header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 8px;
+      position: relative;
     }
-    .setting-label {
-      font-size: 0.8rem;
-      color: #8899a6;
-    }
-    .setting-hint {
-      font-size: 0.72rem;
-      color: #8899a6;
-      line-height: 1.4;
-      margin-bottom: 8px;
-    }
-    .setting-control {
+    .header h1 {
+      margin: 0;
+      font-size: 17px;
+      font-weight: 800;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 8px;
     }
-    .setting-control select,
-    .setting-control input[type="number"] {
-      background: #22303c;
-      color: white;
-      border: 1px solid #38444d;
-      border-radius: 4px;
-      padding: 3px 6px;
-      font-size: 0.8rem;
-      outline: none;
+    .header h1 img { border-radius: 6px; }
+    .header-actions { display: flex; gap: 2px; }
+    .icon-btn {
+      width: 32px;
+      height: 32px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
     }
-    .setting-control input[type="number"] {
-      width: 50px;
-    }
-    .setting-control select {
-      min-width: 100px;
-    }
-    .badge-preview {
-      display: inline-block;
-      padding: 2px 6px;
+    .icon-btn:hover { background: var(--surface-2); color: var(--text); }
+    .icon-btn.round { border-radius: 50%; background: var(--surface-2); color: var(--text); }
+
+    .menu {
+      position: absolute;
+      top: 38px;
+      right: 0;
+      z-index: 20;
+      min-width: 190px;
+      padding: 6px;
       border-radius: 12px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg);
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+    }
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      padding: 9px 10px;
+      border: none;
+      border-radius: 8px;
+      background: transparent;
+      text-align: left;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .menu-item:hover, .menu-item:focus-visible { background: var(--surface-2); }
+    .menu-item.danger { color: var(--danger); }
+    .menu-sep { height: 1px; margin: 4px 6px; background: var(--border-soft); }
+
+    /* ==========================================
+       알림 (권한 · 구조 경고 · 파이어폭스 안내 · 상태 메시지)
+       ========================================== */
+    .notice {
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-size: 12px;
+      line-height: 1.45;
+    }
+    .notice.warn {
+      background: var(--warn-soft);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+    }
+    .notice.info {
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+      color: var(--muted);
+    }
+    .notice .btn { margin-top: 6px; }
+    /* 상태 메시지: 어느 탭·시트에서도 보이도록 화면 위에 떠 있는 알림 (누르면 닫힘) */
+    .sync-status {
+      position: fixed;
+      top: 10px;
+      left: 16px;
+      right: 16px;
+      z-index: 60;
+      max-width: 528px;
+      margin: 0 auto;
+      box-shadow: var(--card-shadow);
+      cursor: pointer;
+      border-radius: 10px;
+      padding: 8px 12px;
+      font-size: 12.5px;
+      line-height: 1.35;
+      text-align: center;
+    }
+    .sync-status.success { background: var(--success-soft); color: var(--success); border: 1px solid currentColor; }
+    .sync-status.error { background: var(--danger-soft); color: var(--danger); border: 1px solid currentColor; }
+
+    /* ==========================================
+       탭
+       ========================================== */
+    .tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      border-bottom: 1px solid var(--border-soft);
+    }
+    .tab {
+      padding: 10px 0;
+      border: none;
+      border-bottom: 3px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      font-size: 13.5px;
+      font-weight: 600;
+    }
+    .tab:hover { color: var(--text); }
+    .tab[aria-selected="true"] {
+      color: var(--text);
+      font-weight: 800;
+      border-bottom-color: var(--accent);
+    }
+    .panel { display: flex; flex-direction: column; gap: 12px; }
+
+    /* ==========================================
+       버튼 · 입력
+       ========================================== */
+    .btn {
+      height: 36px;
+      padding: 0 14px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 13px;
       font-weight: 700;
       white-space: nowrap;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-      letter-spacing: 0.3px;
-      margin-top: 8px;
     }
+    .btn:hover:not(:disabled) { background: var(--surface-2); }
+    .btn.primary { border-color: var(--accent); background: var(--accent); color: var(--on-accent); }
+    .btn.primary:hover:not(:disabled) { background: var(--accent-hover); border-color: var(--accent-hover); }
+    .btn.dark { border-color: var(--invert-bg); background: var(--invert-bg); color: var(--invert-text); }
+    .btn.dark:hover:not(:disabled) { opacity: 0.88; background: var(--invert-bg); }
+    .btn.danger-solid { border-color: var(--danger); background: var(--danger); color: var(--bg); }
+    .btn.danger-text { border-color: transparent; background: transparent; color: var(--danger); }
+    .btn.danger-text:hover:not(:disabled) { background: var(--danger-soft); }
+    .btn.small { height: 30px; padding: 0 10px; font-size: 12px; }
+    .btn.big { height: 44px; font-size: 13.5px; }
+    .btn.wait:disabled { cursor: wait; }
+
+    .actions-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .field-label {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .input, .select {
+      height: 36px;
+      padding: 0 10px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      font-size: 13px;
+      min-width: 0;
+    }
+    textarea.input { height: 64px; padding: 8px 10px; resize: vertical; }
+    .pill-select {
+      height: 30px;
+      padding: 0 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .color-input {
+      width: 36px;
+      height: 36px;
+      padding: 2px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    .color-input::-webkit-color-swatch-wrapper { padding: 0; }
+    .color-input::-webkit-color-swatch { border: none; border-radius: 6px; }
+    .color-input::-moz-color-swatch { border: none; border-radius: 6px; }
+
+    /* 세 칸짜리 선택 (타임라인 표시 · 화면 테마). 실제 라디오 버튼이라 방향키로 고를 수 있음 */
+    .segmented {
+      display: grid;
+      grid-auto-columns: minmax(0, 1fr);
+      grid-auto-flow: column;
+      padding: 3px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      border: none;
+      margin: 0;
+    }
+    .segmented label { display: block; position: relative; }
+    .segmented input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+    .segmented span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 32px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      pointer-events: none;
+    }
+    .segmented input:checked + span {
+      background: var(--bg);
+      color: var(--text);
+      font-weight: 800;
+      box-shadow: 0 1px 3px rgba(15, 20, 25, 0.2);
+    }
+
+    /* ==========================================
+       리스트 목록
+       ========================================== */
+    .section-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .section-head h2 { margin: 0; font-size: 14px; font-weight: 800; }
+    .section-head-actions { display: flex; gap: 6px; align-items: center; }
+
+    .manual-form {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border-soft);
+      background: var(--surface);
+    }
+    .manual-form-row { display: flex; align-items: center; gap: 8px; }
+    .manual-form-row .select { flex: 1; }
+
+    .list-container { display: flex; flex-direction: column; gap: 8px; }
+    .list-card {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      width: 100%;
+      padding: 12px;
+      border: 1px solid var(--border-soft);
+      border-radius: 14px;
+      background: var(--surface);
+      text-align: left;
+    }
+    .list-card:hover { border-color: var(--border); }
+    .list-card.is-open { border: 2px solid var(--accent); background: var(--accent-soft); padding: 11px; }
+    .list-card-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      width: 100%;
+      min-width: 0;
+    }
+    .list-count { font-size: 12.5px; color: var(--muted); flex-shrink: 0; }
+    .list-info {
+      font-size: 12.5px;
+      color: var(--muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      width: 100%;
+    }
+    /* 배지 모양 (리스트 카드 · 시트 · 미리보기). 색·글자는 applyBadgeStyle 이 실제 배지와 똑같이 넣음 */
+    .badge-chip {
+      display: inline-block;
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+      line-height: 1.3;
+    }
+    .empty-state {
+      text-align: center;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 24px 8px;
+      line-height: 1.6;
+      border: 1px dashed var(--border);
+      border-radius: 14px;
+    }
+
+    /* ==========================================
+       리스트 설정 시트 (아래에서 올라오는 창)
+       ========================================== */
+    .sheet-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      background: var(--scrim);
+    }
+    .sheet {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 31;
+      max-height: calc(100vh - 24px);
+      overflow-y: auto;
+      padding: 10px 16px 18px;
+      background: var(--bg);
+      border-radius: 18px 18px 0 0;
+      box-shadow: var(--shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+    body.tab-view .sheet { max-width: 560px; margin: 0 auto; }
+    .sheet-handle { width: 40px; height: 4px; border-radius: 2px; background: var(--border); align-self: center; flex-shrink: 0; }
+    .sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .sheet-title { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .sheet-body { display: flex; flex-direction: column; gap: 14px; }
+    .swatches { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .swatch {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: none;
+      padding: 0;
+    }
+    .swatch[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+    .swatch-custom {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      border: 1px dashed var(--muted);
+      padding: 2px;
+      background: var(--bg);
+      cursor: pointer;
+    }
+    .swatch-custom.is-selected { border-style: solid; box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--text); }
+    .swatch-custom::-webkit-color-swatch-wrapper { padding: 0; }
+    .swatch-custom::-webkit-color-swatch { border: none; border-radius: 50%; }
+    .swatch-custom::-moz-color-swatch { border: none; border-radius: 50%; }
+    .grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .text-color-row { display: flex; align-items: center; gap: 10px; }
+    .text-color-row .color-input { width: 44px; height: 30px; }
+    .list-style-state { margin-left: auto; font-size: 12px; color: var(--muted); text-align: right; }
+    .list-style-state.custom { color: var(--accent-text); font-weight: 700; }
+    .list-style-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    /* 미리보기 트윗 */
+    .tweet-preview {
+      display: flex;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 12px;
+      border: 1px solid var(--border-soft);
+      background: var(--bg);
+    }
+    .tweet-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--avatar); flex-shrink: 0; }
+    .tweet-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+    .tweet-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; }
+    .tweet-text { font-size: 13px; }
+    .tweet-preview.is-dim .tweet-avatar,
+    .tweet-preview.is-dim .tweet-text { opacity: 0.45; }
+
+    .sheet-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    .members-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-height: 180px;
+      overflow-y: auto;
+      padding: 10px;
+      border-radius: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border-soft);
+    }
+    .members-empty { color: var(--muted); font-size: 12.5px; }
+    .member-handle {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      padding: 3px 4px 3px 8px;
+      border-radius: 999px;
+      background: var(--surface-2);
+      color: var(--accent-text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .remove-member-btn {
+      width: 20px;
+      height: 20px;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      padding: 0;
+      font-size: 14px;
+      line-height: 1;
+    }
+    .remove-member-btn:hover { color: var(--danger); background: var(--danger-soft); }
+
+    /* ==========================================
+       확인 상자 · 가져오기 선택 (화면 가운데 카드)
+       ========================================== */
+    .modal-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: var(--scrim);
+    }
+    .modal-card {
+      width: 100%;
+      max-width: 340px;
+      padding: 16px;
+      border-radius: 16px;
+      background: var(--bg);
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      font-size: 13px;
+    }
+    #confirm-text { white-space: pre-line; line-height: 1.5; }
+    .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+
+    /* ==========================================
+       기본 스타일 · 도움말 탭
+       ========================================== */
+    .card {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      padding: 12px;
+      border-radius: 14px;
+      border: 1px solid var(--border-soft);
+      background: var(--surface);
+    }
+    .card h2 { margin: 0; font-size: 14px; font-weight: 800; }
+    .card .hint { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+    .setting-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .setting-row .select { width: 150px; }
+    .preview-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+    .guide { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px; line-height: 1.55; }
+    .guide strong { font-weight: 700; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h1><img src="icons/icon32.png" alt="" width="20" height="20" style="border-radius: 4px;"> banmo_tag</h1>
-    <div style="display: flex; gap: 4px;">
-      <button id="open-tab-btn" class="util-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">↗</button>
-      <button id="export-btn" class="util-btn" title="설정 내보내기" aria-label="설정 내보내기">📤</button>
-      <button id="import-btn" class="util-btn" title="설정 가져오기" aria-label="설정 가져오기">📥</button>
-      <button id="reset-btn" class="reset-btn" title="데이터 초기화" aria-label="데이터 초기화">🗑️</button>
-      <input type="file" id="import-file" accept=".json" style="display:none;">
-    </div>
-  </div>
-
-  <div id="import-choice" class="import-choice">
-    <div id="import-choice-text">파일을 가져올 방식을 선택하세요.</div>
-    <div class="import-choice-actions">
-      <button id="import-merge-btn" type="button" class="util-btn">병합</button>
-      <button id="import-replace-btn" type="button" class="reset-btn">덮어쓰기</button>
-      <button id="import-cancel-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">취소</button>
-    </div>
-  </div>
-
-  <div id="confirm-box" class="import-choice" role="alertdialog" aria-labelledby="confirm-text">
-    <div id="confirm-text"></div>
-    <div class="import-choice-actions">
-      <button id="confirm-ok-btn" type="button" class="reset-btn">확인</button>
-      <button id="confirm-cancel-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">취소</button>
-    </div>
-  </div>
-
-  <div id="health-warning" class="health-warning" role="status" style="display:none;"></div>
-
-  <div id="permission-warning" class="health-warning" role="status" style="display:none;">
-    <strong>⚠️ x.com 접근 권한이 꺼져 있습니다</strong>
-    <div>이 브라우저에서 banmo_tag 의 x.com 접근이 허용되지 않아 멤버 수집과 배지가 동작하지 않습니다.</div>
-    <button id="grant-permission-btn" type="button" class="util-btn" style="margin-top: 6px;">x.com 접근 허용</button>
-  </div>
-
-  <div id="firefox-note" class="firefox-note" style="display:none;">
-    파이어폭스에서는 팝업에서 파일·색상 선택 창을 열면 팝업이 닫혀 버려서, 백업(📤 📥)과 색상 선택은 새 탭에서 열립니다.
-  </div>
-
-  <div class="actions-bar">
-    <button id="sync-current-tab-btn" class="sync-tab-btn">⚡ 현재 열린 트위터 리스트 가져오기</button>
-    <button id="resync-replace-btn" type="button" class="manual-toggle-btn resync-btn"
-      title="이번에 멤버 화면에서 확인한 멤버로 저장 목록을 교체합니다. X 리스트에서 뺀 멤버가 정리됩니다.">🔄 멤버 목록 교체 동기화 (뺀 멤버 정리)</button>
-    <div id="sync-status" class="sync-status" style="display:none;"></div>
-    <button id="toggle-manual-add-btn" class="manual-toggle-btn" aria-expanded="false">+ 직접 리스트 추가</button>
-  </div>
-
-  <div id="manual-add-form" class="manual-form" style="display:none;">
-    <input type="text" id="manual-name" placeholder="리스트 이름 (예: 주요 인물)">
-    <textarea id="manual-members" placeholder="멤버 핸들 입력 (@elonmusk, @openai 등 쉼표나 줄바꿈으로 구분)"></textarea>
-    <div class="manual-form-row">
-      <div style="display: flex; align-items: center; gap: 6px;">
-        <input type="color" id="manual-color" class="color-picker" value="#1d9bf0">
-        <select id="manual-mode" class="mode-select">
-          <option value="normal">기본</option>
-          <option value="highlight">강조</option>
-          <option value="dim">흐리게</option>
-        </select>
+  <div id="app" class="app">
+    <header class="header">
+      <h1><img src="icons/icon32.png" alt="" width="24" height="24"> banmo_tag</h1>
+      <div class="header-actions">
+        <button id="open-tab-btn" type="button" class="icon-btn" title="새 탭에서 열기" aria-label="새 탭에서 열기">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+        </button>
+        <button id="menu-btn" type="button" class="icon-btn" title="메뉴" aria-label="메뉴" aria-haspopup="menu" aria-expanded="false" aria-controls="app-menu">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M5 12h.01M12 12h.01M19 12h.01"/></svg>
+        </button>
       </div>
-      <button id="manual-save-btn" class="util-btn" style="padding: 6px 12px;">추가 저장</button>
+      <div id="app-menu" class="menu" role="menu" aria-label="메뉴" hidden>
+        <button id="export-btn" type="button" class="menu-item" role="menuitem">백업 파일로 내보내기</button>
+        <button id="import-btn" type="button" class="menu-item" role="menuitem">백업 파일 가져오기</button>
+        <div class="menu-sep" role="separator"></div>
+        <button id="reset-btn" type="button" class="menu-item danger" role="menuitem">모든 리스트 초기화</button>
+      </div>
+      <input type="file" id="import-file" accept=".json" hidden>
+    </header>
+
+    <div id="health-warning" class="notice warn" role="status" style="display:none;"></div>
+
+    <div id="permission-warning" class="notice warn" role="status" style="display:none;">
+      <strong>x.com 접근 권한이 꺼져 있습니다</strong>
+      <div>이 브라우저에서 banmo_tag 의 x.com 접근이 허용되지 않아 멤버 수집과 배지가 동작하지 않습니다.</div>
+      <button id="grant-permission-btn" type="button" class="btn primary small">x.com 접근 허용</button>
     </div>
-  </div>
 
-  <div id="list-container">
-    <div class="empty-state">로딩 중...</div>
-  </div>
+    <div id="firefox-note" class="notice info" style="display:none;">
+      파이어폭스에서는 팝업에서 파일·색상 선택 창을 열면 팝업이 닫혀 버려서, 백업과 "다른 색" 선택은 새 탭에서 열립니다.
+    </div>
 
-  <div class="settings-section">
-    <button type="button" class="settings-header" id="toggle-badge-settings" aria-expanded="false" aria-controls="badge-settings-body">
-      <span>🎨 배지 스타일 설정 (모든 리스트 공통)</span>
-      <span id="settings-arrow" aria-hidden="true">▶</span>
-    </button>
-    <div class="settings-body" id="badge-settings-body">
-      <div class="setting-hint">리스트를 펼치면 그 리스트만의 글자 색상·크기·폰트를 따로 정할 수 있습니다. 따로 정하지 않은 항목은 여기 설정을 따릅니다.</div>
-      <div class="setting-row">
-        <span class="setting-label">글자 색상</span>
-        <div class="setting-control">
-          <input type="color" id="badge-text-color" class="color-picker" value="#ffffff">
-        </div>
+    <div class="tabs" role="tablist" aria-label="화면">
+      <button id="tab-lists" type="button" class="tab" role="tab" aria-selected="true" aria-controls="panel-lists">리스트</button>
+      <button id="tab-style" type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-style" tabindex="-1">기본 스타일</button>
+      <button id="tab-help" type="button" class="tab" role="tab" aria-selected="false" aria-controls="panel-help" tabindex="-1">도움말</button>
+    </div>
+
+    <!-- 리스트 탭 -->
+    <section id="panel-lists" class="panel" role="tabpanel" aria-labelledby="tab-lists">
+      <div class="actions-grid">
+        <button id="sync-current-tab-btn" type="button" class="btn primary big wait"
+          title="지금 보고 있는 X 리스트 멤버 화면에서 멤버를 가져옵니다.">현재 탭에서 가져오기</button>
+        <button id="resync-replace-btn" type="button" class="btn big wait"
+          title="이번에 멤버 화면에서 확인한 멤버로 저장 목록을 교체합니다. X 리스트에서 뺀 멤버가 정리됩니다.">뺀 멤버 정리</button>
       </div>
-      <div class="setting-row">
-        <span class="setting-label">글자 크기</span>
-        <div class="setting-control">
-          <input type="number" id="badge-font-size" min="8" max="20" value="11"> px
-        </div>
-      </div>
-      <div class="setting-row">
-        <span class="setting-label">폰트</span>
-        <div class="setting-control">
-          <select id="badge-font-family">
-            <option value="system">시스템 기본</option>
-            <option value="'Arial', sans-serif">Arial</option>
-            <option value="'Roboto', sans-serif">Roboto</option>
-            <option value="'Noto Sans KR', sans-serif">Noto Sans KR</option>
-            <option value="'Pretendard', sans-serif">Pretendard</option>
-            <option value="monospace">Monospace</option>
-            <option value="'Georgia', serif">Georgia</option>
+      <div class="section-head">
+        <h2>내 리스트 <span id="list-count" class="muted"></span></h2>
+        <div class="section-head-actions">
+          <select id="list-sort" class="pill-select" aria-label="리스트 정렬">
+            <option value="name">이름순</option>
+            <option value="members">멤버 수</option>
           </select>
+          <button id="toggle-manual-add-btn" type="button" class="btn dark small" aria-expanded="false" aria-controls="manual-add-form">+ 추가</button>
         </div>
       </div>
-      <div class="setting-row" style="align-items: center;">
-        <div>
-          <span class="setting-label">미리보기: </span>
-          <div id="badge-preview" class="badge-preview" style="background-color: #1d9bf0; color: white; font-size: 11px;">SAMPLE</div>
+
+      <div id="manual-add-form" class="manual-form" style="display:none;">
+        <label class="field">
+          <span class="field-label">리스트 이름</span>
+          <input type="text" id="manual-name" class="input" placeholder="예: 주요 인물">
+        </label>
+        <label class="field">
+          <span class="field-label">멤버 핸들</span>
+          <textarea id="manual-members" class="input" placeholder="@elonmusk, @openai (쉼표나 줄바꿈으로 구분)"></textarea>
+        </label>
+        <div class="manual-form-row">
+          <input type="color" id="manual-color" class="color-input" value="#0b74c4" aria-label="배지 색">
+          <select id="manual-mode" class="select" aria-label="타임라인 표시">
+            <option value="normal">배지만</option>
+            <option value="highlight">강조</option>
+            <option value="dim">흐리게</option>
+          </select>
+          <button id="manual-save-btn" type="button" class="btn primary">저장</button>
         </div>
-        <button id="badge-reset-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">기본값</button>
       </div>
-      <div class="setting-row">
-        <span id="badge-custom-count" class="setting-label"></span>
-        <button id="badge-apply-all-btn" type="button" class="small-btn"
-          title="리스트별로 따로 정한 글자 스타일을 지우고, 모든 리스트가 위의 공통 스타일을 쓰게 합니다.">모든 리스트에 적용</button>
+
+      <div id="list-container" class="list-container">
+        <div class="empty-state">로딩 중...</div>
+      </div>
+    </section>
+
+    <!-- 기본 스타일 탭 -->
+    <section id="panel-style" class="panel" role="tabpanel" aria-labelledby="tab-style" hidden>
+      <div class="card">
+        <h2>화면 테마</h2>
+        <div class="segmented" role="radiogroup" aria-label="화면 테마">
+          <label><input type="radio" name="theme" id="theme-system" value="system" checked><span>시스템</span></label>
+          <label><input type="radio" name="theme" id="theme-light" value="light"><span>라이트</span></label>
+          <label><input type="radio" name="theme" id="theme-dark" value="dark"><span>다크</span></label>
+        </div>
+        <p class="hint">시스템을 고르면 운영체제의 라이트/다크 설정을 따라 바뀝니다.</p>
+      </div>
+
+      <div id="badge-settings-body" class="card">
+        <h2>배지 기본 글자 스타일</h2>
+        <p class="hint">모든 리스트 배지에 쓰입니다. 리스트를 누르면 그 리스트만 따로 정할 수 있고, 따로 정하지 않은 항목은 여기 설정을 따릅니다.</p>
+        <div class="setting-row">
+          <label class="field-label" for="badge-text-color">글자 색</label>
+          <input type="color" id="badge-text-color" class="color-input" value="#ffffff">
+        </div>
+        <div class="setting-row">
+          <label class="field-label" for="badge-font-size">글자 크기</label>
+          <select id="badge-font-size" class="select"></select>
+        </div>
+        <div class="setting-row">
+          <label class="field-label" for="badge-font-family">폰트</label>
+          <select id="badge-font-family" class="select"></select>
+        </div>
+        <div class="preview-row">
+          <div>
+            <span class="field-label">미리보기</span>
+            <span id="badge-preview" class="badge-chip">SAMPLE</span>
+          </div>
+          <button id="badge-reset-btn" type="button" class="btn small">기본값</button>
+        </div>
+        <div class="setting-row">
+          <span id="badge-custom-count" class="field-label"></span>
+          <button id="badge-apply-all-btn" type="button" class="btn small"
+            title="리스트별로 따로 정한 글자 스타일을 지우고, 모든 리스트가 위의 공통 스타일을 쓰게 합니다.">모든 리스트에 적용</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 도움말 탭 -->
+    <section id="panel-help" class="panel" role="tabpanel" aria-labelledby="tab-help" hidden>
+      <div class="card">
+        <h2>사용 안내</h2>
+        <ul class="guide">
+          <li>X(Twitter) 리스트의 <strong>멤버(구성원) 화면</strong>을 열면 자동으로 멤버를 모읍니다.</li>
+          <li><strong>[현재 탭에서 가져오기]</strong>를 누르면 지금 보고 있는 멤버 화면에서 바로 가져옵니다.</li>
+          <li>X 리스트에서 뺀 멤버를 정리하려면 멤버 화면을 끝까지 스크롤한 뒤 <strong>[뺀 멤버 정리]</strong>를 누르세요.</li>
+          <li><strong>[+ 추가]</strong>로 리스트와 핸들을 직접 입력할 수도 있습니다.</li>
+          <li>리스트를 누르면 배지 색, 글자 크기·폰트, 타임라인 표시(배지만 / 강조 / 흐리게)를 바꾸고 멤버를 관리할 수 있습니다.</li>
+          <li>타임라인에서 배지가 많으면 몇 개만 보이고 나머지는 <strong>+N</strong>으로 묶입니다. 마우스를 올리면 모든 리스트 이름이 보입니다.</li>
+          <li>오른쪽 위 <strong>⋯ 메뉴</strong>에서 백업 파일로 내보내기·가져오기를 할 수 있습니다.</li>
+        </ul>
+      </div>
+    </section>
+  </div>
+
+  <!-- 리스트 설정 시트 -->
+  <div id="sheet-backdrop" class="sheet-backdrop" hidden></div>
+  <section id="list-sheet" class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheet-title" hidden>
+    <div class="sheet-handle" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <div class="sheet-title">
+        <span id="sheet-title" class="badge-chip"></span>
+        <span id="sheet-count" class="muted"></span>
+      </div>
+      <button id="sheet-close-btn" type="button" class="icon-btn round" aria-label="닫기" title="닫기">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+      </button>
+    </div>
+    <div id="sheet-body" class="sheet-body"></div>
+  </section>
+
+  <!-- 가져오기 방식 선택 -->
+  <div id="import-choice" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="import-choice-text">
+    <div class="modal-card">
+      <div id="import-choice-text">파일을 가져올 방식을 선택하세요.</div>
+      <div class="modal-actions">
+        <button id="import-cancel-btn" type="button" class="btn">취소</button>
+        <button id="import-replace-btn" type="button" class="btn danger-solid">덮어쓰기</button>
+        <button id="import-merge-btn" type="button" class="btn primary">병합</button>
       </div>
     </div>
   </div>
 
-  <div class="guide">
-    <strong>💡 사용 안내:</strong><br>
-    • X(Twitter) 리스트의 <strong>멤버(구성원) 화면</strong>을 열면 자동으로 멤버를 수집합니다.<br>
-    • 상단의 <strong>[⚡ 현재 열린 트위터 리스트 가져오기]</strong> 버튼을 누르면 현재 탭에서 즉시 수집합니다.<br>
-    • X 리스트에서 뺀 멤버를 정리하려면, 멤버 화면을 끝까지 스크롤한 뒤 <strong>[🔄 멤버 목록 교체 동기화]</strong>를 누르세요.<br>
-    • 필요 시 <strong>[+ 직접 리스트 추가]</strong>로 핸들을 직접 입력할 수도 있습니다.<br>
-    • 리스트를 펼치면 그 리스트 배지의 글자 색상·크기·폰트를 따로 정할 수 있습니다.
+  <!-- 확인 상자 (브라우저 confirm() 대신) -->
+  <div id="confirm-box" class="modal-layer" role="alertdialog" aria-modal="true" aria-labelledby="confirm-text">
+    <div class="modal-card">
+      <div id="confirm-text"></div>
+      <div class="modal-actions">
+        <button id="confirm-cancel-btn" type="button" class="btn">취소</button>
+        <button id="confirm-ok-btn" type="button" class="btn danger-solid">확인</button>
+      </div>
+    </div>
   </div>
+
+  <div id="sync-status" class="sync-status" role="status" style="display:none;"></div>
 
   <script src="shared.js"></script>
   <script src="popup.js"></script>

@@ -15,8 +15,9 @@ banmo_tag(이하 "확장 프로그램")는 X(Twitter) 타임라인에서 사용�
 | 정보 | 저장 위치 | 용도 |
 |---|---|---|
 | 리스트 이름, 리스트 ID, 멤버 핸들(@아이디) | `chrome.storage.local` | 타임라인에서 리스트 멤버를 알아보고 배지를 붙이기 위해 |
-| 리스트별 배지 색상, 표시 모드(기본/강조/흐리게), 리스트별 배지 글자 스타일(글자 색상·크기·폰트) | `chrome.storage.local` | 사용자가 정한 표시 방식을 유지하기 위해 |
+| 리스트별 배지 색상, 표시 모드(배지만/강조/흐리게), 리스트별 배지 글자 스타일(글자 색상·크기·폰트) | `chrome.storage.local` | 사용자가 정한 표시 방식을 유지하기 위해 |
 | 배지 스타일 설정(글자 색상, 크기, 폰트) | `chrome.storage.local` | 배지 모양을 유지하기 위해 |
+| 팝업 화면 설정(테마: 시스템/라이트/다크, 리스트 정렬 방식) | `chrome.storage.local` (테마는 팝업을 열 때 깜빡이지 않도록 확장 프로그램 페이지의 `localStorage` 에도 한 번 더 저장) | 사용자가 고른 팝업 화면 모양을 유지하기 위해 |
 | 현재 보고 있는 리스트의 이름 | X 탭의 `sessionStorage` (탭을 닫으면 삭제) | 리스트 메인 화면에서 멤버 화면으로 이동할 때 이름을 이어 쓰기 위해 |
 | 화면 구조 점검 결과 (영역: 멤버 수집/타임라인, 정상 여부, 안내 문구, 확인 시각) | `chrome.storage.local` | X 화면 구조가 바뀌어 기능이 멈췄을 때 팝업에서 알려 주기 위해. URL·화면 내용·핸들은 저장하지 않음 |
 
@@ -41,11 +42,11 @@ banmo_tag(이하 "확장 프로그램")는 X(Twitter) 타임라인에서 사용�
 
 ## 백업 파일
 
-팝업의 📤 내보내기를 누르면 리스트와 배지 설정이 JSON 파일로 **사용자의 컴퓨터에** 저장됩니다. 이 파일은 사용자가 직접 관리하며, 확장 프로그램이 다른 곳으로 보내지 않습니다.
+팝업 ⋯ 메뉴의 [백업 파일로 내보내기]를 누르면 리스트와 배지 설정이 JSON 파일로 **사용자의 컴퓨터에** 저장됩니다. 이 파일은 사용자가 직접 관리하며, 확장 프로그램이 다른 곳으로 보내지 않습니다.
 
 ## 데이터 삭제
 
-- 팝업의 🗑️ 초기화 버튼으로 저장된 리스트를 모두 지울 수 있습니다.
+- 팝업 ⋯ 메뉴의 [모든 리스트 초기화]로 저장된 리스트를 모두 지울 수 있습니다.
 - 확장 프로그램을 제거하면 브라우저에 저장된 데이터도 함께 삭제됩니다.
 
 ## 변경
@@ -64,4 +65,4 @@ Chrome 웹 스토어 등록 페이지에 적힌 개발자 연락처로 문의해
 
 ## English summary
 
-banmo_tag does not collect, transmit, sell, or share any personal data. List names, list IDs, member handles, display colors/modes, badge style settings and a page-structure check status (area, ok flag, message, time; no URLs or page content) are stored only in the user's browser (`chrome.storage.local`, plus a tab-scoped `sessionStorage` cache of the current list name). The extension runs only on x.com / twitter.com, reads list member handles and tweet author handles locally to show badges, and never sends page content anywhere. It uses no analytics, ads, remote servers, or remote code. Users can delete all data with the reset button or by uninstalling the extension.
+banmo_tag does not collect, transmit, sell, or share any personal data. List names, list IDs, member handles, display colors/modes, badge style settings, popup display preferences (theme and list sort order) and a page-structure check status (area, ok flag, message, time; no URLs or page content) are stored only in the user's browser (`chrome.storage.local`, a copy of the theme choice in the extension page's `localStorage`, plus a tab-scoped `sessionStorage` cache of the current list name). The extension runs only on x.com / twitter.com, reads list member handles and tweet author handles locally to show badges, and never sends page content anywhere. It uses no analytics, ads, remote servers, or remote code. Users can delete all data with the reset button or by uninstalling the extension.

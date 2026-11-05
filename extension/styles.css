@@ -1,37 +1,75 @@
-/* styles.css */
-/* 뱃지들을 한 줄로 담는 래퍼 컨테이너 */
+/* styles.css — X 타임라인에 넣는 배지 스타일 */
+
+/* 배지들을 한 줄로 담는 래퍼 */
 .ag-badges-wrapper {
   display: inline-flex !important;
   flex-direction: row;
   align-items: center;
-  flex-wrap: wrap !important; /* 창 크기가 작을 때 줄바꿈 허용 여부 */
-  gap: 4px !important; /* 뱃지 간 간격 */
+  flex-wrap: wrap !important; /* 아주 좁은 화면에서는 줄바꿈 허용 */
+  gap: 4px !important;
   margin-left: 6px !important;
+  min-width: 0;
+  max-width: 100%;
 }
 
-/* 타임라인에 주입될 뱃지 스타일
+/* 리스트 배지
    CSS 커스텀 속성(--ag-badge-*)과 인라인 !important(shared.js applyBadgeStyle)를 함께 지원합니다. */
 .ag-list-badge {
   display: inline-block !important;
-  width: max-content; /* 글자 길이에 딱 맞춤 */
-  white-space: nowrap !important; /* 줄바꿈 방지 */
-  padding: 2px 6px !important;
+  width: max-content;
+  max-width: 10em !important; /* 긴 리스트 이름은 말줄임 (전체 이름은 title 툴팁) */
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  padding: 2px 7px !important;
   border-radius: 12px !important;
   font-size: var(--ag-badge-fs, 11px) !important;
   font-weight: 700 !important;
   color: var(--ag-badge-fg, #ffffff) !important;
   background-color: var(--ag-badge-bg, #1d9bf0) !important;
   vertical-align: middle !important;
-  line-height: 1.2 !important;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  line-height: 1.25 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
   letter-spacing: 0.3px;
-  text-shadow: 0 0 1px rgba(0,0,0,0.3), 0 0 2px rgba(0,0,0,0.15) !important;
+  text-shadow: 0 0 1px rgba(0, 0, 0, 0.3), 0 0 2px rgba(0, 0, 0, 0.15) !important;
 }
 
-/* 인용/스레드 등을 위한 미니 뱃지 */
+/* 넘친 배지를 묶은 "+N" (마우스를 올리면 모든 리스트 이름) */
+.ag-badge-more {
+  display: inline-block !important;
+  white-space: nowrap !important;
+  padding: 2px 7px !important;
+  border-radius: 12px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1.25 !important;
+  vertical-align: middle !important;
+  color: #ffffff !important;
+  background-color: #536471 !important; /* 흰 글자 대비 6.4:1 */
+  cursor: help;
+}
+
+/* 인용 트윗 등의 작성자에게 붙는 작은 배지 */
 .ag-list-badge.mini-badge {
   font-size: var(--ag-badge-fs, 9px) !important;
   padding: 1px 4px !important;
   opacity: 0.85;
 }
+.ag-badge-more.mini-badge {
+  font-size: 9px !important;
+  padding: 1px 4px !important;
+}
 
+/* 흐리게 모드: 프로필 사진·본문·미디어·버튼만 흐리게 하고, 이름과 배지는 또렷하게.
+   선택자 목록은 shared.js 의 AG_DIM_TARGET_SELECTOR 와 같아야 합니다. */
+[data-ag-dim="body"] :is(
+  [data-testid="Tweet-User-Avatar"], [data-testid="tweetText"], [data-testid="tweetPhoto"],
+  [data-testid="card.wrapper"], [data-testid="videoPlayer"], [data-testid="videoComponent"], [role="group"]
+) {
+  opacity: 0.45 !important;
+}
+
+/* 흐리게 할 부분을 찾지 못한 트윗은 예전처럼 전체를 흐리게 */
+[data-ag-dim="all"] {
+  opacity: 0.5 !important;
+}

@@ -473,8 +473,9 @@
   // 트윗에 붙인 배지·테두리·투명도를 지움 (X 가 트윗 DOM 을 다른 트윗에 재사용할 때 대비)
   function resetTweetStyle(tweet) {
     delete tweet.dataset.agProcessed;
+    delete tweet.dataset.agDim;
     tweet.style.borderLeft = '';
-    tweet.style.opacity = '';
+    tweet.style.opacity = ''; // 이전 버전이 트윗 전체에 넣던 투명도
     tweet.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
   }
 
@@ -506,21 +507,31 @@
       wrapper.className = 'ag-badges-wrapper';
       anchor.appendChild(wrapper);
     }
+    wrapper.textContent = '';
 
-    lists.forEach((list) => {
-      const exists = Array.from(wrapper.children).some(
-        el => el.classList.contains('ag-list-badge') && el.textContent === list.name
-      );
-      if (exists) return;
-
+    // 배지가 많으면 이름 줄이 여러 줄로 밀리므로, 몇 개만 보이고 나머지는 "+N" 으로 묶음
+    const { visible, hidden } = splitTimelineBadges(lists, AG_TIMELINE_MAX_BADGES);
+    visible.forEach((list) => {
       const badge = document.createElement('span');
       // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
       badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
       badge.textContent = list.name;
+      // 긴 이름은 말줄임(…)으로 잘리므로 전체 이름은 툴팁으로
+      badge.title = list.name;
       // 글자 스타일: 공통 설정 위에 이 리스트만의 설정(list.style)을 덮어씀
       applyBadgeStyle(badge, list.color, getEffectiveBadgeSettings(badgeSettings, list.style), isMainAuthor);
       wrapper.appendChild(badge);
     });
+
+    if (hidden.length > 0) {
+      const all = visible.concat(hidden).map(l => l.name);
+      const more = document.createElement('span');
+      more.className = isMainAuthor ? 'ag-badge-more' : 'ag-badge-more mini-badge';
+      more.textContent = `+${hidden.length}`;
+      more.title = `banmo_tag 리스트 ${all.length}개: ${all.join(', ')}`;
+      more.setAttribute('aria-label', more.title);
+      wrapper.appendChild(more);
+    }
   }
 
   // 트윗 하나 처리: 작성자(와 인용된 작성자)마다 배지, 원 작성자의 리스트 모드로 강조/흐리게
@@ -557,7 +568,9 @@
     if (highlightColor) {
       tweet.style.borderLeft = `4px solid ${highlightColor}`;
     } else if (shouldDim) {
-      tweet.style.opacity = '0.5';
+      // 본문·사진·버튼만 흐리게 하고 이름과 배지는 또렷하게 (styles.css).
+      // 흐리게 할 부분을 찾지 못하면(X 화면 구조 변경 등) 예전처럼 트윗 전체를 흐리게
+      tweet.dataset.agDim = tweet.querySelector(AG_DIM_TARGET_SELECTOR) ? 'body' : 'all';
     }
 
     tweet.dataset.agProcessed = handlesKey;

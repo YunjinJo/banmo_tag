@@ -68,6 +68,7 @@ $runtimeItems = @(
     "background.js",
     "popup.html",
     "popup.js",
+    "theme.js",
     "styles.css",
     "icons"
 )

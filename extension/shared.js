@@ -19,6 +19,7 @@
 //   7. 입력 · 백업        parseHandles, normalizeImportedLists, mergeImportedLists,
 //                         normalizeBadgeSettings, buildBackup, parseBackup
 //   8. 화면 구조 진단     countProfileLinks, diagnoseStructure, getStructureWarnings
+//   9. 팝업 화면 · 배지 묶기  normalizeUiSettings, sortListNames, summarizeList, splitTimelineBadges
 
 // ==========================================
 // 0. 상수
@@ -698,7 +699,7 @@ function countListsWithStyle(lists) {
 function isOwnInjectedNode(node) {
   if (!node || node.nodeType !== 1) return false;
   const cls = node.classList;
-  return !!cls && (cls.contains('ag-badges-wrapper') || cls.contains('ag-list-badge'));
+  return !!cls && (cls.contains('ag-badges-wrapper') || cls.contains('ag-list-badge') || cls.contains('ag-badge-more'));
 }
 
 // ==========================================
@@ -853,4 +854,78 @@ function getStructureWarnings(health, nowMs, maxAgeDays) {
     warnings.push({ area, label: AG_HEALTH_AREA_LABELS[area], message: h.message || '', at: h.at });
   });
   return warnings;
+}
+
+// ==========================================
+// 9. 팝업 화면 · 타임라인 배지 묶기
+// ==========================================
+
+// 팝업 화면 설정 (chrome.storage.local 의 uiSettings). 테마: 시스템 설정 따르기 / 라이트 / 다크
+var AG_THEMES = ['system', 'light', 'dark'];
+var AG_LIST_SORTS = ['name', 'members'];
+var AG_MODE_LABELS = { normal: '배지만', highlight: '강조', dim: '흐리게' };
+
+// 리스트 배지 색 빠른 선택 (모두 흰 글자와 대비 4.5:1 이상, WCAG AA)
+var AG_SWATCH_COLORS = [
+  ['#c8174d', '빨강'], ['#b45309', '주황'], ['#0f7b3e', '초록'],
+  ['#0b74c4', '파랑'], ['#7a3fd1', '보라'], ['#536471', '회색']
+];
+
+// 타임라인 이름 줄에 보여 줄 배지 수. 넘치면 (이 수 - 1)개 + "+N" 묶음 배지
+var AG_TIMELINE_MAX_BADGES = 3;
+
+// 흐리게 모드에서 흐리게 할 트윗 부분 (프로필 사진·본문·미디어·버튼). 이름과 배지 줄은 또렷하게 둠.
+// styles.css 의 [data-ag-dim="body"] 규칙과 같은 목록이어야 합니다.
+var AG_DIM_TARGET_SELECTOR = [
+  '[data-testid="Tweet-User-Avatar"]', '[data-testid="tweetText"]', '[data-testid="tweetPhoto"]',
+  '[data-testid="card.wrapper"]', '[data-testid="videoPlayer"]', '[data-testid="videoComponent"]', '[role="group"]'
+].join(', ');
+
+function normalizeUiSettings(settings) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  return {
+    theme: AG_THEMES.indexOf(s.theme) !== -1 ? s.theme : 'system',
+    listSort: AG_LIST_SORTS.indexOf(s.listSort) !== -1 ? s.listSort : 'name'
+  };
+}
+
+// 팝업 목록 순서: 'name' 이름순, 'members' 멤버 많은 순 (같으면 이름순)
+function sortListNames(lists, sortKey) {
+  const all = lists || {};
+  const names = Object.keys(all).filter(n => all[n] && Array.isArray(all[n].members));
+  const byName = (a, b) => a.localeCompare(b, 'ko');
+  if (sortKey === 'members') {
+    return names.sort((a, b) => (all[b].members.length - all[a].members.length) || byName(a, b));
+  }
+  return names.sort(byName);
+}
+
+// 리스트 카드의 한 줄 요약: "강조 · 개별 스타일 · @a, @b 외 3명"
+function summarizeList(list, maxHandles) {
+  const max = maxHandles || 2;
+  const info = list || {};
+  const parts = [AG_MODE_LABELS[info.mode] || AG_MODE_LABELS.normal];
+  if (normalizeListStyle(info.style)) parts.push('개별 스타일');
+  const members = Array.isArray(info.members) ? info.members : [];
+  if (members.length === 0) {
+    parts.push('멤버 없음');
+  } else {
+    const shown = members.slice(0, max).join(', ');
+    parts.push(members.length > max ? `${shown} 외 ${members.length - max}명` : shown);
+  }
+  return parts.join(' · ');
+}
+
+// 타임라인 배지 묶기: max 개 이하면 모두 보이고, 넘으면 (max - 1)개만 보이고 나머지는 "+N" 으로.
+// (+1 묶음은 배지 하나와 자리가 같아 의미가 없으므로 max 개까지는 그대로 보여 줌)
+function splitTimelineBadges(lists, max) {
+  const limit = Math.max(2, max || AG_TIMELINE_MAX_BADGES);
+  const seen = {};
+  const unique = (lists || []).filter((l) => {
+    if (!l || seen[l.name]) return false;
+    seen[l.name] = true;
+    return true;
+  });
+  if (unique.length <= limit) return { visible: unique, hidden: [] };
+  return { visible: unique.slice(0, limit - 1), hidden: unique.slice(limit - 1) };
 }
