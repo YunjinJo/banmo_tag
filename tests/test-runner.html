@@ -141,7 +141,7 @@
 <body>
   <div class="container">
     <header>
-      <h1><span>⚡</span> banmo_tag v1.5.0 자동화 테스트 러너</h1>
+      <h1><span>⚡</span> banmo_tag v1.6.0 자동화 테스트 러너</h1>
       <button id="run-btn" class="btn" onclick="runAllTests()">테스트 다시 실행</button>
     </header>
 
@@ -681,7 +681,8 @@
           isRecoLabel, mergeImportedLists, applyManualAdd, getSyncTabError, getBadgeAnchor,
           normalizeBadgeSettings, buildBackup, parseBackup,
           applyListReplace, diffHandleMaps, isTweetAffected, countProfileLinks,
-          diagnoseStructure, getStructureWarnings, getManualListNameError
+          diagnoseStructure, getStructureWarnings, getManualListNameError,
+          normalizeListStyle, getEffectiveBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle
         ];
         requiredFns.forEach(fn => assertEqual(typeof fn, 'function'));
         assertEqual(typeof AG_DEFAULT_BADGE_SETTINGS, 'object');
@@ -1126,6 +1127,75 @@
         assertEqual(getManualListNameError('리스트'), null);
         assertEqual(getManualListNameError('   '), '리스트 이름을 입력해주세요.');
         assertEqual(getManualListNameError('가'.repeat(51)), '리스트 이름은 50자 이하로 입력해주세요.');
+      });
+    });
+
+    // SUITE 25: 리스트별 배지 글자 스타일 (v1.6.0)
+    describe('25. 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle)', () => {
+      it('normalizeListStyle: 올바른 항목만 남기고, 남는 게 없으면 null', () => {
+        assertDeepEqual(normalizeListStyle({ textColor: '#000000', fontSize: '16', fontFamily: 'monospace', extra: 1 }),
+          { textColor: '#000000', fontSize: 16, fontFamily: 'monospace' });
+        assertDeepEqual(normalizeListStyle({ textColor: 'red', fontSize: 30 }), null);
+        assertDeepEqual(normalizeListStyle({ fontSize: 8 }), { fontSize: 8 });
+        assertEqual(normalizeListStyle(null), null);
+        assertEqual(normalizeListStyle('x'), null);
+      });
+
+      it('getEffectiveBadgeSettings: 기본값 ← 공통 설정 ← 리스트 설정 순서로 덮어씀', () => {
+        const common = { textColor: '#ffffff', fontSize: 12, fontFamily: 'system' };
+        assertDeepEqual(getEffectiveBadgeSettings(common, { fontSize: 16 }), { textColor: '#ffffff', fontSize: 16, fontFamily: 'system' });
+        assertDeepEqual(getEffectiveBadgeSettings(common, undefined), common);
+        assertDeepEqual(getEffectiveBadgeSettings(common, { fontSize: 99, textColor: '#000000' }),
+          { textColor: '#000000', fontSize: 12, fontFamily: 'system' }, '잘못된 값은 무시');
+        assertDeepEqual(getEffectiveBadgeSettings(null, null), { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' });
+      });
+
+      it('setListStyle: 일부 항목만 저장, null 은 지움, 다 지우면 style 자체 제거, 없는 리스트는 false', () => {
+        const lists = { '테크': { color: '#1d9bf0', mode: 'normal', members: ['@a'] } };
+        assertEqual(setListStyle(lists, '테크', { fontSize: 15 }), true);
+        assertDeepEqual(lists['테크'].style, { fontSize: 15 });
+        setListStyle(lists, '테크', { textColor: '#00ff00', bogus: 1 });
+        assertDeepEqual(lists['테크'].style, { textColor: '#00ff00', fontSize: 15 });
+        setListStyle(lists, '테크', { fontSize: null, textColor: null });
+        assertEqual(lists['테크'].style, undefined);
+        assertEqual(setListStyle(lists, '없음', { fontSize: 10 }), false);
+      });
+
+      it('clearAllListStyles / countListsWithStyle', () => {
+        const lists = {
+          A: { members: [], style: { fontSize: 15 } },
+          B: { members: [] },
+          C: { members: [], style: { fontFamily: 'monospace' } }
+        };
+        assertEqual(countListsWithStyle(lists), 2);
+        assertEqual(clearAllListStyles(lists), 2);
+        assertEqual(countListsWithStyle(lists), 0);
+        assertEqual(lists.A.style, undefined);
+      });
+
+      it('배지 매핑에 리스트 스타일이 들어가고, 스타일이 바뀌면 그 리스트 멤버만 다시 그림 대상', () => {
+        const before = { A: { color: '#111111', mode: 'normal', members: ['@a'] }, B: { color: '#222222', mode: 'normal', members: ['@b'] } };
+        const after = { A: { color: '#111111', mode: 'normal', members: ['@a'], style: { fontSize: 16 } }, B: before.B };
+        const map = buildHandleMap(after);
+        assertDeepEqual(map['@a'][0].style, { fontSize: 16 });
+        assertEqual(map['@b'][0].style, undefined, '스타일이 없으면 항목도 없음');
+        assertDeepEqual(diffHandleMaps(buildHandleMap(before), map), ['@a']);
+      });
+
+      it('백업 가져오기·저장 정리·자동 수집 저장에서 리스트 스타일을 유지', () => {
+        const imported = normalizeImportedLists({ '테크': { members: ['@a'], style: { fontSize: 15, textColor: 'bad' } } });
+        assertDeepEqual(imported['테크'].style, { fontSize: 15 });
+        const sanitized = sanitizeListsObject({ '테크 (@me)': { color: '#1d9bf0', mode: 'normal', members: ['@a'], style: { fontSize: 14 } } }).newLists;
+        assertDeepEqual(sanitized['테크'].style, { fontSize: 14 });
+        const saved = applyListSave({ '테크': { color: '#1d9bf0', mode: 'normal', listId: '1', members: ['@a'], style: { fontSize: 14 } } }, '테크', ['@b'], '1');
+        assertDeepEqual(saved.lists['테크'].style, { fontSize: 14 });
+        const replaced = applyListReplace({ '테크': { color: '#1d9bf0', mode: 'normal', listId: '1', members: ['@a'], style: { fontSize: 14 } } }, '테크', ['@b'], '1');
+        assertDeepEqual(replaced.lists['테크'].style, { fontSize: 14 });
+      });
+
+      it('normalizeBadgeSettings 는 계속 빈 항목을 기본값으로 채움', () => {
+        assertDeepEqual(normalizeBadgeSettings({ fontSize: 15 }), { textColor: '#ffffff', fontSize: 15, fontFamily: 'system' });
+        assertDeepEqual(normalizeBadgeSettings(undefined), { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' });
       });
     });
 

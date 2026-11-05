@@ -14,7 +14,8 @@
 //                         applyManualAdd, removeMemberFromLists
 //   4. URL · 수집 정책    parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError
 //   5. 멤버 추출          isRecoLabel, isExcludedUserCell, extractMembersFromContainer, buildScrapeSignature
-//   6. 타임라인 배지      buildHandleMap, diffHandleMaps, isTweetAffected, getBadgeAnchor, applyBadgeStyle, isOwnInjectedNode
+//   6. 타임라인 배지      buildHandleMap, diffHandleMaps, isTweetAffected, getBadgeAnchor, applyBadgeStyle, isOwnInjectedNode,
+//                         normalizeListStyle, getEffectiveBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle
 //   7. 입력 · 백업        parseHandles, normalizeImportedLists, mergeImportedLists,
 //                         normalizeBadgeSettings, buildBackup, parseBackup
 //   8. 화면 구조 진단     countProfileLinks, diagnoseStructure, getStructureWarnings
@@ -87,10 +88,22 @@ var AG_RECO_LABELS = ['팔로우 추천', 'Who to follow', '추천 사용자', '
 // 팝업 [가져오기]가 동작하는 탭 주소
 var AG_X_URL_RE = /^https?:\/\/([^\/]+\.)?(x|twitter)\.com\//;
 
-// 백업 파일
-var AG_BACKUP_APP = 'banmo_tag';
+// 배지 글자 스타일: 고를 수 있는 폰트와 화면 표시 이름, 리스트별로 덮어쓸 수 있는 항목
 var AG_FONT_FAMILIES = ['system', "'Arial', sans-serif", "'Roboto', sans-serif", "'Noto Sans KR', sans-serif",
   "'Pretendard', sans-serif", 'monospace', "'Georgia', serif"];
+var AG_FONT_LABELS = {
+  'system': '시스템 기본',
+  "'Arial', sans-serif": 'Arial',
+  "'Roboto', sans-serif": 'Roboto',
+  "'Noto Sans KR', sans-serif": 'Noto Sans KR',
+  "'Pretendard', sans-serif": 'Pretendard',
+  'monospace': 'Monospace',
+  "'Georgia', serif": 'Georgia'
+};
+var AG_LIST_STYLE_KEYS = ['textColor', 'fontSize', 'fontFamily'];
+
+// 백업 파일
+var AG_BACKUP_APP = 'banmo_tag';
 
 // 화면 구조 진단 영역별 팝업 표시 이름
 var AG_HEALTH_AREA_LABELS = { members: '멤버 수집', timeline: '타임라인 배지' };
@@ -192,7 +205,10 @@ function getManualListNameError(rawName) {
 }
 
 // ==========================================
-// 3. 리스트 데이터 (저장 형식: { [리스트 이름]: { color, mode, members, listId?, manual? } })
+// 3. 리스트 데이터
+//    저장 형식: { [리스트 이름]: { color, mode, members, listId?, manual?, style? } }
+//    - color: 배지 배경색, mode: normal | highlight | dim
+//    - style: 이 리스트만의 배지 글자 스타일 { textColor?, fontSize?, fontFamily? } (없는 항목은 공통 설정 사용)
 // ==========================================
 
 // 저장된 리스트를 정리: 태그 붙은 이름 정제, 같은 리스트 병합, 시스템 단어 리스트 삭제.
@@ -559,10 +575,13 @@ function buildHandleMap(listData) {
   Object.keys(listData || {}).forEach((listName) => {
     const info = listData[listName];
     if (!info || !Array.isArray(info.members)) return;
+    const style = normalizeListStyle(info.style);
     info.members.forEach((handle) => {
       const lower = String(handle).toLowerCase();
       if (!map[lower]) map[lower] = [];
-      map[lower].push({ name: listName, color: info.color || AG_DEFAULT_LIST_COLOR, mode: info.mode || 'normal' });
+      const entry = { name: listName, color: info.color || AG_DEFAULT_LIST_COLOR, mode: info.mode || 'normal' };
+      if (style) entry.style = style;
+      map[lower].push(entry);
     });
   });
   return map;
@@ -620,6 +639,56 @@ function applyBadgeStyle(badge, bgColor, settings, isMainAuthor) {
   }
 }
 
+// 리스트별 글자 스타일 검증: 올바른 항목만 남기고, 남는 게 없으면 null
+function normalizeListStyle(style) {
+  if (!style || typeof style !== 'object') return null;
+  const out = {};
+  if (isHexColor(style.textColor)) out.textColor = style.textColor;
+  const size = parseInt(style.fontSize, 10);
+  if (size >= 8 && size <= 20) out.fontSize = size;
+  if (AG_FONT_FAMILIES.indexOf(style.fontFamily) !== -1) out.fontFamily = style.fontFamily;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+// 실제로 배지에 쓸 글자 스타일 = 기본값 ← 공통 설정 ← 리스트별 설정 (뒤가 앞을 덮어씀)
+function getEffectiveBadgeSettings(globalSettings, listStyle) {
+  return Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, globalSettings || {}, normalizeListStyle(listStyle) || {});
+}
+
+// 리스트의 글자 스타일 일부를 바꿈. 값이 null/undefined 인 항목은 지워서 공통 설정을 따르게 함.
+// 남는 항목이 없으면 style 자체를 지움. 리스트가 없으면 false
+function setListStyle(lists, listName, patch) {
+  const list = lists && lists[listName];
+  if (!list) return false;
+  const next = Object.assign({}, list.style || {});
+  Object.keys(patch || {}).forEach((key) => {
+    if (AG_LIST_STYLE_KEYS.indexOf(key) === -1) return;
+    if (patch[key] === null || patch[key] === undefined) delete next[key];
+    else next[key] = patch[key];
+  });
+  const normalized = normalizeListStyle(next);
+  if (normalized) list.style = normalized;
+  else delete list.style;
+  return true;
+}
+
+// 모든 리스트의 개별 글자 스타일을 지움 (모두 공통 설정을 따르게). 지운 리스트 수 반환
+function clearAllListStyles(lists) {
+  let cleared = 0;
+  Object.keys(lists || {}).forEach((name) => {
+    if (lists[name] && lists[name].style) {
+      delete lists[name].style;
+      cleared++;
+    }
+  });
+  return cleared;
+}
+
+// 개별 글자 스타일을 가진 리스트 수
+function countListsWithStyle(lists) {
+  return Object.keys(lists || {}).filter(name => lists[name] && normalizeListStyle(lists[name].style)).length;
+}
+
 // 확장 프로그램이 직접 넣은 배지 노드인지 (MutationObserver 가 자기 변경에 반응하지 않도록)
 function isOwnInjectedNode(node) {
   if (!node || node.nodeType !== 1) return false;
@@ -662,6 +731,8 @@ function normalizeImportedLists(obj) {
     };
     if (val && typeof val.listId === 'string' && /^[A-Za-z0-9_-]+$/.test(val.listId)) entry.listId = val.listId;
     if (val && val.manual === true) entry.manual = true;
+    const style = normalizeListStyle(val && val.style);
+    if (style) entry.style = style;
     result[key] = entry;
   });
   return sanitizeListsObject(result).newLists;
@@ -687,15 +758,9 @@ function mergeImportedLists(lists, data) {
   return lists;
 }
 
-// 배지 설정 검증 (잘못된 값은 기본값으로)
+// 공통 배지 설정 검증 (잘못된 값은 기본값으로)
 function normalizeBadgeSettings(settings) {
-  const out = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS);
-  if (!settings || typeof settings !== 'object') return out;
-  if (isHexColor(settings.textColor)) out.textColor = settings.textColor;
-  const size = parseInt(settings.fontSize, 10);
-  if (size >= 8 && size <= 20) out.fontSize = size;
-  if (AG_FONT_FAMILIES.indexOf(settings.fontFamily) !== -1) out.fontFamily = settings.fontFamily;
-  return out;
+  return Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, normalizeListStyle(settings) || {});
 }
 
 // 내보내기 파일 내용

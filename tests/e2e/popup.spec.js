@@ -83,6 +83,124 @@ test.describe('팝업 기본 동작', () => {
   });
 });
 
+test.describe('리스트별 배지 글자 스타일', () => {
+  const COMMON = { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' };
+  // chrome.storage 는 리스트를 이름순으로 돌려주므로, 순서가 아니라 이름으로 줄을 찾음
+  const listRow = (popup, name) => popup.locator('.list-wrapper')
+    .filter({ has: popup.locator('.list-name', { hasText: new RegExp(`^${name}$`) }) });
+
+  test('리스트를 펼쳐 글자 크기·색상·폰트를 그 리스트만 따로 저장하고, [공통 설정 따르기]로 되돌림', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] },
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@b'] }
+      },
+      badgeSettings: COMMON
+    });
+    const popup = await openPopup(context, extensionId);
+    const row = listRow(popup, '친구');
+    await row.locator('.list-toggle').click();
+    const size = row.locator('.list-style-controls input[type="number"]');
+    await expect(size).toHaveValue('11'); // 공통 설정 값이 보임
+    await expect(row.locator('.list-style-state')).toHaveText('공통 설정 사용 중');
+
+    await size.fill('16');
+    await size.press('Tab'); // change 이벤트
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ fontSize: 16 });
+    await expect(row.locator('.list-info')).toContainText('개별 스타일');
+    // 다시 그린 뒤에도 펼침 상태와 값이 유지됨
+    await expect(size).toHaveValue('16');
+    await expect(row.locator('.list-style-preview')).toHaveCSS('font-size', '16px');
+
+    await row.locator('.list-style-controls input[type="color"]').evaluate((el) => { el.value = '#000000'; el.dispatchEvent(new Event('change')); });
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ textColor: '#000000', fontSize: 16 });
+    await row.locator('.list-style-controls select').selectOption('monospace');
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style)
+      .toEqual({ textColor: '#000000', fontSize: 16, fontFamily: 'monospace' });
+    // 다른 리스트에는 영향 없음
+    expect((await getLists(serviceWorker))['동료'].style).toBeUndefined();
+    await expect(popup.locator('#badge-custom-count')).toHaveText('개별 스타일을 쓰는 리스트 1개');
+
+    await row.getByRole('button', { name: '공통 설정 따르기' }).click();
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toBeUndefined();
+    await expect(size).toHaveValue('11');
+    await expect(row.locator('.list-style-state')).toHaveText('공통 설정 사용 중');
+  });
+
+  test('범위를 벗어난 글자 크기는 저장하지 않고 원래 값으로 되돌림', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } }, badgeSettings: COMMON });
+    const popup = await openPopup(context, extensionId);
+    await popup.locator('.list-toggle').nth(0).click();
+    const size = popup.locator('#list-style-size-0');
+    await size.fill('40');
+    await size.press('Tab');
+    await expect(popup.locator('#sync-status')).toHaveText('글자 크기는 8~20 사이로 입력해주세요.');
+    await expect(size).toHaveValue('11');
+    expect((await getLists(serviceWorker))['친구'].style).toBeUndefined();
+  });
+
+  test('[이 스타일을 모든 리스트에 적용]: 공통 설정이 그 스타일로 바뀌고 다른 리스트의 개별 스타일은 지워짐', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '친구': { color: '#ff0000', mode: 'normal', members: ['@a'], style: { fontSize: 18, fontFamily: 'monospace' } },
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@b'], style: { textColor: '#123456' } },
+        '가족': { color: '#0000ff', mode: 'normal', members: ['@c'] }
+      },
+      badgeSettings: COMMON
+    });
+    const popup = await openPopup(context, extensionId);
+    const row = listRow(popup, '친구');
+    await row.locator('.list-toggle').click();
+    await row.getByRole('button', { name: '이 스타일을 모든 리스트에 적용' }).click();
+    await expect(popup.locator('#confirm-text')).toContainText("'친구' 리스트의 글자 스타일을 모든 리스트에 적용할까요?");
+    await popup.click('#confirm-ok-btn');
+    await expect(popup.locator('#sync-status')).toContainText('모든 리스트에 적용했습니다');
+
+    const stored = await getStorage(serviceWorker, ['lists', 'badgeSettings']);
+    expect(stored.badgeSettings).toEqual({ textColor: '#ffffff', fontSize: 18, fontFamily: 'monospace' });
+    expect(Object.values(stored.lists).map(l => l.style)).toEqual([undefined, undefined, undefined]);
+    await expect(popup.locator('#badge-font-size')).toHaveValue('18');
+    await expect(popup.locator('#badge-custom-count')).toHaveText('모든 리스트가 공통 스타일 사용 중');
+  });
+
+  test('공통 설정 [모든 리스트에 적용]: 개별 스타일을 모두 지움 (없으면 안내만)', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '친구': { color: '#ff0000', mode: 'normal', members: ['@a'], style: { fontSize: 18 } },
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@b'], style: { textColor: '#123456' } }
+      },
+      badgeSettings: { textColor: '#eeeeee', fontSize: 13, fontFamily: 'system' }
+    });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#toggle-badge-settings');
+    await expect(popup.locator('#badge-custom-count')).toHaveText('개별 스타일을 쓰는 리스트 2개');
+    await popup.click('#badge-apply-all-btn');
+    await expect(popup.locator('#confirm-text')).toContainText('리스트 2개의 개별 글자 스타일을 지우고');
+    await popup.click('#confirm-ok-btn');
+    await expect(popup.locator('#sync-status')).toContainText('개별 스타일 2개 해제');
+
+    const stored = await getStorage(serviceWorker, ['lists', 'badgeSettings']);
+    expect(Object.values(stored.lists).map(l => l.style)).toEqual([undefined, undefined]);
+    expect(stored.badgeSettings).toEqual({ textColor: '#eeeeee', fontSize: 13, fontFamily: 'system' }, '공통 설정은 그대로');
+
+    await popup.click('#badge-apply-all-btn');
+    await expect(popup.locator('#sync-status')).toHaveText('이미 모든 리스트가 공통 스타일을 사용하고 있습니다.');
+    await expect(popup.locator('#confirm-box')).toBeHidden();
+  });
+
+  test('팝업을 열면 리스트별 편집란이 저장된 공통 설정 값을 보여 줌', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } },
+      badgeSettings: { textColor: '#333333', fontSize: 14, fontFamily: 'monospace' }
+    });
+    const popup = await openPopup(context, extensionId);
+    await popup.locator('.list-toggle').nth(0).click();
+    await expect(popup.locator('#list-style-size-0')).toHaveValue('14');
+    await expect(popup.locator('#list-style-font-0')).toHaveValue('monospace');
+    await expect(popup.locator('#list-style-color-0')).toHaveValue('#333333');
+  });
+});
+
 test.describe('백업', () => {
   test('내보내기 파일에 리스트와 배지 설정이 함께 들어감', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {

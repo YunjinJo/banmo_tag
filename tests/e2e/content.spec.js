@@ -92,6 +92,35 @@ test.describe('타임라인 배지', () => {
     await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveText('동료');
   });
 
+  test('리스트별 글자 스타일이 그 리스트 배지에만 적용되고, 인용 미니 배지는 2px 작게', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, { badgeSettings: { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' } });
+    const page = await openTimeline(context, serviceWorker, {
+      '친구': { color: '#ff0000', mode: 'normal', members: ['@alice'], style: { fontSize: 16, textColor: '#000000', fontFamily: 'monospace' } },
+      '동료': { color: '#00aa00', mode: 'normal', members: ['@bob'] }
+    });
+    const aliceBadge = page.locator('[data-fixture-id="t-alice"] .ag-list-badge');
+    await expect(aliceBadge).toHaveCSS('font-size', '16px');
+    await expect(aliceBadge).toHaveCSS('color', 'rgb(0, 0, 0)');
+    await expect(aliceBadge).toHaveCSS('font-family', 'monospace');
+    await expect(page.locator('[data-fixture-id="quote-card"] .ag-list-badge.mini-badge')).toHaveCSS('font-size', '14px');
+
+    // 스타일이 없는 리스트는 공통 설정
+    const bobBadge = page.locator('[data-fixture-id="t-bob"] .ag-list-badge');
+    await expect(bobBadge).toHaveCSS('font-size', '11px');
+    await expect(bobBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
+  });
+
+  test('한 리스트의 글자 스타일을 바꾸면 그 리스트 멤버의 트윗만 다시 그림', async ({ context, serviceWorker }) => {
+    const page = await openTimeline(context, serviceWorker);
+    await page.locator('[data-fixture-id="t-bob"] .ag-list-badge').evaluate(el => { el.dataset.marker = 'keep'; });
+
+    await setStorage(serviceWorker, {
+      lists: { ...LISTS, '친구': { ...LISTS['친구'], style: { fontSize: 18 } } }
+    });
+    await expect(page.locator('[data-fixture-id="t-alice"] .ag-list-badge')).toHaveCSS('font-size', '18px');
+    await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveAttribute('data-marker', 'keep');
+  });
+
   test('X 가 트윗 DOM 을 다른 작성자 트윗에 재사용하면 이전 배지를 지우고 새 작성자 기준으로 다시 그림', async ({ context, serviceWorker }) => {
     const page = await openTimeline(context, serviceWorker);
     // alice 트윗의 작성자 영역을 bob 의 것으로 바꿔치기 (가상 스크롤 재사용 흉내)

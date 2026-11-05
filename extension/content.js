@@ -38,7 +38,7 @@
 
   // 저장된 리스트 (정제된 상태)
   let listData = {};
-  // 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color: '#f00', mode }])
+  // 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color: '#f00', mode, style? }])
   let handleToListsMap = {};
   let badgeSettings = { ...DEFAULT_BADGE_SETTINGS };
   // 마지막으로 background 에 보낸 (리스트명 + 멤버) 서명 — 같은 데이터 반복 전송 방지
@@ -517,7 +517,8 @@
       // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
       badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
       badge.textContent = list.name;
-      applyBadgeStyle(badge, list.color, badgeSettings, isMainAuthor);
+      // 글자 스타일: 공통 설정 위에 이 리스트만의 설정(list.style)을 덮어씀
+      applyBadgeStyle(badge, list.color, getEffectiveBadgeSettings(badgeSettings, list.style), isMainAuthor);
       wrapper.appendChild(badge);
     });
   }

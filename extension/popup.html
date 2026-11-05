@@ -189,8 +189,82 @@
       border-top: 1px solid #38444d;
       font-size: 0.8rem;
       color: #8899a6;
-      max-height: 140px;
+      max-height: 280px;
       overflow-y: auto;
+    }
+    /* 리스트별 배지 글자 스타일 (리스트를 펼치면 멤버 목록 위에 표시) */
+    .list-style-editor {
+      background: #22303c;
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 8px;
+    }
+    .list-style-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.75rem;
+      margin-bottom: 6px;
+    }
+    .list-style-state {
+      font-size: 0.7rem;
+      color: #8899a6;
+    }
+    .list-style-state.custom {
+      color: #ffd88a;
+    }
+    .list-style-controls {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .list-style-controls select,
+    .list-style-controls input[type="number"] {
+      background: #192734;
+      color: white;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      padding: 3px 6px;
+      font-size: 0.75rem;
+    }
+    .list-style-controls input[type="number"] {
+      width: 46px;
+    }
+    .list-style-controls select {
+      max-width: 120px;
+    }
+    .list-style-preview {
+      margin-top: 6px;
+    }
+    .list-style-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 6px;
+    }
+    .small-btn {
+      background: #192734;
+      color: #8899a6;
+      border: 1px solid #38444d;
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 0.72rem;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .small-btn:hover:not(:disabled) {
+      color: #fff;
+      border-color: #8899a6;
+    }
+    .small-btn:disabled {
+      opacity: 0.5;
+      cursor: default;
+    }
+    .members-empty {
+      display: block;
     }
     .members-list.show {
       display: block;
@@ -370,6 +444,12 @@
       font-size: 0.8rem;
       color: #8899a6;
     }
+    .setting-hint {
+      font-size: 0.72rem;
+      color: #8899a6;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
     .setting-control {
       display: flex;
       align-items: center;
@@ -463,10 +543,11 @@
 
   <div class="settings-section">
     <button type="button" class="settings-header" id="toggle-badge-settings" aria-expanded="false" aria-controls="badge-settings-body">
-      <span>🎨 배지 스타일 설정</span>
+      <span>🎨 배지 스타일 설정 (모든 리스트 공통)</span>
       <span id="settings-arrow" aria-hidden="true">▶</span>
     </button>
     <div class="settings-body" id="badge-settings-body">
+      <div class="setting-hint">리스트를 펼치면 그 리스트만의 글자 색상·크기·폰트를 따로 정할 수 있습니다. 따로 정하지 않은 항목은 여기 설정을 따릅니다.</div>
       <div class="setting-row">
         <span class="setting-label">글자 색상</span>
         <div class="setting-control">
@@ -500,6 +581,11 @@
         </div>
         <button id="badge-reset-btn" type="button" class="manual-toggle-btn" style="width:auto; padding:4px 8px;">기본값</button>
       </div>
+      <div class="setting-row">
+        <span id="badge-custom-count" class="setting-label"></span>
+        <button id="badge-apply-all-btn" type="button" class="small-btn"
+          title="리스트별로 따로 정한 글자 스타일을 지우고, 모든 리스트가 위의 공통 스타일을 쓰게 합니다.">모든 리스트에 적용</button>
+      </div>
     </div>
   </div>
 
@@ -508,7 +594,8 @@
     • X(Twitter) 리스트의 <strong>멤버(구성원) 화면</strong>을 열면 자동으로 멤버를 수집합니다.<br>
     • 상단의 <strong>[⚡ 현재 열린 트위터 리스트 가져오기]</strong> 버튼을 누르면 현재 탭에서 즉시 수집합니다.<br>
     • X 리스트에서 뺀 멤버를 정리하려면, 멤버 화면을 끝까지 스크롤한 뒤 <strong>[🔄 멤버 목록 교체 동기화]</strong>를 누르세요.<br>
-    • 필요 시 <strong>[+ 직접 리스트 추가]</strong>로 핸들을 직접 입력할 수도 있습니다.
+    • 필요 시 <strong>[+ 직접 리스트 추가]</strong>로 핸들을 직접 입력할 수도 있습니다.<br>
+    • 리스트를 펼치면 그 리스트 배지의 글자 색상·크기·폰트를 따로 정할 수 있습니다.
   </div>
 
   <script src="shared.js"></script>

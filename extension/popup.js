@@ -10,8 +10,8 @@
 //   5. X 화면 구조 경고
 //   6. 직접 리스트 추가
 //   7. 백업 · 복원 · 초기화
-//   8. 리스트 목록
-//   9. 배지 스타일 설정
+//   8. 리스트 목록 (리스트별 글자 스타일 편집 포함)
+//   9. 배지 스타일 설정 (모든 리스트 공통)
 
 // ==========================================
 // 0. 상태
@@ -23,6 +23,8 @@ const SHARED_LOADED = typeof sanitizeListsObject === 'function';
 let badgeSettings = SHARED_LOADED ? { ...AG_DEFAULT_BADGE_SETTINGS } : {};
 // 펼쳐 둔 리스트 이름 (목록을 다시 그려도 펼침 상태 유지)
 const expandedLists = new Set();
+// 마지막으로 그린 리스트 데이터 (공통 설정의 "개별 스타일 N개" 표시용)
+let renderedLists = {};
 // 파일에서 읽어 [병합]/[덮어쓰기] 선택을 기다리는 데이터 ({ lists, badgeSettings })
 let pendingImport = null;
 let statusTimer = null;
@@ -46,12 +48,12 @@ document.addEventListener('DOMContentLoaded', () => {
   chrome.action.setBadgeText({ text: '' }).catch(() => {});
 
   setupConfirmBox();
-  loadLists();
+  // 리스트별 스타일 편집란이 공통 설정 기준 값을 보여야 하므로, 공통 설정을 먼저 읽고 목록을 그림
+  loadBadgeSettings().then(loadLists);
   loadHealthWarning();
   setupSyncButtons();
   setupManualAdd();
   setupBackupRestore();
-  loadBadgeSettings();
   setupBadgeSettings();
 
   // 리스트가 바뀌면(자동 수집 포함) 바로 다시 그림. 연속 변경은 묶어서 한 번만.
@@ -59,7 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const debouncedLoad = debounce(loadLists, 100);
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
-    if (changes.lists) debouncedLoad();
+    // 공통 배지 설정이 바뀌어도 리스트별 스타일 편집란(실제 적용 값 표시)을 다시 그림
+    if (changes.lists || changes.badgeSettings) debouncedLoad();
     if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
   });
 });
@@ -504,6 +507,11 @@ async function loadLists() {
 function renderLists(lists) {
   const container = byId('list-container');
   if (!container) return;
+  renderedLists = lists;
+  updateCustomStyleCount();
+
+  // 스타일 편집란에서 값을 바꾸면 저장 후 목록을 다시 그리므로, 그 입력란에 포커스를 되돌려 줌
+  const focusedId = document.activeElement && document.activeElement.id;
   container.textContent = '';
 
   const listNames = Object.keys(lists).filter(n => lists[n] && Array.isArray(lists[n].members));
@@ -516,6 +524,8 @@ function renderLists(lists) {
   [...expandedLists].forEach((n) => { if (!lists[n]) expandedLists.delete(n); });
 
   listNames.forEach((name, idx) => container.appendChild(createListRow(name, lists[name], idx)));
+
+  if (focusedId && focusedId.startsWith('list-style-')) byId(focusedId)?.focus();
 }
 
 function createEmptyState() {
@@ -536,7 +546,8 @@ function makeElement(tag, className, text, type) {
 }
 
 function memberCountText(list, open) {
-  return `${list.members.length}명 등록됨 (클릭하여 ${open ? '접기' : '펼치기'})`;
+  const styleMark = normalizeListStyle(list.style) ? ' · 🎨 개별 스타일' : '';
+  return `${list.members.length}명 등록됨${styleMark} (클릭하여 ${open ? '접기' : '펼치기'})`;
 }
 
 // 리스트 한 줄: [이름·인원 (펼치기 버튼)] [모드] [색상] [삭제] + 펼치면 보이는 멤버 목록
@@ -556,7 +567,7 @@ function createListRow(name, list, idx) {
   const itemEl = makeElement('div', 'list-item');
   itemEl.append(toggleBtn, controlsDiv);
 
-  const membersListEl = createMembersList(name, list, membersId, isOpen);
+  const membersListEl = createMembersList(name, list, membersId, isOpen, idx);
 
   toggleBtn.addEventListener('click', () => {
     const open = membersListEl.classList.toggle('show');
@@ -611,15 +622,149 @@ function createDeleteButton(name) {
   return button;
 }
 
-function createMembersList(name, list, membersId, isOpen) {
+// 펼치면 보이는 영역: 이 리스트의 글자 스타일 편집 + 멤버 목록
+function createMembersList(name, list, membersId, isOpen, idx) {
   const membersListEl = makeElement('div', 'members-list' + (isOpen ? ' show' : ''));
   membersListEl.id = membersId;
+  membersListEl.appendChild(createListStyleEditor(name, list, idx));
   if (list.members.length === 0) {
-    membersListEl.textContent = '멤버가 없습니다.';
+    membersListEl.appendChild(makeElement('span', 'members-empty', '멤버가 없습니다.'));
   } else {
     list.members.forEach(member => membersListEl.appendChild(createMemberChip(name, member)));
   }
   return membersListEl;
+}
+
+// 리스트별 배지 글자 스타일 편집: [글자 색상] [크기] px [폰트] / 미리보기 / [공통 설정 따르기] [이 스타일을 모든 리스트에 적용]
+// 값을 바꾸면 그 항목만 이 리스트에 저장되고, 나머지 항목은 공통 설정을 따름
+function createListStyleEditor(name, list, idx) {
+  const hasCustom = !!normalizeListStyle(list.style);
+  const effective = getEffectiveBadgeSettings(badgeSettings, list.style);
+  const editor = makeElement('div', 'list-style-editor');
+
+  const title = makeElement('div', 'list-style-title');
+  title.append(
+    makeElement('span', null, '배지 글자 스타일'),
+    makeElement('span', 'list-style-state' + (hasCustom ? ' custom' : ''), hasCustom ? '이 리스트만 따로 설정됨' : '공통 설정 사용 중')
+  );
+
+  const colorInput = makeElement('input', 'color-picker', undefined, 'color');
+  colorInput.id = `list-style-color-${idx}`;
+  colorInput.value = effective.textColor;
+  colorInput.setAttribute('aria-label', `'${name}' 배지 글자 색상`);
+
+  const sizeInput = makeElement('input', null, undefined, 'number');
+  sizeInput.id = `list-style-size-${idx}`;
+  sizeInput.min = '8';
+  sizeInput.max = '20';
+  sizeInput.value = String(effective.fontSize);
+  sizeInput.setAttribute('aria-label', `'${name}' 배지 글자 크기`);
+
+  const fontSelect = makeElement('select');
+  fontSelect.id = `list-style-font-${idx}`;
+  fontSelect.setAttribute('aria-label', `'${name}' 배지 폰트`);
+  AG_FONT_FAMILIES.forEach((font) => {
+    const opt = makeElement('option', null, AG_FONT_LABELS[font] || font);
+    opt.value = font;
+    opt.selected = effective.fontFamily === font;
+    fontSelect.appendChild(opt);
+  });
+
+  const controls = makeElement('div', 'list-style-controls');
+  controls.append(colorInput, sizeInput, 'px', fontSelect);
+
+  // 미리보기: 실제 배지와 같은 함수로 스타일 적용
+  const preview = makeElement('div', 'badge-preview list-style-preview', name);
+  const renderPreview = (overrides) => {
+    applyBadgeStyle(preview, list.color, Object.assign({}, effective, overrides || {}), true);
+  };
+  renderPreview();
+
+  const saveStyle = (patch) => {
+    updateLists(l => setListStyle(l, name, patch));
+  };
+
+  colorInput.addEventListener('input', e => renderPreview({ textColor: e.target.value }));
+  colorInput.addEventListener('change', e => saveStyle({ textColor: e.target.value }));
+
+  sizeInput.addEventListener('input', (e) => {
+    const size = parseInt(e.target.value, 10);
+    if (size >= 8 && size <= 20) renderPreview({ fontSize: size });
+  });
+  sizeInput.addEventListener('change', (e) => {
+    const size = parseInt(e.target.value, 10);
+    if (size >= 8 && size <= 20) {
+      saveStyle({ fontSize: size });
+    } else {
+      e.target.value = String(effective.fontSize); // 범위를 벗어나면 원래 값으로
+      showSyncStatus('글자 크기는 8~20 사이로 입력해주세요.', true);
+    }
+  });
+
+  fontSelect.addEventListener('change', e => saveStyle({ fontFamily: e.target.value }));
+
+  const resetBtn = makeElement('button', 'small-btn', '공통 설정 따르기', 'button');
+  resetBtn.disabled = !hasCustom;
+  resetBtn.title = '이 리스트만의 글자 스타일을 지우고 공통 설정을 따릅니다.';
+  resetBtn.addEventListener('click', () => {
+    updateLists((l) => {
+      if (!l[name] || !l[name].style) return false;
+      delete l[name].style;
+    });
+  });
+
+  const applyAllBtn = makeElement('button', 'small-btn', '이 스타일을 모든 리스트에 적용', 'button');
+  applyAllBtn.title = '이 스타일을 공통 설정으로 만들고, 다른 리스트의 개별 스타일을 지웁니다.';
+  applyAllBtn.addEventListener('click', () => applyListStyleToAll(name, effective));
+
+  const actions = makeElement('div', 'list-style-actions');
+  actions.append(resetBtn, applyAllBtn);
+
+  editor.append(title, controls, preview, actions);
+  return editor;
+}
+
+// 한 리스트의 글자 스타일을 모든 리스트에 적용: 공통 설정을 그 스타일로 바꾸고 모든 개별 스타일을 지움
+async function applyListStyleToAll(name, effective) {
+  const message = `'${name}' 리스트의 글자 스타일을 모든 리스트에 적용할까요?\n` +
+    '공통 설정이 이 스타일로 바뀌고, 리스트별로 따로 정한 글자 스타일은 지워집니다.';
+  if (!await askConfirm(message, '모두 적용')) return;
+
+  badgeSettings = { textColor: effective.textColor, fontSize: effective.fontSize, fontFamily: effective.fontFamily };
+  try {
+    await chrome.storage.local.set({ badgeSettings });
+  } catch {
+    showSyncStatus('배지 설정 저장에 실패했습니다.', true);
+    return;
+  }
+  applyBadgeSettingsUI();
+  const ok = await updateLists((l) => {
+    clearAllListStyles(l);
+  });
+  if (ok) showSyncStatus(`'${name}' 리스트의 글자 스타일을 모든 리스트에 적용했습니다.`, false);
+}
+
+// 공통 설정 영역의 "개별 스타일 N개" 안내
+function updateCustomStyleCount() {
+  const label = byId('badge-custom-count');
+  if (!label) return;
+  const count = countListsWithStyle(renderedLists);
+  label.textContent = count > 0 ? `개별 스타일을 쓰는 리스트 ${count}개` : '모든 리스트가 공통 스타일 사용 중';
+}
+
+// 공통 설정 [모든 리스트에 적용]: 리스트별 글자 스타일을 모두 지워 공통 스타일을 쓰게 함
+async function applyCommonStyleToAll() {
+  const result = await chrome.storage.local.get(['lists']);
+  const count = countListsWithStyle(result.lists || {});
+  if (count === 0) {
+    showSyncStatus('이미 모든 리스트가 공통 스타일을 사용하고 있습니다.', false);
+    return;
+  }
+  if (!await askConfirm(`리스트 ${count}개의 개별 글자 스타일을 지우고, 모든 리스트에 공통 스타일을 적용할까요?`, '모두 적용')) return;
+  const ok = await updateLists((l) => {
+    clearAllListStyles(l);
+  });
+  if (ok) showSyncStatus(`모든 리스트에 공통 스타일을 적용했습니다. (개별 스타일 ${count}개 해제)`, false);
 }
 
 // 멤버 한 명: "@handle ×"
@@ -703,4 +848,6 @@ function setupBadgeSettings() {
     applyBadgeSettingsUI();
     saveBadgeSettings();
   });
+
+  byId('badge-apply-all-btn')?.addEventListener('click', applyCommonStyleToAll);
 }
