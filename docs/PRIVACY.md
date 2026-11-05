@@ -58,6 +58,10 @@ Chrome 웹 스토어 등록 페이지에 적힌 개발자 연락처로 문의해
 
 ---
 
+## 파이어폭스
+
+파이어폭스용 설정(`manifest.json` 의 `browser_specific_settings.gecko.data_collection_permissions`)에도 수집하는 데이터가 없음(`none`)을 신고합니다. 파이어폭스에서도 위 내용이 그대로 적용됩니다.
+
 ## English summary
 
 banmo_tag does not collect, transmit, sell, or share any personal data. List names, list IDs, member handles, display colors/modes, badge style settings and a page-structure check status (area, ok flag, message, time; no URLs or page content) are stored only in the user's browser (`chrome.storage.local`, plus a tab-scoped `sessionStorage` cache of the current list name). The extension runs only on x.com / twitter.com, reads list member handles and tweet author handles locally to show badges, and never sends page content anywhere. It uses no analytics, ads, remote servers, or remote code. Users can delete all data with the reset button or by uninstalling the extension.

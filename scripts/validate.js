@@ -45,6 +45,7 @@ check('manifest 참조 파일 존재', () => {
   Object.values(action.default_icon || {}).forEach(p => refs.add(p));
   if (action.default_popup) refs.add(action.default_popup);
   if (manifest.background && manifest.background.service_worker) refs.add(manifest.background.service_worker);
+  ((manifest.background && manifest.background.scripts) || []).forEach(p => refs.add(p));
   (manifest.content_scripts || []).forEach(cs => {
     (cs.js || []).forEach(p => refs.add(p));
     (cs.css || []).forEach(p => refs.add(p));
@@ -52,6 +53,30 @@ check('manifest 참조 파일 존재', () => {
   refs.forEach(p => {
     if (!fs.existsSync(path.join(extDir, p))) errors.push(`manifest 가 참조하는 파일이 없음: extension/${p}`);
   });
+});
+
+// 2-1. 크롬·파이어폭스 공용 manifest 설정
+//   - 크롬은 background.service_worker, 파이어폭스는 background.scripts(이벤트 페이지)를 씀
+//   - 파이어폭스 이벤트 페이지에는 importScripts 가 없으므로 shared.js 가 background.js 보다 먼저 와야 함
+//   - 파이어폭스 MV3 서명에는 확장 프로그램 ID 와 데이터 수집 신고(data_collection_permissions)가 필요
+check('크롬·파이어폭스 공용 manifest', () => {
+  if (!manifest) return;
+  const bg = manifest.background || {};
+  if (!bg.service_worker) errors.push('background.service_worker 가 없습니다 (크롬).');
+  const scripts = bg.scripts || [];
+  const sharedIdx = scripts.indexOf('shared.js');
+  const bgIdx = scripts.indexOf(bg.service_worker);
+  if (sharedIdx === -1 || bgIdx === -1 || sharedIdx > bgIdx) {
+    errors.push('background.scripts 는 ["shared.js", "background.js"] 순서여야 합니다 (파이어폭스).');
+  }
+  const gecko = (manifest.browser_specific_settings || {}).gecko || {};
+  if (!/^[A-Za-z0-9._-]*@[A-Za-z0-9._-]+$|^\{[0-9a-fA-F-]{36}\}$/.test(gecko.id || '')) {
+    errors.push('browser_specific_settings.gecko.id 가 없거나 형식이 잘못됐습니다 (파이어폭스).');
+  }
+  const dcp = gecko.data_collection_permissions;
+  if (!dcp || !Array.isArray(dcp.required) || dcp.required.length === 0) {
+    errors.push('browser_specific_settings.gecko.data_collection_permissions.required 가 필요합니다 (파이어폭스 부가 기능 서명).');
+  }
 });
 
 // 3. manifest 버전 ↔ CHANGELOG 최신 버전

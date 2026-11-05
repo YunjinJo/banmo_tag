@@ -8,7 +8,7 @@
 //
 // 목차
 //   0. 상수
-//   1. 공통 유틸          debounce, mergeHandles, isHexColor, isValidMode, getHandleFromProfileHref
+//   1. 공통 유틸          debounce, mergeHandles, isHexColor, isValidMode, getHandleFromProfileHref, getBrowserKind
 //   2. 리스트 이름        isSystemListName, isValidListName, cleanListName, isFallbackListName, getManualListNameError
 //   3. 리스트 데이터      sanitizeListsObject, resolveListKey, applyListSave, applyListReplace,
 //                         applyManualAdd, removeMemberFromLists
@@ -151,6 +151,11 @@ function isValidMode(value) {
 function getHandleFromProfileHref(href) {
   const match = String(href || '').match(AG_PROFILE_HREF_RE);
   return match ? match[1] : null;
+}
+
+// 실행 중인 브라우저: 확장 프로그램 주소(chrome.runtime.getURL(''))가 moz-extension:// 이면 'firefox', 아니면 'chrome'
+function getBrowserKind(extensionUrl) {
+  return /^moz-extension:/i.test(String(extensionUrl || '')) ? 'firefox' : 'chrome';
 }
 
 // ==========================================

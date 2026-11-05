@@ -1,7 +1,8 @@
 name: CI
 
 # main 에 push 할 때마다, 그리고 PR(Dependabot 포함)마다:
-#   정적 검사·ESLint / E2E(실제 확장 프로그램) / Windows 단위 테스트 + zip 패키징 확인
+#   정적 검사·ESLint·파이어폭스 호환성(web-ext lint) / E2E(크롬 계열 Chromium) /
+#   실제 Firefox 동작 확인 / Windows 단위 테스트 + zip 패키징 확인
 # 릴리스는 GitHub 에서 직접(수동으로) 만듭니다. 이 워크플로는 Release 나 배포 파일을 만들지 않으며,
 # 저장소 쓰기 권한도 없습니다(permissions: contents: read).
 on:
@@ -39,6 +40,10 @@ jobs:
       - name: ESLint (정의되지 않은 함수·변수 등)
         run: npx eslint .
 
+      # Mozilla 부가 기능 사이트(AMO) 제출 때와 같은 검사. 오류가 있으면 실패 (경고는 통과)
+      - name: 파이어폭스 호환성 검사 (web-ext lint)
+        run: npx web-ext lint --source-dir extension --no-input
+
   e2e:
     name: E2E 테스트 (실제 확장 프로그램)
     runs-on: ubuntu-latest
@@ -69,6 +74,36 @@ jobs:
             playwright-report/
             test-results/
           retention-days: 14
+
+  firefox:
+    name: 파이어폭스 동작 확인 (실제 Firefox)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: 개발 도구 설치
+        run: npm ci
+
+      - name: Firefox 받기 (최신 안정판)
+        id: firefox
+        run: |
+          line=$(npx @puppeteer/browsers install firefox@stable --path "$RUNNER_TEMP/browsers" | tail -n 1)
+          echo "$line"
+          echo "bin=${line#* }" >> "$GITHUB_OUTPUT"
+
+      # 테스트 서버가 x.com 처럼 포트 없는 주소(포트 80)로 응답하도록
+      - name: 포트 80 사용 허용
+        run: sudo sysctl -w net.ipv4.ip_unprivileged_port_start=80
+
+      - name: 실제 Firefox 에 임시 설치해 주요 기능 확인
+        env:
+          FIREFOX_BIN: ${{ steps.firefox.outputs.bin }}
+        run: npm run test:firefox
 
   build:
     name: 테스트 및 패키징 확인

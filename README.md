@@ -1,6 +1,6 @@
-# banmo_tag (Chrome Extension)
+# banmo_tag (Chrome · Firefox Extension)
 
-banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게 해 주는 크롬 확장 프로그램입니다. 리스트 멤버가 쓴 트윗의 이름 옆에 배지를 붙이고, 리스트별로 강조하거나 흐리게 표시합니다.
+banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게 해 주는 브라우저 확장 프로그램입니다. 크롬(크롬 계열 브라우저)과 파이어폭스 140 이상을 같은 코드로 지원합니다. 리스트 멤버가 쓴 트윗의 이름 옆에 배지를 붙이고, 리스트별로 강조하거나 흐리게 표시합니다.
 
 - 현재 버전: **v1.6.0** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
 - 모든 데이터는 브라우저(`chrome.storage.local`)에만 저장되며 외부로 전송되지 않습니다. ([개인정보 처리방침](docs/PRIVACY.md))
@@ -43,6 +43,7 @@ extension/        Chrome 에 로드하는 확장 프로그램 파일 (배포 zip
 tests/            shared.js 단위 테스트 (test-runner.html, run-tests.ps1, run-tests.bat)
 tests/e2e/        Playwright E2E 테스트 (실제 확장 프로그램을 Chromium 에 로드)
 tests/fixtures/   E2E 용 X 화면 (synthetic: 합성, real: 실제 화면 스냅샷)
+tests/firefox/    실제 Firefox 동작 확인 (firefox-check.js)
 scripts/          build.ps1, validate.js (정적 검사), bump-version.js
 docs/             CHANGELOG, 테스트 명세, 개선 과제, 개인정보 처리방침
 dist/             빌드 결과 zip (git 에 올리지 않음)
@@ -50,8 +51,18 @@ dist/             빌드 결과 zip (git 에 올리지 않음)
 
 ## 설치 (개발용)
 
+**크롬**
 1. `chrome://extensions`에서 **개발자 모드**를 켭니다.
 2. **압축해제된 확장 프로그램을 로드합니다**를 누르고 `extension` 폴더를 선택합니다.
+
+**파이어폭스 (140 이상)**
+1. 주소창에 `about:debugging#/runtime/this-firefox` 를 엽니다.
+2. **임시 부가 기능 로드…**를 누르고 `extension\manifest.json` 을 선택합니다.
+3. 임시 설치는 파이어폭스를 다시 시작하면 사라집니다. 계속 쓰려면 Mozilla 서명이 필요합니다(부가 기능 사이트 AMO 에 올려 서명. 목록에 공개하지 않는 "unlisted" 도 가능).
+
+**파이어폭스에서 알아둘 점**
+- 파이어폭스는 팝업에서 파일·색상 선택 창이나 다운로드를 열면 팝업이 닫혀 버립니다. 그래서 팝업에서 📤 내보내기, 📥 가져오기, 색상 선택을 누르면 같은 화면이 **새 탭**에서 열립니다. 팝업 위쪽 [↗] 버튼으로 언제든 새 탭에서 열 수 있으며, 새 탭에서도 [가져오기]·[교체 동기화]는 열 때 보던 X 탭을 대상으로 동작합니다.
+- 설치할 때 x.com 접근을 허용하지 않았다면 팝업에 안내와 [x.com 접근 허용] 버튼이 나타납니다.
 
 > 다른 폴더(예: 예전 `antigravity-extension`)에서 로드하던 확장 프로그램은 ID 가 달라 저장 데이터가 넘어오지 않습니다. 옮기기 전에 팝업에서 📤 내보내기를 하고, 새로 로드한 뒤 📥 가져오기(덮어쓰기)를 하세요.
 
@@ -66,10 +77,12 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 
 | 명령 | 내용 |
 |---|---|
-| `npm run check` | 아래 세 가지를 모두 실행 (push 전에 권장) |
+| `npm run check` | 정적 검사 + ESLint + 파이어폭스 호환성 검사 + E2E 를 모두 실행 (push 전에 권장) |
 | `npm run validate` | 정적 검사 (`scripts/validate.js`) |
 | `npm run lint` | ESLint. `shared.js` 함수 이름을 바꾸거나 지웠는데 다른 파일이 아직 쓰고 있으면 여기서 잡힘 |
-| `npm test` | Playwright: 실제 확장 프로그램 E2E 테스트 + `shared.js` 단위 테스트 |
+| `npm test` | Playwright: 실제 확장 프로그램 E2E 테스트(Chromium) + `shared.js` 단위 테스트 |
+| `npm run lint:firefox` | 파이어폭스 호환성 검사 (`web-ext lint`, Mozilla 부가 기능 사이트와 같은 검사) |
+| `npm run test:firefox` | 실제 Firefox 에 임시 설치해 주요 동작 확인 (`FIREFOX_BIN` 에 Firefox 경로 지정. 받기: `npx @puppeteer/browsers install firefox@stable`) |
 | `npm run bump -- 1.7.0` | 릴리스할 때만: 버전 올리기 (manifest, CHANGELOG 의 `[Unreleased]` → 새 버전 항목, README, 테스트 러너 제목을 한 번에 변경) |
 
 ## 테스트
@@ -90,8 +103,9 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 
 | 단계 | 러너 | 내용 |
 |---|---|---|
-| 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 + **ESLint** |
-| E2E 테스트 | Ubuntu | Playwright 로 실제 확장 프로그램 검사 (실패하면 테스트 보고서를 Artifacts 에 업로드) |
+| 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일·크롬/파이어폭스 공용 설정, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 + **ESLint** + **파이어폭스 호환성(`web-ext lint`)** |
+| E2E 테스트 | Ubuntu | Playwright 로 실제 확장 프로그램을 Chromium 에 로드해 검사 (실패하면 테스트 보고서를 Artifacts 에 업로드) |
+| 파이어폭스 동작 확인 | Ubuntu | 최신 안정판 Firefox 를 받아 확장 프로그램을 임시 설치하고 주요 동작 확인 (`tests/firefox/firefox-check.js`) |
 | 테스트 및 패키징 확인 | Windows | `scripts/build.ps1`: 단위 테스트(headless Chrome) → zip 을 만들어 필수 파일이 들어 있는지 확인 (업로드하지 않음) |
 
 **Dependabot**: GitHub Actions 와 개발용 npm 패키지의 새 버전을 매주 월요일 확인해 PR 을 만듭니다. PR 에서도 CI 가 돌기 때문에 통과한 것만 merge 하면 됩니다.
@@ -106,6 +120,7 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 2. GitHub Actions 의 CI 가 통과했는지 확인합니다.
 3. 배포 zip 만들기: `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1` → `dist\banmo_tag-vX.Y.Z.zip`
 4. GitHub 저장소 → **Releases** → **Draft a new release** → 태그 `vX.Y.Z` 생성, 제목 `banmo_tag vX.Y.Z`, 본문에 CHANGELOG 의 해당 버전 내용 붙여 넣기, zip 첨부 → **Publish release**
+5. (파이어폭스 배포 시) 같은 zip 을 Mozilla 부가 기능 사이트(addons.mozilla.org)에 올려 서명받습니다. 크롬과 파이어폭스가 같은 zip 을 씁니다.
 
 ## 빌드
 

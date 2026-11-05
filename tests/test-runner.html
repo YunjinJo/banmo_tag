@@ -682,7 +682,8 @@
           normalizeBadgeSettings, buildBackup, parseBackup,
           applyListReplace, diffHandleMaps, isTweetAffected, countProfileLinks,
           diagnoseStructure, getStructureWarnings, getManualListNameError,
-          normalizeListStyle, getEffectiveBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle
+          normalizeListStyle, getEffectiveBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle,
+          getBrowserKind
         ];
         requiredFns.forEach(fn => assertEqual(typeof fn, 'function'));
         assertEqual(typeof AG_DEFAULT_BADGE_SETTINGS, 'object');
@@ -1196,6 +1197,17 @@
       it('normalizeBadgeSettings 는 계속 빈 항목을 기본값으로 채움', () => {
         assertDeepEqual(normalizeBadgeSettings({ fontSize: 15 }), { textColor: '#ffffff', fontSize: 15, fontFamily: 'system' });
         assertDeepEqual(normalizeBadgeSettings(undefined), { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' });
+      });
+    });
+
+    // SUITE 26: 브라우저 구분 (getBrowserKind, 파이어폭스 지원)
+    describe('26. 브라우저 구분 (getBrowserKind)', () => {
+      it('moz-extension:// 이면 firefox, 그 밖에는 chrome', () => {
+        assertEqual(getBrowserKind('moz-extension://1234-abcd/'), 'firefox');
+        assertEqual(getBrowserKind('MOZ-EXTENSION://x/'), 'firefox');
+        assertEqual(getBrowserKind('chrome-extension://abcdef/'), 'chrome');
+        assertEqual(getBrowserKind(''), 'chrome');
+        assertEqual(getBrowserKind(undefined), 'chrome');
       });
     });
 
