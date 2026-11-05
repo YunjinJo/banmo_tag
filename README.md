@@ -70,7 +70,7 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 | `npm run validate` | 정적 검사 (`scripts/validate.js`) |
 | `npm run lint` | ESLint. `shared.js` 함수 이름을 바꾸거나 지웠는데 다른 파일이 아직 쓰고 있으면 여기서 잡힘 |
 | `npm test` | Playwright: 실제 확장 프로그램 E2E 테스트 + `shared.js` 단위 테스트 |
-| `npm run bump -- 1.6.0` | 새 버전 준비 (manifest, CHANGELOG 틀, README, 테스트 러너 제목을 한 번에 변경) |
+| `npm run bump -- 1.7.0` | 릴리스할 때만: 버전 올리기 (manifest, CHANGELOG 의 `[Unreleased]` → 새 버전 항목, README, 테스트 러너 제목을 한 번에 변경) |
 
 ## 테스트
 
@@ -84,22 +84,28 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 
 테스트 목록과 수동 확인 시나리오는 [docs/TEST_CASES.md](docs/TEST_CASES.md)에 있습니다.
 
-## CI/CD (GitHub Actions)
+## CI (GitHub Actions)
 
-[`.github/workflows/ci.yml`](.github/workflows/ci.yml)이 `main` push 와 PR 마다 자동으로 실행됩니다.
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml)이 `main` push 와 PR 마다 자동으로 실행됩니다. **검사와 테스트만 하며, GitHub Release 나 배포 파일은 만들지 않습니다** (저장소 쓰기 권한 없음).
 
 | 단계 | 러너 | 내용 |
 |---|---|---|
 | 정적 검사 | Ubuntu | [`scripts/validate.js`](scripts/validate.js): manifest 형식·참조 파일, 버전 일치, JS 문법, MV3 CSP 위반(인라인 스크립트·핸들러), `eval`·원격 코드 금지, 문서 링크 + **ESLint** |
-| E2E 테스트 | Ubuntu | Playwright 로 실제 확장 프로그램 검사 (실패하면 보고서를 Artifacts 에 업로드) |
-| 테스트 및 빌드 | Windows | `scripts/build.ps1`: 단위 테스트(headless Chrome) → `banmo_tag-v<버전>.zip` 을 Artifacts 에 업로드 |
-| 릴리스 | Ubuntu | 위 단계가 모두 통과하고, `main` push 이며 **새 버전**일 때만 GitHub Release `v<버전>` 생성, zip 첨부, CHANGELOG 내용을 릴리스 노트로 사용 |
-
-**새 버전 배포 방법**: `npm run bump -- X.Y.Z` 로 버전을 올리고 `docs/CHANGELOG.md` 의 새 항목을 채운 뒤 `main`에 push 하면 됩니다. 버전이 같으면 검사·테스트·빌드만 하고 릴리스는 건너뜁니다.
+| E2E 테스트 | Ubuntu | Playwright 로 실제 확장 프로그램 검사 (실패하면 테스트 보고서를 Artifacts 에 업로드) |
+| 테스트 및 패키징 확인 | Windows | `scripts/build.ps1`: 단위 테스트(headless Chrome) → zip 을 만들어 필수 파일이 들어 있는지 확인 (업로드하지 않음) |
 
 **Dependabot**: GitHub Actions 와 개발용 npm 패키지의 새 버전을 매주 월요일 확인해 PR 을 만듭니다. PR 에서도 CI 가 돌기 때문에 통과한 것만 merge 하면 됩니다.
 
-> 무료 플랜의 비공개 저장소는 브랜치 보호 규칙을 쓸 수 없어, 테스트가 실패하는 코드도 `main` 에 push 될 수 있습니다. 다만 릴리스는 모든 검사를 통과해야만 만들어지므로 깨진 버전이 배포되지는 않습니다.
+> 무료 플랜의 비공개 저장소는 브랜치 보호 규칙을 쓸 수 없어, 테스트가 실패하는 코드도 `main` 에 push 될 수 있습니다. 릴리스하기 전에 GitHub 의 Actions 탭에서 마지막 실행이 통과했는지 확인하세요.
+
+## 릴리스 (수동)
+
+릴리스는 GitHub 에서 직접 만듭니다. 릴리스하기 전까지는 버전을 올리지 않고, 변경 사항은 `docs/CHANGELOG.md` 맨 위 `## [Unreleased]` 항목에 모읍니다.
+
+1. 버전 올리기: `npm run bump -- X.Y.Z` → `[Unreleased]` 내용이 `## [vX.Y.Z]` 항목이 됩니다. 내용을 확인하고 커밋·push 합니다.
+2. GitHub Actions 의 CI 가 통과했는지 확인합니다.
+3. 배포 zip 만들기: `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1` → `dist\banmo_tag-vX.Y.Z.zip`
+4. GitHub 저장소 → **Releases** → **Draft a new release** → 태그 `vX.Y.Z` 생성, 제목 `banmo_tag vX.Y.Z`, 본문에 CHANGELOG 의 해당 버전 내용 붙여 넣기, zip 첨부 → **Publish release**
 
 ## 빌드
 

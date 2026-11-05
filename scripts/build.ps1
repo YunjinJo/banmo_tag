@@ -72,14 +72,12 @@ $runtimeItems = @(
     "icons"
 )
 
-$pathsToZip = @()
 foreach ($item in $runtimeItems) {
     $p = Join-Path $extDir $item
     if (-not (Test-Path $p)) {
         Write-Host "[ERROR] Missing required runtime item: $p" -ForegroundColor Red
         exit 1
     }
-    $pathsToZip += $p
 }
 
 if (-not (Test-Path $distDir)) {
@@ -90,7 +88,30 @@ $zipPath = Join-Path $distDir $zipName
 if (Test-Path $zipPath) {
     Remove-Item -Force $zipPath
 }
-Compress-Archive -Path $pathsToZip -DestinationPath $zipPath -Force
+
+# Build the zip with forward-slash entry names ("icons/icon16.png").
+# Compress-Archive on Windows PowerShell 5.1 writes backslashes ("icons\icon16.png"),
+# which other tools and the Chrome Web Store may not treat as folders.
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$extFull = (Resolve-Path $extDir).Path.TrimEnd('\')
+$zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+try {
+    foreach ($item in $runtimeItems) {
+        $p = Join-Path $extFull $item
+        if (Test-Path $p -PathType Container) {
+            $files = Get-ChildItem -Path $p -Recurse -File | Sort-Object FullName
+        } else {
+            $files = @(Get-Item $p)
+        }
+        foreach ($f in $files) {
+            $entryName = $f.FullName.Substring($extFull.Length + 1).Replace('\', '/')
+            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $f.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+        }
+    }
+} finally {
+    $zip.Dispose()
+}
 
 Write-Host "SUCCESS: Packaged runtime files and icons to dist\$zipName" -ForegroundColor Green
 exit 0

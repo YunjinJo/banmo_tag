@@ -1,8 +1,9 @@
-name: CI/CD
+name: CI
 
-# main 에 push 할 때마다: 정적 검사·ESLint / E2E(실제 확장 프로그램) / Windows 테스트+zip 빌드
-#   → 모두 통과하고 새 버전이면 GitHub Release 생성
-# PR(Dependabot 포함)에서는 검사·테스트·빌드까지만 실행합니다.
+# main 에 push 할 때마다, 그리고 PR(Dependabot 포함)마다:
+#   정적 검사·ESLint / E2E(실제 확장 프로그램) / Windows 단위 테스트 + zip 패키징 확인
+# 릴리스는 GitHub 에서 직접(수동으로) 만듭니다. 이 워크플로는 Release 나 배포 파일을 만들지 않으며,
+# 저장소 쓰기 권한도 없습니다(permissions: contents: read).
 on:
   push:
     branches: [main]
@@ -70,76 +71,33 @@ jobs:
           retention-days: 14
 
   build:
-    name: 테스트 및 빌드
+    name: 테스트 및 패키징 확인
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v7
 
-      # build.ps1: 버전 일치 확인 → 자동 테스트(headless Chrome) → dist/banmo_tag-v<버전>.zip
+      # build.ps1: 버전 일치 확인 → 정적 검사 → 단위 테스트(headless Chrome) → zip 만들기
       - name: 테스트 + 패키징
         shell: powershell
         run: powershell -ExecutionPolicy Bypass -File scripts/build.ps1
 
-      - name: 버전 확인
-        id: version
+      # 만든 zip 은 확인만 하고 업로드하지 않음 (배포 파일은 릴리스할 때 직접 만들어 올림)
+      - name: zip 내용 확인
         shell: pwsh
         run: |
           $v = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
-          "version=$v" >> $env:GITHUB_OUTPUT
-          "### 빌드 결과`n`n- 버전: v$v`n- 파일: banmo_tag-v$v.zip" >> $env:GITHUB_STEP_SUMMARY
-
-      - name: 배포 zip 업로드
-        uses: actions/upload-artifact@v7
-        with:
-          name: banmo_tag-v${{ steps.version.outputs.version }}
-          path: dist/banmo_tag-v${{ steps.version.outputs.version }}.zip
-          if-no-files-found: error
-          retention-days: 30
-
-    outputs:
-      version: ${{ steps.version.outputs.version }}
-
-  release:
-    name: GitHub Release (새 버전일 때만)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    needs: [validate, e2e, build]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: 빌드된 zip 받기
-        uses: actions/download-artifact@v8
-        with:
-          name: banmo_tag-v${{ needs.build.outputs.version }}
-          path: dist
-
-      # 릴리스를 건너뛰는 실행에서도 artifact 전달이 정상인지 매번 확인
-      - name: zip 확인
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          zip="dist/banmo_tag-v$VERSION.zip"
-          test -f "$zip" || { echo "::error::$zip 이 없습니다"; ls -R dist; exit 1; }
-          unzip -l "$zip"
-          unzip -l "$zip" | grep -q ' manifest.json$' || { echo "::error::zip 안에 manifest.json 이 없습니다"; exit 1; }
-
-      - name: 릴리스 생성
-        env:
-          GH_TOKEN: ${{ github.token }}
-          VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          tag="v$VERSION"
-          if gh release view "$tag" > /dev/null 2>&1; then
-            echo "릴리스 $tag 이(가) 이미 있어 건너뜁니다. (새 릴리스를 만들려면 manifest.json 과 CHANGELOG.md 의 버전을 올리세요)"
-            echo "- 릴리스 $tag 이미 있음 → 건너뜀" >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          # CHANGELOG.md 에서 해당 버전 섹션만 잘라 릴리스 노트로 사용
-          awk -v head="## [$tag]" 'index($0, head) == 1 { found = 1; next } found && /^## \[/ { exit } found { print }' docs/CHANGELOG.md > notes.md
-          gh release create "$tag" "dist/banmo_tag-$tag.zip" \
-            --title "banmo_tag $tag" \
-            --notes-file notes.md \
-            --target "$GITHUB_SHA"
-          echo "- 릴리스 $tag 생성 완료" >> "$GITHUB_STEP_SUMMARY"
+          $zip = "dist/banmo_tag-v$v.zip"
+          if (-not (Test-Path $zip)) { Write-Error "$zip 이 없습니다"; exit 1 }
+          Add-Type -AssemblyName System.IO.Compression.FileSystem
+          $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+          $entries = $archive.Entries.FullName
+          $archive.Dispose()
+          $entries | ForEach-Object { Write-Host "  $_" }
+          $required = 'manifest.json', 'shared.js', 'content.js', 'background.js', 'popup.html', 'popup.js', 'styles.css',
+            'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png'
+          $missing = $required | Where-Object { $entries -notcontains $_ }
+          if ($missing) { Write-Error "zip 에 없는 파일: $($missing -join ', ')"; exit 1 }
+          # zip 표준은 경로 구분자로 / 를 씀 (\ 가 있으면 폴더로 인식되지 않을 수 있음)
+          $backslash = $entries | Where-Object { $_ -like '*\*' }
+          if ($backslash) { Write-Error "zip 경로에 \ 가 있습니다: $($backslash -join ', ')"; exit 1 }
+          "### 패키징 확인`n`n- 버전: v$v (zip 은 업로드하지 않음)`n- 파일 $($entries.Count)개, 필수 파일 모두 포함" >> $env:GITHUB_STEP_SUMMARY

@@ -5,6 +5,19 @@
 
 ---
 
+## [Unreleased]
+
+> 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
+
+### 🛠️ Changed (변경 및 개선)
+- **릴리스는 GitHub 에서 직접 (`.github/workflows/ci.yml`)**: CI 가 더 이상 GitHub Release 와 배포 zip(Artifacts)을 만들지 않습니다. CI 는 검사·테스트·zip 패키징 확인만 하며 저장소 쓰기 권한도 없습니다. 릴리스 방법은 README 의 "릴리스 (수동)" 참고.
+- **CHANGELOG `[Unreleased]` 항목**: 릴리스 전 변경 사항은 이 항목에 모으고, `npm run bump -- X.Y.Z` 가 이 항목을 새 버전 항목으로 바꿉니다. 버전 올리기 스크립트는 모든 변경을 계산한 뒤 한꺼번에 저장하도록 바꿔, 중간에 실패해도 `manifest.json` 만 바뀌는 일이 없습니다.
+
+### 🐛 Fixed (버그 수정)
+- **배포 zip 의 폴더 경로가 `\` 로 저장되던 문제 (`scripts/build.ps1`)**: Windows PowerShell 5.1 의 `Compress-Archive` 가 `icons\icon16.png` 처럼 `\` 를 써서, 다른 도구나 Chrome 웹 스토어에서 `icons` 폴더로 인식되지 않을 수 있었습니다. zip 표준대로 `icons/icon16.png` 형식으로 만들고, CI 가 아이콘 포함 여부와 `\` 경로를 검사합니다.
+
+---
+
 ## [v1.6.0] - 2026-11-05
 
 ### 🚀 Added (새로운 기능)

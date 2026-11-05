@@ -15,7 +15,7 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
   ```
 - **탐색기 원클릭**:
   - `tests\run-tests.bat` 파일을 더블 클릭
-- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정적 검사([`scripts/validate.js`](../scripts/validate.js))·ESLint, E2E(Ubuntu), 같은 단위 테스트(Windows 러너)를 실행하고 배포 zip 을 빌드합니다.
+- **GitHub Actions**: `main` 브랜치 push 및 PR 마다 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정적 검사([`scripts/validate.js`](../scripts/validate.js))·ESLint, E2E(Ubuntu), 같은 단위 테스트(Windows 러너)를 실행하고 zip 패키징을 확인합니다 (Release·배포 파일은 만들지 않음).
 
 ### 방법 C: Playwright E2E (실제 확장 프로그램, Node.js 필요)
 - `npm ci` 와 `npx playwright install chromium` 을 한 번 실행한 뒤 `npm test`.
