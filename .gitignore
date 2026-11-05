@@ -17,6 +17,9 @@ Gemini_Generated_Image_*.png
 # 개인 리스트 데이터가 들어 있을 수 있는 백업 파일
 banmo_tag_backup_*.json
 
+# Claude Code 개인 설정 (공용 설정은 .claude/settings.json)
+.claude/settings.local.json
+
 # OS / 에디터
 Thumbs.db
 desktop.ini

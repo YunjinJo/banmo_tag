@@ -1,0 +1,61 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(git status *)",
+      "PowerShell(git log *)",
+      "PowerShell(git branch *)",
+      "PowerShell(git diff *)",
+      "PowerShell(git show *)",
+      "Bash(gh pr checks *)",
+      "PowerShell(gh pr checks *)",
+      "Bash(gh run watch *)",
+      "PowerShell(gh run watch *)",
+      "PowerShell(gh run view *)",
+      "PowerShell(gh run list *)",
+      "PowerShell(gh pr view *)",
+      "PowerShell(gh pr list *)",
+      "Bash(npm run validate)",
+      "PowerShell(npm run validate)",
+      "Bash(npm run -s validate)",
+      "PowerShell(npm run -s validate)",
+      "Bash(npm run lint)",
+      "PowerShell(npm run lint)",
+      "Bash(npm run lint:firefox)",
+      "PowerShell(npm run lint:firefox)",
+      "Bash(npx eslint .)",
+      "PowerShell(npx eslint .)",
+      "Bash(npx playwright test)",
+      "PowerShell(npx playwright test)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/block-main-commit.js\"",
+            "timeout": 10,
+            "statusMessage": "main 브랜치 보호 확인"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "shell": "bash",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/eslint-on-edit.js\"",
+            "timeout": 60,
+            "statusMessage": "ESLint 검사"
+          }
+        ]
+      }
+    ]
+  }
+}

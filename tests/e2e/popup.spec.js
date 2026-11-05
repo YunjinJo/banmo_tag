@@ -5,38 +5,55 @@ const {
   test, expect, mockXPage, setStorage, getStorage, getLists, openPopup, findXTabId, pointPopupAtTab
 } = require('./helpers');
 
+// chrome.storage 는 리스트를 이름순으로 돌려주므로, 순서가 아니라 이름으로 카드를 찾음
+const listCard = (popup, name) => popup.locator('.list-card')
+  .filter({ has: popup.locator('.list-name', { hasText: new RegExp(`^${name}$`) }) });
+
+// 리스트 카드를 눌러 설정 시트를 엶
+async function openSheet(popup, name) {
+  await listCard(popup, name).click();
+  await expect(popup.locator('#list-sheet')).toBeVisible();
+  await expect(popup.locator('#sheet-title')).toHaveText(name);
+}
+
 test.describe('팝업 기본 동작', () => {
-  test('배지 스타일 설정을 키보드(Tab → Enter/Space)로 열고 닫을 수 있음', async ({ context, extensionId }) => {
+  test('탭(리스트 / 기본 스타일 / 도움말)을 키보드 ← → 로 오갈 수 있음', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId);
-    const header = popup.locator('#toggle-badge-settings');
-    expect(await header.evaluate(el => el.tagName)).toBe('BUTTON');
+    await expect(popup.locator('#panel-lists')).toBeVisible();
+    await expect(popup.locator('#panel-style')).toBeHidden();
 
-    // Tab 키만으로 머리글까지 이동할 수 있어야 함
+    // Tab 키만으로 탭 목록까지 이동할 수 있어야 함
     let reached = false;
-    for (let i = 0; i < 40 && !reached; i++) {
+    for (let i = 0; i < 20 && !reached; i++) {
       await popup.keyboard.press('Tab');
-      reached = await popup.evaluate(() => document.activeElement && document.activeElement.id === 'toggle-badge-settings');
+      reached = await popup.evaluate(() => document.activeElement && document.activeElement.id === 'tab-lists');
     }
-    expect(reached, 'Tab 키로 배지 스타일 설정 머리글에 도달해야 함').toBe(true);
+    expect(reached, 'Tab 키로 [리스트] 탭에 도달해야 함').toBe(true);
 
-    await popup.keyboard.press('Enter');
+    await popup.keyboard.press('ArrowRight');
+    await expect(popup.locator('#tab-style')).toBeFocused();
+    await expect(popup.locator('#tab-style')).toHaveAttribute('aria-selected', 'true');
     await expect(popup.locator('#badge-settings-body')).toBeVisible();
-    await expect(header).toHaveAttribute('aria-expanded', 'true');
-    await popup.keyboard.press('Space');
-    await expect(popup.locator('#badge-settings-body')).toBeHidden();
-    await expect(header).toHaveAttribute('aria-expanded', 'false');
+    await expect(popup.locator('#panel-lists')).toBeHidden();
+    await popup.keyboard.press('End');
+    await expect(popup.locator('#panel-help')).toBeVisible();
+    await popup.keyboard.press('ArrowRight'); // 끝에서 처음으로
+    await expect(popup.locator('#panel-lists')).toBeVisible();
+    await expect(popup.locator('#tab-style')).toHaveAttribute('tabindex', '-1');
   });
 
-  test('X 가 아닌 탭에서 [가져오기]를 누르면 "X 페이지가 아닙니다" 안내', async ({ context, extensionId }) => {
+  test('X 가 아닌 탭에서 [현재 탭에서 가져오기]를 누르면 "X 페이지가 아닙니다" 안내', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId);
     await popup.click('#sync-current-tab-btn');
     await expect(popup.locator('#sync-status')).toHaveText('현재 탭이 X(Twitter) 페이지가 아닙니다.');
+    await expect(popup.locator('#sync-status')).toBeVisible();
   });
 
   test('기존 리스트에 직접 추가하면 멤버만 추가되고 색상·모드는 유지', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '테크': { color: '#ff0055', mode: 'highlight', members: ['@a'] } } });
     const popup = await openPopup(context, extensionId);
     await popup.click('#toggle-manual-add-btn');
+    await expect(popup.locator('#manual-name')).toBeFocused();
     await popup.fill('#manual-name', '테크');
     await popup.fill('#manual-members', '@b, c');
     await popup.click('#manual-save-btn');
@@ -44,6 +61,7 @@ test.describe('팝업 기본 동작', () => {
 
     const lists = await getLists(serviceWorker);
     expect(lists['테크']).toEqual({ color: '#ff0055', mode: 'highlight', members: ['@a', '@b', '@c'] });
+    await expect(listCard(popup, '테크').locator('.list-count')).toHaveText('3명');
   });
 
   test('"X" 같은 이름도 직접 추가할 수 있고, 팝업을 다시 열어도 남아 있음', async ({ context, extensionId, serviceWorker }) => {
@@ -62,34 +80,152 @@ test.describe('팝업 기본 동작', () => {
     expect((await getLists(serviceWorker))['X']).toMatchObject({ members: ['@a'], manual: true });
   });
 
-  test('리스트 삭제는 팝업 안 확인 상자에서 취소/확인할 수 있음 (브라우저 confirm 사용 안 함)', async ({ context, extensionId, serviceWorker }) => {
-    await setStorage(serviceWorker, { lists: { '테크': { color: '#1d9bf0', mode: 'normal', members: ['@a'] } } });
+  test('리스트 카드에 배지·멤버 수·요약이 보이고, 정렬(이름순 / 멤버 수)을 바꾸면 저장됨', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '친구': { color: '#c8174d', mode: 'highlight', members: ['@alice', '@bob', '@carol'], style: { fontFamily: 'monospace' } },
+        'AI': { color: '#7a3fd1', mode: 'normal', members: ['@x1', '@x2', '@x3', '@x4'] },
+        '뉴스': { color: '#0b74c4', mode: 'dim', members: ['@n1', '@n2', '@n3', '@n4', '@n5'] }
+      }
+    });
     const popup = await openPopup(context, extensionId);
-    let nativeDialog = false;
-    popup.on('dialog', d => { nativeDialog = true; d.dismiss(); });
+    await expect(popup.locator('#list-count')).toHaveText('3');
+    await expect(popup.locator('.list-name')).toHaveText(['뉴스', '친구', 'AI']); // 한국어 정렬: 한글 먼저
+    const friend = listCard(popup, '친구');
+    await expect(friend.locator('.list-info')).toHaveText('강조 · 개별 스타일 · @alice, @bob 외 1명');
+    await expect(friend.locator('.list-name')).toHaveCSS('background-color', 'rgb(200, 23, 77)');
+    await expect(friend.locator('.list-name')).toHaveCSS('font-family', 'monospace');
 
-    await popup.click('.delete-list-btn');
-    await expect(popup.locator('#confirm-box')).toBeVisible();
-    await expect(popup.locator('#confirm-text')).toContainText("'테크' 리스트를 삭제할까요?");
-    await popup.click('#confirm-cancel-btn');
-    await expect(popup.locator('#confirm-box')).toBeHidden();
-    expect(Object.keys(await getLists(serviceWorker))).toEqual(['테크']);
+    await popup.selectOption('#list-sort', 'members');
+    await expect(popup.locator('.list-name')).toHaveText(['뉴스', 'AI', '친구']); // 5명, 4명, 3명
+    await expect.poll(async () => (await getStorage(serviceWorker, ['uiSettings'])).uiSettings).toEqual({ theme: 'system', listSort: 'members' });
 
-    await popup.click('.delete-list-btn');
-    await popup.click('#confirm-ok-btn');
-    await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual([]);
-    await expect(popup.locator('.empty-state')).toBeVisible();
-    expect(nativeDialog, '브라우저 기본 대화상자가 뜨면 안 됨').toBe(false);
+    const again = await openPopup(context, extensionId);
+    await expect(again.locator('#list-sort')).toHaveValue('members');
+    await expect(again.locator('.list-name')).toHaveText(['뉴스', 'AI', '친구']);
+  });
+
+  test('⋯ 메뉴: 열면 첫 항목에 포커스, Esc·바깥 클릭으로 닫힘', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    const menu = popup.locator('#app-menu');
+    await expect(menu).toBeHidden();
+    await popup.click('#menu-btn');
+    await expect(menu).toBeVisible();
+    await expect(popup.locator('#menu-btn')).toHaveAttribute('aria-expanded', 'true');
+    await expect(popup.locator('#export-btn')).toBeFocused();
+    await popup.keyboard.press('ArrowDown');
+    await expect(popup.locator('#import-btn')).toBeFocused();
+    await popup.keyboard.press('Escape');
+    await expect(menu).toBeHidden();
+    await expect(popup.locator('#menu-btn')).toBeFocused();
+
+    await popup.click('#menu-btn');
+    await popup.click('h2'); // 바깥
+    await expect(menu).toBeHidden();
   });
 });
 
-test.describe('리스트별 배지 글자 스타일', () => {
-  const COMMON = { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' };
-  // chrome.storage 는 리스트를 이름순으로 돌려주므로, 순서가 아니라 이름으로 줄을 찾음
-  const listRow = (popup, name) => popup.locator('.list-wrapper')
-    .filter({ has: popup.locator('.list-name', { hasText: new RegExp(`^${name}$`) }) });
+test.describe('화면 테마 (시스템 / 라이트 / 다크)', () => {
+  const bg = page => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
 
-  test('리스트를 펼쳐 글자 크기·색상·폰트를 그 리스트만 따로 저장하고, [공통 설정 따르기]로 되돌림', async ({ context, extensionId, serviceWorker }) => {
+  test('기본은 시스템 설정을 따름 (운영체제가 다크면 다크, 라이트면 라이트)', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    await expect(popup.locator('#theme-system')).toBeChecked();
+    await popup.emulateMedia({ colorScheme: 'dark' });
+    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+    await popup.emulateMedia({ colorScheme: 'light' });
+    expect(await bg(popup)).toBe('rgb(255, 255, 255)');
+    expect(await popup.evaluate(() => document.documentElement.dataset.theme)).toBeUndefined();
+  });
+
+  test('직접 고른 테마는 시스템 설정보다 우선하고, 저장되어 다음에 열 때 첫 화면부터 적용됨', async ({ context, extensionId, serviceWorker }) => {
+    const popup = await openPopup(context, extensionId);
+    await popup.emulateMedia({ colorScheme: 'light' });
+    await popup.click('#tab-style');
+    await popup.locator('#theme-dark').check();
+    await expect(popup.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+    await expect.poll(async () => (await getStorage(serviceWorker, ['uiSettings'])).uiSettings).toEqual({ theme: 'dark', listSort: 'name' });
+
+    // 다시 열 때: popup.js 가 chrome.storage 를 읽기 전(theme.js 시점)에 이미 다크여야 함 (깜빡임 없음)
+    const again = await context.newPage();
+    await again.emulateMedia({ colorScheme: 'light' });
+    await again.route('**/popup.js', route => route.abort()); // popup.js 없이 theme.js 만으로
+    await again.goto(`chrome-extension://${extensionId}/popup.html`);
+    await expect(again.locator('html')).toHaveAttribute('data-theme', 'dark');
+    expect(await bg(again)).toBe('rgb(21, 32, 43)');
+
+    // 라이트로 고정하면 운영체제가 다크여도 라이트
+    await popup.emulateMedia({ colorScheme: 'dark' });
+    await popup.locator('#theme-light').check();
+    expect(await bg(popup)).toBe('rgb(255, 255, 255)');
+    // 시스템으로 되돌리면 운영체제 설정(다크)을 따름
+    await popup.locator('#theme-system').check();
+    await expect(popup.locator('html')).not.toHaveAttribute('data-theme', /.+/);
+    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+  });
+
+  test('다른 창에서 테마를 바꾸면 열려 있는 화면에도 바로 반영', async ({ context, extensionId, serviceWorker }) => {
+    const popup = await openPopup(context, extensionId);
+    await setStorage(serviceWorker, { uiSettings: { theme: 'dark', listSort: 'name' } });
+    await expect(popup.locator('html')).toHaveAttribute('data-theme', 'dark');
+    await expect(popup.locator('#theme-dark')).toBeChecked();
+  });
+});
+
+test.describe('리스트 설정 시트', () => {
+  const COMMON = { textColor: '#ffffff', fontSize: 11, fontFamily: 'system' };
+
+  test('카드를 누르면 시트가 열리고, Esc·닫기·바깥을 누르면 닫히며 포커스는 카드로 돌아감', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    await expect(popup.locator('#sheet-close-btn')).toBeFocused();
+    await expect(listCard(popup, '친구')).toHaveClass(/is-open/);
+    // 시트가 열려 있는 동안 뒤 화면은 조작할 수 없음
+    expect(await popup.evaluate(() => document.getElementById('app').inert)).toBe(true);
+
+    await popup.keyboard.press('Escape');
+    await expect(popup.locator('#list-sheet')).toBeHidden();
+    await expect(listCard(popup, '친구')).toBeFocused();
+    expect(await popup.evaluate(() => document.getElementById('app').inert)).toBe(false);
+
+    await openSheet(popup, '친구');
+    await popup.click('#sheet-close-btn');
+    await expect(popup.locator('#list-sheet')).toBeHidden();
+    await openSheet(popup, '친구');
+    await popup.mouse.click(180, 20); // 시트 위쪽 어두운 배경
+    await expect(popup.locator('#list-sheet')).toBeHidden();
+  });
+
+  test('배지 색(빠른 선택·직접 고르기)과 타임라인 표시(배지만/강조/흐리게)를 바꾸면 저장되고 미리보기에 반영', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@alice'] } } });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    await expect(popup.locator('#sheet-color-custom')).toHaveClass(/is-selected/); // 빠른 선택에 없는 색
+
+    await popup.click('#sheet-swatch-2'); // 초록
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].color).toBe('#0f7b3e');
+    await expect(popup.locator('#sheet-swatch-2')).toHaveAttribute('aria-pressed', 'true');
+    await expect(popup.locator('#sheet-swatch-2')).toBeFocused(); // 다시 그린 뒤에도 포커스 유지
+    await expect(popup.locator('.list-style-preview')).toHaveCSS('background-color', 'rgb(15, 123, 62)');
+    await expect(listCard(popup, '친구').locator('.list-name')).toHaveCSS('background-color', 'rgb(15, 123, 62)');
+
+    await popup.locator('#sheet-color-custom').evaluate((el) => { el.value = '#123456'; el.dispatchEvent(new Event('change')); });
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].color).toBe('#123456');
+
+    await popup.locator('#sheet-mode-highlight').check();
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].mode).toBe('highlight');
+    await expect(popup.locator('.tweet-preview')).toHaveCSS('box-shadow', /rgb\(18, 52, 86\)/);
+    await expect(listCard(popup, '친구').locator('.list-info')).toContainText('강조');
+
+    await popup.locator('#sheet-mode-dim').check();
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].mode).toBe('dim');
+    await expect(popup.locator('.tweet-preview .tweet-text')).toHaveCSS('opacity', '0.45');
+    await expect(popup.locator('.tweet-preview .tweet-name')).toHaveCSS('opacity', '1');
+  });
+
+  test('글자 크기·색상·폰트를 그 리스트만 따로 저장하고, [공통 설정 따르기]로 되돌림', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: {
         '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] },
@@ -98,45 +234,72 @@ test.describe('리스트별 배지 글자 스타일', () => {
       badgeSettings: COMMON
     });
     const popup = await openPopup(context, extensionId);
-    const row = listRow(popup, '친구');
-    await row.locator('.list-toggle').click();
-    const size = row.locator('.list-style-controls input[type="number"]');
+    await openSheet(popup, '친구');
+    const size = popup.locator('#sheet-font-size');
     await expect(size).toHaveValue('11'); // 공통 설정 값이 보임
-    await expect(row.locator('.list-style-state')).toHaveText('공통 설정 사용 중');
+    await expect(popup.locator('#list-sheet .list-style-state')).toHaveText('공통 설정 사용 중');
 
-    await size.fill('16');
-    await size.press('Tab'); // change 이벤트
+    await size.selectOption('16');
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ fontSize: 16 });
-    await expect(row.locator('.list-info')).toContainText('개별 스타일');
-    // 다시 그린 뒤에도 펼침 상태와 값이 유지됨
+    await expect(listCard(popup, '친구').locator('.list-info')).toContainText('개별 스타일');
+    // 다시 그린 뒤에도 시트와 값이 유지됨
     await expect(size).toHaveValue('16');
-    await expect(row.locator('.list-style-preview')).toHaveCSS('font-size', '16px');
+    await expect(popup.locator('.list-style-preview')).toHaveCSS('font-size', '16px');
+    await expect(popup.locator('#list-sheet .list-style-state')).toHaveText('이 리스트만 따로 설정됨');
 
-    await row.locator('.list-style-controls input[type="color"]').evaluate((el) => { el.value = '#000000'; el.dispatchEvent(new Event('change')); });
+    await popup.locator('#sheet-text-color').evaluate((el) => { el.value = '#000000'; el.dispatchEvent(new Event('change')); });
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ textColor: '#000000', fontSize: 16 });
-    await row.locator('.list-style-controls select').selectOption('monospace');
+    await popup.locator('#sheet-font-family').selectOption('monospace');
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].style)
       .toEqual({ textColor: '#000000', fontSize: 16, fontFamily: 'monospace' });
     // 다른 리스트에는 영향 없음
     expect((await getLists(serviceWorker))['동료'].style).toBeUndefined();
     await expect(popup.locator('#badge-custom-count')).toHaveText('개별 스타일을 쓰는 리스트 1개');
 
-    await row.getByRole('button', { name: '공통 설정 따르기' }).click();
+    await popup.click('#sheet-style-reset-btn');
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toBeUndefined();
     await expect(size).toHaveValue('11');
-    await expect(row.locator('.list-style-state')).toHaveText('공통 설정 사용 중');
+    await expect(popup.locator('#list-sheet .list-style-state')).toHaveText('공통 설정 사용 중');
+    await expect(popup.locator('#sheet-style-reset-btn')).toBeDisabled();
   });
 
-  test('범위를 벗어난 글자 크기는 저장하지 않고 원래 값으로 되돌림', async ({ context, extensionId, serviceWorker }) => {
-    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } }, badgeSettings: COMMON });
+  test('[멤버 N명 보기]로 멤버를 보고 지울 수 있음', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a', '@b', '@c'] } } });
     const popup = await openPopup(context, extensionId);
-    await popup.locator('.list-toggle').nth(0).click();
-    const size = popup.locator('#list-style-size-0');
-    await size.fill('40');
-    await size.press('Tab');
-    await expect(popup.locator('#sync-status')).toHaveText('글자 크기는 8~20 사이로 입력해주세요.');
-    await expect(size).toHaveValue('11');
-    expect((await getLists(serviceWorker))['친구'].style).toBeUndefined();
+    await openSheet(popup, '친구');
+    await expect(popup.locator('#sheet-members')).toHaveCount(0);
+    await popup.click('#sheet-members-btn');
+    await expect(popup.locator('#sheet-members-btn')).toHaveAttribute('aria-expanded', 'true');
+    await expect(popup.locator('#sheet-members .member-handle')).toHaveCount(3);
+
+    await popup.getByRole('button', { name: "'@b' 제거" }).click();
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].members).toEqual(['@a', '@c']);
+    await expect(popup.locator('#sheet-members .member-handle')).toHaveCount(2); // 펼침 유지
+    await expect(popup.locator('#sheet-count')).toHaveText('2명');
+  });
+
+  test('리스트 삭제는 확인 상자에서 취소/확인할 수 있음 (브라우저 confirm 사용 안 함)', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '테크': { color: '#1d9bf0', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    let nativeDialog = false;
+    popup.on('dialog', d => { nativeDialog = true; d.dismiss(); });
+
+    await openSheet(popup, '테크');
+    await popup.click('#sheet-delete-btn');
+    await expect(popup.locator('#confirm-box')).toBeVisible();
+    await expect(popup.locator('#confirm-text')).toContainText("'테크' 리스트를 삭제할까요?");
+    await expect(popup.locator('#confirm-ok-btn')).toBeFocused();
+    await popup.click('#confirm-cancel-btn');
+    await expect(popup.locator('#confirm-box')).toBeHidden();
+    await expect(popup.locator('#sheet-delete-btn')).toBeFocused(); // 포커스가 원래 버튼으로
+    expect(Object.keys(await getLists(serviceWorker))).toEqual(['테크']);
+
+    await popup.click('#sheet-delete-btn');
+    await popup.click('#confirm-ok-btn');
+    await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual([]);
+    await expect(popup.locator('.empty-state')).toBeVisible();
+    await expect(popup.locator('#list-sheet')).toBeHidden(); // 지운 리스트의 시트는 닫힘
+    expect(nativeDialog, '브라우저 기본 대화상자가 뜨면 안 됨').toBe(false);
   });
 
   test('[이 스타일을 모든 리스트에 적용]: 공통 설정이 그 스타일로 바뀌고 다른 리스트의 개별 스타일은 지워짐', async ({ context, extensionId, serviceWorker }) => {
@@ -149,9 +312,8 @@ test.describe('리스트별 배지 글자 스타일', () => {
       badgeSettings: COMMON
     });
     const popup = await openPopup(context, extensionId);
-    const row = listRow(popup, '친구');
-    await row.locator('.list-toggle').click();
-    await row.getByRole('button', { name: '이 스타일을 모든 리스트에 적용' }).click();
+    await openSheet(popup, '친구');
+    await popup.click('#sheet-style-apply-all-btn');
     await expect(popup.locator('#confirm-text')).toContainText("'친구' 리스트의 글자 스타일을 모든 리스트에 적용할까요?");
     await popup.click('#confirm-ok-btn');
     await expect(popup.locator('#sync-status')).toContainText('모든 리스트에 적용했습니다');
@@ -163,6 +325,35 @@ test.describe('리스트별 배지 글자 스타일', () => {
     await expect(popup.locator('#badge-custom-count')).toHaveText('모든 리스트가 공통 스타일 사용 중');
   });
 
+  test('팝업을 열면 시트가 저장된 공통 설정 값을 보여 줌', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } },
+      badgeSettings: { textColor: '#333333', fontSize: 14, fontFamily: 'monospace' }
+    });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    await expect(popup.locator('#sheet-font-size')).toHaveValue('14');
+    await expect(popup.locator('#sheet-font-family')).toHaveValue('monospace');
+    await expect(popup.locator('#sheet-text-color')).toHaveValue('#333333');
+  });
+});
+
+test.describe('배지 기본 스타일 (기본 스타일 탭)', () => {
+  test('글자 크기·폰트를 바꾸면 저장되고, 리스트 카드 배지에도 반영', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    await popup.selectOption('#badge-font-size', '15');
+    await popup.selectOption('#badge-font-family', 'monospace');
+    await expect.poll(async () => (await getStorage(serviceWorker, ['badgeSettings'])).badgeSettings)
+      .toEqual({ textColor: '#ffffff', fontSize: 15, fontFamily: 'monospace' });
+    await expect(popup.locator('#badge-preview')).toHaveCSS('font-size', '15px');
+    await expect(listCard(popup, '친구').locator('.list-name')).toHaveCSS('font-size', '15px');
+
+    await popup.click('#badge-reset-btn');
+    await expect.poll(async () => (await getStorage(serviceWorker, ['badgeSettings'])).badgeSettings.fontSize).toBe(11);
+  });
+
   test('공통 설정 [모든 리스트에 적용]: 개별 스타일을 모두 지움 (없으면 안내만)', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: {
@@ -172,12 +363,13 @@ test.describe('리스트별 배지 글자 스타일', () => {
       badgeSettings: { textColor: '#eeeeee', fontSize: 13, fontFamily: 'system' }
     });
     const popup = await openPopup(context, extensionId);
-    await popup.click('#toggle-badge-settings');
+    await popup.click('#tab-style');
     await expect(popup.locator('#badge-custom-count')).toHaveText('개별 스타일을 쓰는 리스트 2개');
     await popup.click('#badge-apply-all-btn');
     await expect(popup.locator('#confirm-text')).toContainText('리스트 2개의 개별 글자 스타일을 지우고');
     await popup.click('#confirm-ok-btn');
     await expect(popup.locator('#sync-status')).toContainText('개별 스타일 2개 해제');
+    await expect(popup.locator('#sync-status')).toBeVisible(); // 다른 탭에서도 보이는 알림
 
     const stored = await getStorage(serviceWorker, ['lists', 'badgeSettings']);
     expect(Object.values(stored.lists).map(l => l.style)).toEqual([undefined, undefined]);
@@ -186,18 +378,6 @@ test.describe('리스트별 배지 글자 스타일', () => {
     await popup.click('#badge-apply-all-btn');
     await expect(popup.locator('#sync-status')).toHaveText('이미 모든 리스트가 공통 스타일을 사용하고 있습니다.');
     await expect(popup.locator('#confirm-box')).toBeHidden();
-  });
-
-  test('팝업을 열면 리스트별 편집란이 저장된 공통 설정 값을 보여 줌', async ({ context, extensionId, serviceWorker }) => {
-    await setStorage(serviceWorker, {
-      lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } },
-      badgeSettings: { textColor: '#333333', fontSize: 14, fontFamily: 'monospace' }
-    });
-    const popup = await openPopup(context, extensionId);
-    await popup.locator('.list-toggle').nth(0).click();
-    await expect(popup.locator('#list-style-size-0')).toHaveValue('14');
-    await expect(popup.locator('#list-style-font-0')).toHaveValue('monospace');
-    await expect(popup.locator('#list-style-color-0')).toHaveValue('#333333');
   });
 });
 
@@ -230,14 +410,16 @@ test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com �
     await expect(page.locator('#sync-status')).toContainText('이 화면을 열 때 보던 X 탭을 찾을 수 없습니다');
   });
 
-  test('크롬 팝업에서는 📥 가져오기가 바로 파일 선택 창을 엶 (파이어폭스 우회가 끼어들지 않음)', async ({ context, extensionId }) => {
+  test('크롬 팝업에서는 ⋯ 메뉴의 [백업 파일 가져오기]가 바로 파일 선택 창을 엶 (파이어폭스 우회가 끼어들지 않음)', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId);
     await expect(popup.locator('#firefox-note')).toBeHidden();
+    await popup.click('#menu-btn');
     const [chooser] = await Promise.all([popup.waitForEvent('filechooser'), popup.click('#import-btn')]);
     expect(chooser).toBeTruthy();
+    await expect(popup.locator('#app-menu')).toBeHidden(); // 항목을 누르면 메뉴가 닫힘
   });
 
-  test('파이어폭스 팝업에서는 📥 가져오기·색상 선택이 파일·색상 창 대신 새 탭 화면을 엶', async ({ context, extensionId, serviceWorker }) => {
+  test('파이어폭스 팝업에서는 가져오기가 파일 선택 창 대신 새 탭 화면을 엶', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
     const popup = await openPopup(context, extensionId);
     // 확장 프로그램 주소가 moz-extension:// 인 것처럼 (파이어폭스)
@@ -245,20 +427,26 @@ test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com �
 
     let fileChooserOpened = false;
     popup.on('filechooser', () => { fileChooserOpened = true; });
+    await popup.click('#menu-btn');
     const [importTab] = await Promise.all([context.waitForEvent('page'), popup.locator('#import-btn').click({ noWaitAfter: true })]);
     expect(new URL(importTab.url()).searchParams.get('view')).toBe('tab');
     expect(fileChooserOpened).toBe(false);
   });
 
-  test('파이어폭스 팝업에서 리스트 색상 선택도 새 탭 화면으로', async ({ context, extensionId, serviceWorker }) => {
+  test('파이어폭스 팝업에서 시트의 [다른 색]도 새 탭 화면으로, 그 탭에서는 같은 리스트 시트가 열려 있음', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
     const popup = await openPopup(context, extensionId);
     await popup.evaluate(() => { chrome.runtime.getURL = path => 'moz-extension://test-uuid/' + (path || ''); });
+    await openSheet(popup, '친구');
     const [colorTab] = await Promise.all([
       context.waitForEvent('page'),
-      popup.locator('.list-controls input[type="color"]').first().click({ noWaitAfter: true })
+      popup.locator('#sheet-color-custom').click({ noWaitAfter: true })
     ]);
-    expect(new URL(colorTab.url()).searchParams.get('view')).toBe('tab');
+    const url = new URL(colorTab.url());
+    expect(url.searchParams.get('view')).toBe('tab');
+    expect(url.searchParams.get('list')).toBe('친구');
+    await expect(colorTab.locator('#list-sheet')).toBeVisible();
+    await expect(colorTab.locator('#sheet-title')).toHaveText('친구');
   });
 
   test('x.com 접근 권한이 있으면 안내 없음, 꺼져 있으면 안내와 [허용] 버튼', async ({ context, extensionId }) => {
@@ -288,6 +476,7 @@ test.describe('백업', () => {
       badgeSettings: { textColor: '#000000', fontSize: 14, fontFamily: 'monospace' }
     });
     const popup = await openPopup(context, extensionId);
+    await popup.click('#menu-btn');
     const [download] = await Promise.all([popup.waitForEvent('download'), popup.click('#export-btn')]);
     const stream = await download.createReadStream();
     let text = '';
@@ -360,7 +549,7 @@ test.describe('팝업 ↔ X 탭 연동', () => {
     await expect(popup.locator('#sync-status')).toContainText('총 3명');
   });
 
-  test('[교체 동기화]: 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제', async ({ context, extensionId, serviceWorker }) => {
+  test('[뺀 멤버 정리]: 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@gone_user'] } }
     });
@@ -389,7 +578,7 @@ test.describe('팝업 ↔ X 탭 연동', () => {
     expect(lists['Core Members'].mode).toBe('dim');
   });
 
-  test('[교체 동기화]: 이미 최신이면 확인 없이 안내만', async ({ context, extensionId, serviceWorker }) => {
+  test('[뺀 멤버 정리]: 이미 최신이면 확인 없이 안내만', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'normal', listId: '123', members: ['@alice', '@bob', '@dave_dev'] } }
     });
