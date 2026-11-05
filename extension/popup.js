@@ -5,6 +5,7 @@
 //   0. 상태
 //   1. 시작
 //   2. 공통 UI (상태 메시지, 확인 상자)
+//   2-1. 새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한
 //   3. 리스트 저장 (순서대로 처리)
 //   4. X 탭 연동 ([⚡ 가져오기], [🔄 교체 동기화])
 //   5. X 화면 구조 경고
@@ -33,6 +34,14 @@ let resolveConfirm = null;
 
 const byId = id => document.getElementById(id);
 
+// 팝업 화면을 일반 탭에서 연 경우: popup.html?view=tab&targetTab=<열 때 보던 탭 id>
+const PAGE_PARAMS = new URLSearchParams(location.search);
+const IS_TAB_VIEW = PAGE_PARAMS.get('view') === 'tab';
+const TARGET_TAB_ID = Number.parseInt(PAGE_PARAMS.get('targetTab'), 10);
+
+// 파이어폭스 팝업에서 하면 팝업이 닫혀 버리는 조작 (파일 선택·다운로드·색상 선택) → 새 탭에서 열기
+const OPEN_IN_TAB_ON_FIREFOX = '#import-btn, #export-btn, input[type="color"]';
+
 // ==========================================
 // 1. 시작
 // ==========================================
@@ -47,6 +56,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // 팝업을 열면 아이콘의 ✔ 알림 지우기
   chrome.action.setBadgeText({ text: '' }).catch(() => {});
 
+  setupTabView();
+  setupPermissionCheck();
   setupConfirmBox();
   // 리스트별 스타일 편집란이 공통 설정 기준 값을 보여야 하므로, 공통 설정을 먼저 읽고 목록을 그림
   loadBadgeSettings().then(loadLists);
@@ -113,6 +124,91 @@ function setupConfirmBox() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && resolveConfirm) resolveConfirm(false);
   });
+}
+
+// ==========================================
+// 2-1. 새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한
+// ==========================================
+
+function isFirefox() {
+  return getBrowserKind(chrome.runtime.getURL('')) === 'firefox';
+}
+
+// 이 화면을 일반 탭에서 열기. [가져오기]·[교체 동기화]가 지금 보던 탭을 대상으로 하도록 그 탭 id 를 넘김
+async function openInTab() {
+  let targetTab;
+  try {
+    [targetTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  } catch {
+    targetTab = null;
+  }
+  const url = new URL('popup.html', location.href);
+  url.searchParams.set('view', 'tab');
+  if (targetTab && targetTab.id !== undefined) url.searchParams.set('targetTab', String(targetTab.id));
+  await chrome.tabs.create({ url: url.href });
+  if (!IS_TAB_VIEW) window.close();
+}
+
+function setupTabView() {
+  const openBtn = byId('open-tab-btn');
+  if (IS_TAB_VIEW) {
+    document.body.classList.add('tab-view');
+    if (openBtn) openBtn.style.display = 'none';
+    return;
+  }
+  openBtn?.addEventListener('click', openInTab);
+
+  if (isFirefox()) {
+    const note = byId('firefox-note');
+    if (note) note.style.display = 'block';
+  }
+
+  // 파이어폭스 팝업에서는 파일·색상 선택 창이나 다운로드가 팝업을 닫아 버려(Firefox 버그 1292701)
+  // 결과를 받을 수 없으므로, 그런 조작은 막고 같은 화면을 새 탭에서 엶
+  const redirectToTab = (e) => {
+    if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
+    const target = e.target instanceof Element ? e.target.closest(OPEN_IN_TAB_ON_FIREFOX) : null;
+    if (!target || !isFirefox()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    openInTab();
+  };
+  document.addEventListener('click', redirectToTab, true);
+  document.addEventListener('keydown', redirectToTab, true);
+}
+
+// x.com 접근 권한 확인. 꺼져 있으면(파이어폭스에서 사용자가 거부한 경우 등) 안내와 [허용] 버튼 표시
+async function setupPermissionCheck() {
+  const banner = byId('permission-warning');
+  if (!banner || !chrome.permissions) return;
+  const origins = chrome.runtime.getManifest().host_permissions || [];
+
+  const refresh = async () => {
+    let granted;
+    try {
+      granted = await chrome.permissions.contains({ origins });
+    } catch {
+      granted = true; // 확인할 수 없으면 경고하지 않음
+    }
+    banner.style.display = granted ? 'none' : 'block';
+  };
+
+  byId('grant-permission-btn')?.addEventListener('click', async () => {
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({ origins }); // 사용자 클릭 직후에 바로 요청해야 함
+    } catch (err) {
+      console.error('[banmo_tag] 권한 요청 실패:', err);
+    }
+    showSyncStatus(granted
+      ? 'x.com 접근을 허용했습니다. 열려 있는 X 탭을 새로고침(F5)해주세요.'
+      : 'x.com 접근이 허용되지 않았습니다.', !granted);
+    refresh();
+  });
+
+  chrome.permissions.onAdded?.addListener(refresh);
+  chrome.permissions.onRemoved?.addListener(refresh);
+  await refresh();
 }
 
 // 버튼을 잠그고 작업을 실행한 뒤 다시 풀어 줌 (연타 방지)
@@ -183,10 +279,26 @@ async function injectContentScript(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['shared.js', 'content.js'] });
 }
 
+// 요청을 보낼 탭: 팝업이면 지금 보고 있는 탭, 새 탭 화면이면 열 때 보고 있던 탭
+async function getTargetTab() {
+  if (IS_TAB_VIEW && Number.isInteger(TARGET_TAB_ID)) {
+    try {
+      return await chrome.tabs.get(TARGET_TAB_ID);
+    } catch {
+      return null; // 그 탭이 닫힘
+    }
+  }
+  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  return activeTab;
+}
+
 // 현재 X 탭에 요청을 보내고 응답을 받음. content script 가 없으면 한 번 넣고 다시 시도.
 // 연결·시간 초과 문제는 { error: '안내 문구' } 로 정리해서 반환
 async function requestFromActiveTab(message) {
-  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const activeTab = await getTargetTab();
+  if (IS_TAB_VIEW && !activeTab) {
+    return { error: '이 화면을 열 때 보던 X 탭을 찾을 수 없습니다. X 탭에서 팝업을 다시 열어주세요.' };
+  }
   const tabError = getSyncTabError(activeTab);
   if (tabError) return { error: tabError };
 

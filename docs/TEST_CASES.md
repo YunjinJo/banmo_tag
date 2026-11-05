@@ -22,7 +22,7 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
 - [`tests/e2e/`](../tests/e2e/)의 테스트가 실제 `extension/` 폴더를 Chromium 에 로드하고, `x.com` 요청에는 [`tests/fixtures/`](../tests/fixtures/README.md)의 HTML 로 응답해 팝업·content script·background 를 함께 검사합니다. `shared.js` 단위 테스트(`test-runner.html`)도 이 안에서 함께 실행됩니다.
 - **작동 원리**:
   1. 시스템에 설치된 Chrome 또는 Edge의 Headless 모드(`--headless=new --dump-dom`)를 백그라운드로 실행.
-  2. `test-runner.html`이 [`shared.js`](../extension/shared.js)를 직접 로드하여 **97개 단위 테스트**를 브라우저 환경에서 고속 실행(평균 10~15ms).
+  2. `test-runner.html`이 [`shared.js`](../extension/shared.js)를 직접 로드하여 **98개 단위 테스트**를 브라우저 환경에서 고속 실행(평균 10~15ms).
   3. JSON 포맷으로 생성된 결과를 터미널 콘솔에 컬러로 포맷팅하여 출력.
   4. 모든 테스트 통과 시 Exit Code `0`, 실패 시 Exit Code `1` 반환.
 
@@ -62,7 +62,8 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
 | **TS-23** | `diagnoseStructure` & `getStructureWarnings` | v1.5.0 | 5건 | X 화면 구조 변경 의심 판정(멤버 화면/타임라인), 로딩 중 보류, 2주 지난 경고 제외 | Yes | **PASS (5/5)** |
 | **TS-24** | `manual` 리스트 & `getManualListNameError` | v1.5.0 | 4건 | 직접 추가 리스트는 "X"·"Home" 이름 허용·정제에서 보존·백업 보존, 자동 수집은 계속 차단 | Yes | **PASS (4/4)** |
 | **TS-25** | `normalizeListStyle`, `getEffectiveBadgeSettings`, `setListStyle`, `clearAllListStyles`, `countListsWithStyle` | v1.6.0 | 7건 | 리스트별 글자 스타일 검증·우선순위(기본값 ← 공통 ← 리스트)·부분 저장/해제, 배지 매핑·다시 그리기 대상, 백업·정리·저장에서 유지 | Yes | **PASS (7/7)** |
-| **합계** | **26개 스위트 (`shared.js` 직접 로드)** | **v1.6.0** | **97건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (97/97)** |
+| **TS-26** | `getBrowserKind` | Unreleased | 1건 | 확장 프로그램 주소로 크롬/파이어폭스 구분 | Yes | **PASS (1/1)** |
+| **합계** | **27개 스위트 (`shared.js` 직접 로드)** | **Unreleased** | **98건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (98/98)** |
 
 TS-13 은 v1.5.0 에서 "타임라인:" 제목 처리 1건이 추가되어 5건입니다.
 
@@ -72,8 +73,20 @@ TS-13 은 v1.5.0 에서 "타임라인:" 제목 처리 1건이 추가되어 5건�
 |---|:-:|---|
 | `content.spec.js` | 13건 | 멤버 자동 수집·추천 제외, 메인 → 멤버 화면 이름 캐시, 배지·강조·인용 미니 배지, 리스트별 글자 스타일 적용, 바뀐 트윗만 다시 그리기(멤버·스타일 변경), DOM 재사용, 교체 동기화(스크롤로 사라진 멤버 유지), 구조 변화 경고 기록/해제 |
 | `popup.spec.js` | 17건 | 키보드 접근, X 아닌 탭 안내, 직접 추가(색상·모드 유지, "X" 이름), 팝업 안 확인 상자, 리스트별 글자 스타일 편집·되돌리기·범위 검사·모든 리스트에 적용(2가지)·공통 설정 값 표시, 백업 내보내기/덮어쓰기, 구조 경고 표시·해제, 팝업 ↔ X 탭 가져오기·교체 동기화 |
-| `unit-runner.spec.js` | 1건 | `test-runner.html` 의 단위 테스트 97건 |
+| `unit-runner.spec.js` | 1건 | `test-runner.html` 의 단위 테스트 98건 |
 | `real-snapshots.spec.js` | 스냅샷 수 | `tests/fixtures/real/` 의 실제 X 화면 스냅샷 (없으면 건너뜀) |
+
+`popup.spec.js` 에는 [↗] 새 탭에서 열기(열 때 보던 X 탭 대상), 닫힌 탭 안내, 크롬 팝업의 파일 선택 창, 파이어폭스 팝업 우회(가져오기·색상 선택 → 새 탭), x.com 접근 권한 안내 6건이 포함됩니다(파이어폭스 동작은 확장 프로그램 주소를 `moz-extension://` 로 바꿔 흉내 냄).
+
+### 실제 Firefox 동작 확인 (`tests/firefox/firefox-check.js`, `npm run test:firefox`)
+
+실제 Firefox(CI 는 최신 안정판)에 확장 프로그램을 임시 설치하고, x.com 요청을 테스트 서버(합성 페이지)로 보내 19가지를 확인합니다: 설치, 팝업 로드, 브라우저 구분·파이어폭스 안내, x.com 접근 권한과 안내 일치, `chrome.storage`(Promise), 타임라인 배지·리스트별 글자 크기·인용 미니 배지·강조 테두리, 멤버 자동 수집 → background(이벤트 페이지) 저장, x.com 탭 주소 확인, 새 탭 화면 [가져오기], 교체 동기화 미리보기, 백업 가져오기(병합), 화면 구조 변화 기록·팝업 경고, 팝업 📥 → 새 탭 화면, 팝업 닫힘, 페이지 스크립트 오류 없음.
+
+검사 도구(WebDriver BiDi) 제약으로 파일 선택 창 자체는 자동화하지 못해, 파일을 읽는 단계부터 같은 함수(`readBackupFile`)로 확인합니다.
+
+### 파이어폭스 호환성 검사 (`npm run lint:firefox`)
+
+Mozilla 부가 기능 사이트(AMO) 제출 때와 같은 `web-ext lint`. 오류 0건이어야 하며, 경고 1건(`background.service_worker` 는 파이어폭스가 무시)은 의도된 것입니다.
 
 E2E 의 X 화면은 `tests/fixtures/synthetic/` 의 **합성 페이지**입니다. X 구조를 추정해 만든 것이므로, 실제 화면 스냅샷을 `tests/fixtures/real/` 에 추가해 두는 것을 권장합니다.
 

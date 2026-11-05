@@ -201,6 +201,86 @@ test.describe('리스트별 배지 글자 스타일', () => {
   });
 });
 
+test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한', () => {
+  test('↗ 새 탭에서 열기: 같은 화면이 탭으로 열리고, 그 탭의 [가져오기]는 원래 보던 X 탭을 대상으로 동작', async ({ context, extensionId, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/i/lists/123/members');
+    const [tabView] = await Promise.all([context.waitForEvent('page'), popup.click('#open-tab-btn')]);
+    await tabView.waitForLoadState();
+    const url = new URL(tabView.url());
+    expect(url.searchParams.get('view')).toBe('tab');
+    expect(url.searchParams.get('targetTab')).toBe(String(tabId));
+    await expect(tabView.locator('body')).toHaveClass(/tab-view/);
+    await expect(tabView.locator('#open-tab-btn')).toBeHidden();
+
+    // 새 탭 화면 자신이 활성 탭이지만, 요청은 열 때 보던 X 탭으로 감
+    await tabView.click('#sync-current-tab-btn');
+    await expect(tabView.locator('#sync-status')).toContainText('총 3명');
+  });
+
+  test('새 탭 화면에서 원래 X 탭이 닫혔으면 안내', async ({ context, extensionId }) => {
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/popup.html?view=tab&targetTab=987654321`);
+    await page.click('#sync-current-tab-btn');
+    await expect(page.locator('#sync-status')).toContainText('이 화면을 열 때 보던 X 탭을 찾을 수 없습니다');
+  });
+
+  test('크롬 팝업에서는 📥 가져오기가 바로 파일 선택 창을 엶 (파이어폭스 우회가 끼어들지 않음)', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    await expect(popup.locator('#firefox-note')).toBeHidden();
+    const [chooser] = await Promise.all([popup.waitForEvent('filechooser'), popup.click('#import-btn')]);
+    expect(chooser).toBeTruthy();
+  });
+
+  test('파이어폭스 팝업에서는 📥 가져오기·색상 선택이 파일·색상 창 대신 새 탭 화면을 엶', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    // 확장 프로그램 주소가 moz-extension:// 인 것처럼 (파이어폭스)
+    await popup.evaluate(() => { chrome.runtime.getURL = path => 'moz-extension://test-uuid/' + (path || ''); });
+
+    let fileChooserOpened = false;
+    popup.on('filechooser', () => { fileChooserOpened = true; });
+    const [importTab] = await Promise.all([context.waitForEvent('page'), popup.locator('#import-btn').click({ noWaitAfter: true })]);
+    expect(new URL(importTab.url()).searchParams.get('view')).toBe('tab');
+    expect(fileChooserOpened).toBe(false);
+  });
+
+  test('파이어폭스 팝업에서 리스트 색상 선택도 새 탭 화면으로', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    await popup.evaluate(() => { chrome.runtime.getURL = path => 'moz-extension://test-uuid/' + (path || ''); });
+    const [colorTab] = await Promise.all([
+      context.waitForEvent('page'),
+      popup.locator('.list-controls input[type="color"]').first().click({ noWaitAfter: true })
+    ]);
+    expect(new URL(colorTab.url()).searchParams.get('view')).toBe('tab');
+  });
+
+  test('x.com 접근 권한이 있으면 안내 없음, 꺼져 있으면 안내와 [허용] 버튼', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    await expect(popup.locator('#permission-warning')).toBeHidden(); // 크롬은 설치할 때 허용됨
+
+    // 권한이 꺼진 상황 (파이어폭스에서 사용자가 거부한 경우)
+    await context.addInitScript(() => {
+      if (!location.search.includes('permtest')) return;
+      let granted = false;
+      chrome.permissions.contains = async () => granted;
+      chrome.permissions.request = async () => { granted = true; return true; };
+    });
+    const page = await context.newPage();
+    await page.goto(`chrome-extension://${extensionId}/popup.html?permtest=1`);
+    await expect(page.locator('#permission-warning')).toBeVisible();
+    await page.click('#grant-permission-btn');
+    await expect(page.locator('#sync-status')).toContainText('x.com 접근을 허용했습니다');
+    await expect(page.locator('#permission-warning')).toBeHidden();
+  });
+});
+
 test.describe('백업', () => {
   test('내보내기 파일에 리스트와 배지 설정이 함께 들어감', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {

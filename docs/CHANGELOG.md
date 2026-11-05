@@ -9,6 +9,15 @@
 
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
+### 🚀 Added (새로운 기능)
+- **파이어폭스 지원 (Firefox 140 이상)**: 같은 `extension/` 폴더와 같은 zip 으로 크롬과 파이어폭스를 함께 지원합니다.
+  - `manifest.json`: 크롬은 `background.service_worker`, 파이어폭스는 `background.scripts`(이벤트 페이지, `shared.js` → `background.js` 순서)를 씁니다. 파이어폭스 ID(`banmo_tag@yunjinjo`), 최소 버전, 데이터 수집 없음(`data_collection_permissions: none`)을 적었습니다.
+  - `background.js`: `importScripts` 가 있을 때(크롬)만 `shared.js` 를 불러옵니다.
+  - **팝업 [↗] 새 탭에서 열기**: 팝업 화면을 일반 탭에서 엽니다. [가져오기]·[교체 동기화]는 열 때 보고 있던 X 탭을 대상으로 동작합니다.
+  - **파이어폭스 팝업 우회**: 파이어폭스는 팝업에서 파일·색상 선택 창이나 다운로드를 열면 팝업이 닫혀 버립니다(Firefox 버그 1292701). 그래서 파이어폭스 팝업에서는 📤 내보내기, 📥 가져오기, 색상 선택을 누르면 같은 화면이 새 탭에서 열리고, 팝업에 그 이유를 안내합니다.
+  - **x.com 접근 권한 안내**: 파이어폭스에서 사용자가 x.com 접근을 허용하지 않았으면 팝업에 안내와 [x.com 접근 허용] 버튼을 보여 줍니다(크롬은 설치할 때 허용되므로 표시되지 않음).
+- **파이어폭스 검사·테스트**: CI 정적 검사에 Mozilla 부가 기능 사이트와 같은 검사(`web-ext lint`)를 추가하고, 실제 Firefox 에 임시 설치해 19가지 동작을 확인하는 `npm run test:firefox` 와 CI 작업을 추가했습니다.
+
 ### 🛠️ Changed (변경 및 개선)
 - **릴리스는 GitHub 에서 직접 (`.github/workflows/ci.yml`)**: CI 가 더 이상 GitHub Release 와 배포 zip(Artifacts)을 만들지 않습니다. CI 는 검사·테스트·zip 패키징 확인만 하며 저장소 쓰기 권한도 없습니다. 릴리스 방법은 README 의 "릴리스 (수동)" 참고.
 - **CHANGELOG `[Unreleased]` 항목**: 릴리스 전 변경 사항은 이 항목에 모으고, `npm run bump -- X.Y.Z` 가 이 항목을 새 버전 항목으로 바꿉니다. 버전 올리기 스크립트는 모든 변경을 계산한 뒤 한꺼번에 저장하도록 바꿔, 중간에 실패해도 `manifest.json` 만 바뀌는 일이 없습니다.
