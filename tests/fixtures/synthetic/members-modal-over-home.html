@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: 멤버 화면 주소(/i/lists/:id/members)로 바로 들어갔을 때 X 가 보여 주는 구조를 본떠 만든 테스트용 페이지 (실제 X 페이지 아님).
+     홈 타임라인이 배경에 깔리고(탭 제목 "홈 / X", 본문 제목 "내 홈 타임라인") 그 위에 "리스트 멤버" 창이 뜸 -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="members">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/123/members">
+  <title>홈 / X</title>
+</head>
+<body>
+<div id="react-root">
+  <header role="banner">
+    <nav aria-label="기본">
+      <a href="/home" role="link">홈</a>
+      <a href="/explore" role="link">탐색하기</a>
+    </nav>
+  </header>
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar">
+        <div role="tablist"><a href="/home" role="tab">추천</a><a href="/home" role="tab">팔로잉</a></div>
+      </div>
+      <section role="region" aria-labelledby="accessible-list-0">
+        <h2 id="accessible-list-0" dir="ltr" role="heading">내 홈 타임라인</h2>
+        <div aria-label="타임라인: 내 홈 타임라인">
+          <div data-testid="cellInnerDiv">
+            <article data-testid="tweet" role="article" tabindex="0">
+              <div data-testid="User-Name">
+                <div><div><a href="/someone" role="link"><div><span>Someone</span></div></a></div></div>
+                <div>
+                  <div><a href="/someone" role="link" tabindex="-1"><div><span>@someone</span></div></a></div>
+                  <div><a href="/someone/status/2001" role="link"><time datetime="2026-11-04T00:00:00.000Z">1시간</time></a></div>
+                </div>
+              </div>
+              <div data-testid="tweetText"><span>홈 타임라인 트윗</span></div>
+            </article>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+  <div id="layers">
+    <div role="dialog" aria-modal="true" aria-labelledby="modal-header">
+      <div><h2 id="modal-header" dir="ltr" role="heading">리스트 멤버</h2></div>
+      <section role="region" aria-labelledby="accessible-list-9">
+        <h1 id="accessible-list-9">타임라인: 리스트 멤버</h1>
+        <div aria-label="타임라인: 리스트 멤버">
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/alice" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-alice"></div></a></div>
+              <div>
+                <div><a href="/alice" role="link"><span>Alice Kim</span></a></div>
+                <div><a href="/alice" role="link" tabindex="-1"><span>@alice</span></a></div>
+              </div>
+            </button>
+          </div>
+          <div data-testid="cellInnerDiv">
+            <button data-testid="UserCell" role="button" tabindex="0">
+              <div><a href="/bob" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-bob"></div></a></div>
+              <div>
+                <div><a href="/bob" role="link"><span>Bob Lee</span></a></div>
+                <div><a href="/bob" role="link" tabindex="-1"><span>@bob</span></a></div>
+              </div>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+</body>
+</html>
