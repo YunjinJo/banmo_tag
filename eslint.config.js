@@ -34,7 +34,7 @@ module.exports = [
     rules: { 'no-unused-vars': unusedLocalOnly }
   },
   {
-    files: ['extension/content.js', 'extension/popup.js'],
+    files: ['extension/content.js', 'extension/popup.js', 'extension/theme.js'],
     languageOptions: {
       sourceType: 'script',
       globals: { ...globals.browser, ...globals.webextensions, ...sharedGlobals }

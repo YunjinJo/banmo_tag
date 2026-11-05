@@ -1,18 +1,22 @@
 // popup.js — 확장 프로그램 팝업 화면
 // 공통 로직(cleanListName, sanitizeListsObject, parseHandles 등)은 popup.html 에서 먼저 로드되는 shared.js 에 있습니다.
+// 첫 화면 전에 테마를 적용하는 부분은 theme.js 에 있습니다.
 //
 // 목차
 //   0. 상태
 //   1. 시작
-//   2. 공통 UI (상태 메시지, 확인 상자)
+//   2. 공통 UI (상태 메시지, 확인 상자, 뒤 화면 잠그기)
 //   2-1. 새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한
+//   2-2. 탭 · ⋯ 메뉴
+//   2-3. 화면 설정 (테마 · 정렬)
 //   3. 리스트 저장 (순서대로 처리)
-//   4. X 탭 연동 ([⚡ 가져오기], [🔄 교체 동기화])
+//   4. X 탭 연동 ([현재 탭에서 가져오기], [뺀 멤버 정리])
 //   5. X 화면 구조 경고
 //   6. 직접 리스트 추가
 //   7. 백업 · 복원 · 초기화
-//   8. 리스트 목록 (리스트별 글자 스타일 편집 포함)
-//   9. 배지 스타일 설정 (모든 리스트 공통)
+//   8. 리스트 목록 (카드)
+//   8-1. 리스트 설정 시트 (색 · 글자 스타일 · 타임라인 표시 · 멤버 · 삭제)
+//   9. 배지 기본 스타일 (모든 리스트 공통)
 
 // ==========================================
 // 0. 상태
@@ -22,25 +26,35 @@
 const SHARED_LOADED = typeof sanitizeListsObject === 'function';
 
 let badgeSettings = SHARED_LOADED ? { ...AG_DEFAULT_BADGE_SETTINGS } : {};
-// 펼쳐 둔 리스트 이름 (목록을 다시 그려도 펼침 상태 유지)
-const expandedLists = new Set();
-// 마지막으로 그린 리스트 데이터 (공통 설정의 "개별 스타일 N개" 표시용)
+// 화면 설정 { theme, listSort } (chrome.storage.local 의 uiSettings)
+let uiSettings = SHARED_LOADED ? normalizeUiSettings() : {};
+// 마지막으로 그린 리스트 데이터 (정렬 변경·시트 다시 그리기·"개별 스타일 N개" 표시용)
 let renderedLists = {};
+// 설정 시트에 열려 있는 리스트 이름 (없으면 null)과 그 시트의 멤버 목록 펼침 여부
+let openSheetName = null;
+let sheetMembersOpen = false;
 // 파일에서 읽어 [병합]/[덮어쓰기] 선택을 기다리는 데이터 ({ lists, badgeSettings })
 let pendingImport = null;
 let statusTimer = null;
-// 확인 상자가 열려 있을 때 답을 전달하는 함수
+// 확인 상자가 열려 있을 때 답을 전달하는 함수와, 닫은 뒤 포커스를 돌려줄 요소
 let resolveConfirm = null;
+let confirmReturnFocus = null;
 
 const byId = id => document.getElementById(id);
 
-// 팝업 화면을 일반 탭에서 연 경우: popup.html?view=tab&targetTab=<열 때 보던 탭 id>
+// 팝업 화면을 일반 탭에서 연 경우: popup.html?view=tab&targetTab=<열 때 보던 탭 id>[&list=<열어 둘 리스트>]
 const PAGE_PARAMS = new URLSearchParams(location.search);
 const IS_TAB_VIEW = PAGE_PARAMS.get('view') === 'tab';
 const TARGET_TAB_ID = Number.parseInt(PAGE_PARAMS.get('targetTab'), 10);
 
 // 파이어폭스 팝업에서 하면 팝업이 닫혀 버리는 조작 (파일 선택·다운로드·색상 선택) → 새 탭에서 열기
 const OPEN_IN_TAB_ON_FIREFOX = '#import-btn, #export-btn, input[type="color"]';
+
+// 마지막 테마 선택을 적어 두는 localStorage 키 (theme.js 가 첫 화면 전에 읽음. 같은 키여야 함)
+const THEME_CACHE_KEY = 'banmo_tag.theme';
+
+const TAB_KEYS = ['lists', 'style', 'help'];
+const FONT_SIZES = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 // ==========================================
 // 1. 시작
@@ -59,30 +73,53 @@ document.addEventListener('DOMContentLoaded', () => {
   setupTabView();
   setupPermissionCheck();
   setupConfirmBox();
-  // 리스트별 스타일 편집란이 공통 설정 기준 값을 보여야 하므로, 공통 설정을 먼저 읽고 목록을 그림
-  loadBadgeSettings().then(loadLists);
+  setupTabs();
+  setupMenu();
+  setupUiSettings();
+  setupSheet();
+  setupBadgeSettings();
+  // 카드와 시트가 공통 설정 기준 값을 보여야 하므로, 설정을 먼저 읽고 목록을 그림
+  Promise.all([loadBadgeSettings(), loadUiSettings()])
+    .then(loadLists)
+    .then(openSheetFromParams);
   loadHealthWarning();
   setupSyncButtons();
   setupManualAdd();
   setupBackupRestore();
-  setupBadgeSettings();
 
   // 리스트가 바뀌면(자동 수집 포함) 바로 다시 그림. 연속 변경은 묶어서 한 번만.
   // 정제된 데이터는 다시 정제해도 바뀌지 않으므로 저장 → 변경 감지 → 저장의 무한 반복이 생기지 않음
   const debouncedLoad = debounce(loadLists, 100);
   chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace !== 'local') return;
-    // 공통 배지 설정이 바뀌어도 리스트별 스타일 편집란(실제 적용 값 표시)을 다시 그림
+    // 공통 배지 설정이 바뀌어도 카드·시트(실제 적용 값 표시)를 다시 그림
     if (changes.lists || changes.badgeSettings) debouncedLoad();
     if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
+    // 다른 창(새 탭 화면 등)에서 테마·정렬을 바꾼 경우
+    if (changes.uiSettings) {
+      uiSettings = normalizeUiSettings(changes.uiSettings.newValue);
+      applyUiSettingsUI();
+      renderLists(renderedLists);
+    }
+  });
+
+  // Esc: 확인 상자 → 가져오기 선택 → 메뉴 → 시트 순서로 하나씩 닫음
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    if (resolveConfirm) resolveConfirm(false);
+    else if (pendingImport) closeImportChoice();
+    else if (!byId('app-menu').hidden) setMenuOpen(false, true);
+    else if (openSheetName) closeSheet();
+    else return;
+    e.preventDefault();
   });
 });
 
 // ==========================================
-// 2. 공통 UI (상태 메시지, 확인 상자)
+// 2. 공통 UI (상태 메시지, 확인 상자, 뒤 화면 잠그기)
 // ==========================================
 
-// 상단 상태 메시지 (5초 뒤 사라짐)
+// 화면 위에 뜨는 상태 메시지 (5초 뒤 사라짐, 누르면 바로 닫힘)
 function showSyncStatus(message, isError = false) {
   const statusEl = byId('sync-status');
   if (!statusEl) return;
@@ -104,15 +141,19 @@ function askConfirm(message, okLabel = '확인') {
   if (!box || !text || !okBtn) return Promise.resolve(false);
 
   if (resolveConfirm) resolveConfirm(false); // 이전 확인 요청은 취소로 처리
+  confirmReturnFocus = document.activeElement;
   text.textContent = message;
   okBtn.textContent = okLabel;
   box.style.display = 'flex';
+  updateInert();
   okBtn.focus();
 
   return new Promise((resolve) => {
     resolveConfirm = (answer) => {
       resolveConfirm = null;
       box.style.display = 'none';
+      updateInert();
+      restoreFocus(confirmReturnFocus);
       resolve(answer);
     };
   });
@@ -121,9 +162,21 @@ function askConfirm(message, okLabel = '확인') {
 function setupConfirmBox() {
   byId('confirm-ok-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(true));
   byId('confirm-cancel-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(false));
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && resolveConfirm) resolveConfirm(false);
-  });
+  byId('sync-status')?.addEventListener('click', (e) => { e.currentTarget.style.display = 'none'; });
+}
+
+// 아직 화면에 있고 누를 수 있는 요소면 포커스를 돌려줌
+function restoreFocus(el) {
+  if (el && el.isConnected && typeof el.focus === 'function' && !el.closest('[inert], [hidden]')) el.focus();
+}
+
+// 확인 상자·시트가 떠 있는 동안 뒤 화면은 키보드·마우스로 건드릴 수 없게 (inert)
+function updateInert() {
+  const modalOpen = byId('confirm-box')?.style.display === 'flex' || byId('import-choice')?.style.display === 'flex';
+  const app = byId('app');
+  const sheet = byId('list-sheet');
+  if (app) app.inert = modalOpen || !!openSheetName;
+  if (sheet) sheet.inert = modalOpen;
 }
 
 // ==========================================
@@ -134,8 +187,9 @@ function isFirefox() {
   return getBrowserKind(chrome.runtime.getURL('')) === 'firefox';
 }
 
-// 이 화면을 일반 탭에서 열기. [가져오기]·[교체 동기화]가 지금 보던 탭을 대상으로 하도록 그 탭 id 를 넘김
-async function openInTab() {
+// 이 화면을 일반 탭에서 열기. [가져오기]·[뺀 멤버 정리]가 지금 보던 탭을 대상으로 하도록 그 탭 id 를 넘김.
+// listName 을 주면 새 탭 화면에서 그 리스트의 설정 시트를 열어 둠
+async function openInTab(listName) {
   let targetTab;
   try {
     [targetTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -145,6 +199,7 @@ async function openInTab() {
   const url = new URL('popup.html', location.href);
   url.searchParams.set('view', 'tab');
   if (targetTab && targetTab.id !== undefined) url.searchParams.set('targetTab', String(targetTab.id));
+  if (listName) url.searchParams.set('list', listName);
   await chrome.tabs.create({ url: url.href });
   if (!IS_TAB_VIEW) window.close();
 }
@@ -156,7 +211,7 @@ function setupTabView() {
     if (openBtn) openBtn.style.display = 'none';
     return;
   }
-  openBtn?.addEventListener('click', openInTab);
+  openBtn?.addEventListener('click', () => openInTab(openSheetName));
 
   if (isFirefox()) {
     const note = byId('firefox-note');
@@ -164,17 +219,23 @@ function setupTabView() {
   }
 
   // 파이어폭스 팝업에서는 파일·색상 선택 창이나 다운로드가 팝업을 닫아 버려(Firefox 버그 1292701)
-  // 결과를 받을 수 없으므로, 그런 조작은 막고 같은 화면을 새 탭에서 엶
+  // 결과를 받을 수 없으므로, 그런 조작은 막고 같은 화면을 새 탭에서 엶 (시트에서 눌렀으면 그 시트도 열어 둠)
   const redirectToTab = (e) => {
     if (e.type === 'keydown' && e.key !== 'Enter' && e.key !== ' ') return;
     const target = e.target instanceof Element ? e.target.closest(OPEN_IN_TAB_ON_FIREFOX) : null;
     if (!target || !isFirefox()) return;
     e.preventDefault();
     e.stopImmediatePropagation();
-    openInTab();
+    openInTab(target.closest('#list-sheet') ? openSheetName : null);
   };
   document.addEventListener('click', redirectToTab, true);
   document.addEventListener('keydown', redirectToTab, true);
+}
+
+// 새 탭 화면을 list=<이름> 으로 열었으면 그 리스트의 설정 시트를 엶
+function openSheetFromParams() {
+  const name = IS_TAB_VIEW ? PAGE_PARAMS.get('list') : null;
+  if (name && renderedLists[name]) openSheet(name);
 }
 
 // x.com 접근 권한 확인. 꺼져 있으면(파이어폭스에서 사용자가 거부한 경우 등) 안내와 [허용] 버튼 표시
@@ -222,6 +283,122 @@ async function withButtonDisabled(button, task) {
 }
 
 // ==========================================
+// 2-2. 탭 · ⋯ 메뉴
+// ==========================================
+
+function selectTab(key, moveFocus) {
+  TAB_KEYS.forEach((k) => {
+    const tab = byId('tab-' + k);
+    const panel = byId('panel-' + k);
+    const selected = k === key;
+    if (tab) {
+      tab.setAttribute('aria-selected', String(selected));
+      tab.tabIndex = selected ? 0 : -1;
+    }
+    if (panel) panel.hidden = !selected;
+  });
+  if (moveFocus) byId('tab-' + key)?.focus();
+}
+
+// 탭: 클릭 또는 ← → Home End (WAI-ARIA 탭 패턴)
+function setupTabs() {
+  TAB_KEYS.forEach((key, i) => {
+    const tab = byId('tab-' + key);
+    if (!tab) return;
+    tab.addEventListener('click', () => selectTab(key));
+    tab.addEventListener('keydown', (e) => {
+      const n = TAB_KEYS.length;
+      const next = { ArrowRight: TAB_KEYS[(i + 1) % n], ArrowLeft: TAB_KEYS[(i - 1 + n) % n], Home: TAB_KEYS[0], End: TAB_KEYS[n - 1] }[e.key];
+      if (!next) return;
+      e.preventDefault();
+      selectTab(next, true);
+    });
+  });
+}
+
+function setMenuOpen(open, focusButton) {
+  const menu = byId('app-menu');
+  const button = byId('menu-btn');
+  if (!menu || !button) return;
+  menu.hidden = !open;
+  button.setAttribute('aria-expanded', String(open));
+  if (open) menu.querySelector('.menu-item')?.focus();
+  else if (focusButton) button.focus();
+}
+
+// ⋯ 메뉴: 내보내기 · 가져오기 · 초기화. 항목을 누르거나 바깥을 누르면 닫힘, ↑ ↓ 로 이동
+function setupMenu() {
+  const menu = byId('app-menu');
+  const button = byId('menu-btn');
+  if (!menu || !button) return;
+
+  button.addEventListener('click', () => setMenuOpen(menu.hidden));
+  menu.addEventListener('click', (e) => {
+    if (e.target instanceof Element && e.target.closest('.menu-item')) setMenuOpen(false);
+  });
+  document.addEventListener('click', (e) => {
+    if (!menu.hidden && e.target instanceof Node && !menu.contains(e.target) && !button.contains(e.target)) setMenuOpen(false);
+  });
+  menu.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
+    e.preventDefault();
+    const items = [...menu.querySelectorAll('.menu-item')];
+    const i = items.indexOf(document.activeElement);
+    const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
+    items[next].focus();
+  });
+}
+
+// ==========================================
+// 2-3. 화면 설정 (테마 · 정렬)
+// ==========================================
+
+// 테마 적용: 'system' 이면 data-theme 을 지워 CSS 의 prefers-color-scheme 을 따름
+function applyTheme(theme) {
+  const root = document.documentElement;
+  if (theme === 'light' || theme === 'dark') root.dataset.theme = theme;
+  else delete root.dataset.theme;
+  try {
+    localStorage.setItem(THEME_CACHE_KEY, theme); // 다음에 팝업을 열 때 깜빡임 없이 바로 적용
+  } catch {
+    // 저장소를 쓸 수 없으면 다음에 잠깐 시스템 테마로 보였다가 바뀜
+  }
+}
+
+async function loadUiSettings() {
+  const result = await chrome.storage.local.get(['uiSettings']);
+  uiSettings = normalizeUiSettings(result.uiSettings);
+  applyUiSettingsUI();
+}
+
+function applyUiSettingsUI() {
+  applyTheme(uiSettings.theme);
+  const radio = byId('theme-' + uiSettings.theme);
+  if (radio) radio.checked = true;
+  const sort = byId('list-sort');
+  if (sort) sort.value = uiSettings.listSort;
+}
+
+function saveUiSetting(key, value) {
+  uiSettings = normalizeUiSettings({ ...uiSettings, [key]: value });
+  applyUiSettingsUI();
+  if (key === 'listSort') renderLists(renderedLists);
+  chrome.storage.local.set({ uiSettings }).catch((err) => {
+    showSyncStatus('화면 설정 저장에 실패했습니다.', true);
+    console.error(err);
+  });
+}
+
+function setupUiSettings() {
+  document.querySelectorAll('input[name="theme"]').forEach((input) => {
+    input.addEventListener('change', () => {
+      if (input.checked) saveUiSetting('theme', input.value);
+    });
+  });
+  byId('list-sort')?.addEventListener('change', e => saveUiSetting('listSort', e.target.value));
+}
+
+// ==========================================
 // 3. 리스트 저장 (순서대로 처리)
 // ==========================================
 
@@ -246,8 +423,16 @@ function updateLists(mutator) {
   });
 }
 
+// 리스트 한 개의 항목 하나(color, mode 등)를 바꿈
+function saveListField(name, key, value) {
+  return updateLists((l) => {
+    if (!l[name]) return false;
+    l[name][key] = value;
+  });
+}
+
 // ==========================================
-// 4. X 탭 연동 ([⚡ 가져오기], [🔄 교체 동기화])
+// 4. X 탭 연동 ([현재 탭에서 가져오기], [뺀 멤버 정리])
 // ==========================================
 
 const TAB_CONNECTION_ERROR = '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.';
@@ -323,7 +508,7 @@ function setupSyncButtons() {
   resyncBtn?.addEventListener('click', () => withButtonDisabled(resyncBtn, replaceSyncCurrentTab));
 }
 
-// [⚡ 가져오기]: 현재 화면의 멤버를 저장
+// [현재 탭에서 가져오기]: 현재 화면의 멤버를 저장
 async function syncCurrentTab() {
   showSyncStatus('데이터 수집 중...', false);
   const response = await requestFromActiveTab({ action: 'scrapeNow' });
@@ -337,11 +522,11 @@ async function syncCurrentTab() {
   }
 }
 
-// [🔄 교체 동기화]: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
+// [뺀 멤버 정리]: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
 async function replaceSyncCurrentTab() {
   const preview = await requestFromActiveTab({ action: 'replacePreview' });
   if (preview.error || !preview.success) {
-    showSyncStatus(preview.error || preview.message || '교체 동기화를 준비하지 못했습니다.', true);
+    showSyncStatus(preview.error || preview.message || '뺀 멤버 정리를 준비하지 못했습니다.', true);
     return;
   }
   if (preview.removed.length === 0 && preview.added === 0) {
@@ -352,7 +537,7 @@ async function replaceSyncCurrentTab() {
 
   const saved = await requestFromActiveTab({ action: 'replaceNow' });
   if (saved.error || !saved.success) {
-    showSyncStatus(saved.error || saved.message || '교체 동기화에 실패했습니다.', true);
+    showSyncStatus(saved.error || saved.message || '뺀 멤버 정리에 실패했습니다.', true);
     return;
   }
   showSyncStatus(`'${saved.listName}' 멤버를 교체했습니다. 총 ${saved.count}명 (추가 ${saved.added}명, 삭제 ${saved.removedCount}명)`, false);
@@ -388,7 +573,7 @@ function renderHealthWarning(health) {
   }
 
   const title = document.createElement('strong');
-  title.textContent = '⚠️ X 화면 구조가 바뀌었을 수 있습니다';
+  title.textContent = 'X 화면 구조가 바뀌었을 수 있습니다';
   el.appendChild(title);
   warnings.forEach((w) => {
     const line = document.createElement('div');
@@ -422,8 +607,9 @@ function setupManualAdd() {
 
   const setFormOpen = (open) => {
     form.style.display = open ? 'flex' : 'none';
-    toggleBtn.textContent = open ? '- 접기' : '+ 직접 리스트 추가';
+    toggleBtn.textContent = open ? '닫기' : '+ 추가';
     toggleBtn.setAttribute('aria-expanded', String(open));
+    if (open) nameInput.focus();
   };
   toggleBtn.addEventListener('click', () => setFormOpen(form.style.display === 'none'));
 
@@ -458,6 +644,7 @@ function setupManualAdd() {
     nameInput.value = '';
     membersInput.value = '';
     setFormOpen(false);
+    toggleBtn.focus();
   });
 }
 
@@ -477,10 +664,7 @@ function setupResetButton() {
     const ok = await updateLists((lists) => {
       Object.keys(lists).forEach(k => delete lists[k]);
     });
-    if (ok) {
-      expandedLists.clear();
-      showSyncStatus('초기화되었습니다.', false);
-    }
+    if (ok) showSyncStatus('초기화되었습니다.', false);
   });
 }
 
@@ -496,7 +680,7 @@ function downloadJson(filename, data) {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// 📤 내보내기: 리스트와 배지 스타일 설정을 함께 저장
+// 내보내기: 리스트와 배지 스타일 설정을 함께 저장
 function setupExportButton() {
   byId('export-btn')?.addEventListener('click', async () => {
     const result = await chrome.storage.local.get(['lists', 'badgeSettings']);
@@ -505,7 +689,7 @@ function setupExportButton() {
   });
 }
 
-// 📥 가져오기: 파일 읽기 → [병합] / [덮어쓰기] / [취소] 선택
+// 가져오기: 파일 읽기 → [병합] / [덮어쓰기] / [취소] 선택
 function setupImport() {
   const importBtn = byId('import-btn');
   const importFile = byId('import-file');
@@ -555,12 +739,15 @@ function openImportChoice(parsed, count) {
   }
   const choiceEl = byId('import-choice');
   if (choiceEl) choiceEl.style.display = 'flex';
+  updateInert();
+  byId('import-merge-btn')?.focus();
 }
 
 function closeImportChoice() {
   pendingImport = null;
   const choiceEl = byId('import-choice');
   if (choiceEl) choiceEl.style.display = 'none';
+  updateInert();
 }
 
 // [병합]: 기존 리스트의 색상/모드와 현재 배지 설정은 유지하고 멤버만 합침
@@ -587,7 +774,6 @@ async function replaceImport() {
     Object.assign(lists, data.lists);
   });
   if (!ok) return;
-  expandedLists.clear();
 
   if (data.badgeSettings) {
     try {
@@ -603,10 +789,8 @@ async function replaceImport() {
 }
 
 // ==========================================
-// 8. 리스트 목록
+// 8. 리스트 목록 (카드)
 // ==========================================
-
-const MODE_OPTIONS = [['normal', '기본'], ['highlight', '강조'], ['dim', '흐리게']];
 
 async function loadLists() {
   const result = await chrome.storage.local.get(['lists']);
@@ -622,29 +806,26 @@ function renderLists(lists) {
   renderedLists = lists;
   updateCustomStyleCount();
 
-  // 스타일 편집란에서 값을 바꾸면 저장 후 목록을 다시 그리므로, 그 입력란에 포커스를 되돌려 줌
-  const focusedId = document.activeElement && document.activeElement.id;
+  const names = sortListNames(lists, uiSettings.listSort);
+  const countEl = byId('list-count');
+  if (countEl) countEl.textContent = String(names.length);
+
   container.textContent = '';
+  if (names.length === 0) container.appendChild(createEmptyState());
+  else names.forEach(name => container.appendChild(createListCard(name, lists[name])));
 
-  const listNames = Object.keys(lists).filter(n => lists[n] && Array.isArray(lists[n].members));
-  if (listNames.length === 0) {
-    container.appendChild(createEmptyState());
-    return;
+  // 열어 둔 시트도 새 값으로 다시 그림. 그 리스트가 사라졌으면 닫음
+  if (openSheetName) {
+    if (lists[openSheetName] && Array.isArray(lists[openSheetName].members)) renderSheet();
+    else closeSheet();
   }
-
-  // 사라진 리스트의 펼침 상태 정리
-  [...expandedLists].forEach((n) => { if (!lists[n]) expandedLists.delete(n); });
-
-  listNames.forEach((name, idx) => container.appendChild(createListRow(name, lists[name], idx)));
-
-  if (focusedId && focusedId.startsWith('list-style-')) byId(focusedId)?.focus();
 }
 
 function createEmptyState() {
   const empty = document.createElement('div');
   empty.className = 'empty-state';
   empty.append('저장된 리스트가 없습니다.', document.createElement('br'),
-    '트위터 리스트의 멤버 화면을 열거나 상단 [가져오기]를 누르거나, 직접 추가해주세요.');
+    'X 리스트의 멤버 화면을 열거나 [현재 탭에서 가져오기]를 누르거나, [+ 추가]로 직접 만들어 보세요.');
   return empty;
 }
 
@@ -657,165 +838,177 @@ function makeElement(tag, className, text, type) {
   return el;
 }
 
-function memberCountText(list, open) {
-  const styleMark = normalizeListStyle(list.style) ? ' · 🎨 개별 스타일' : '';
-  return `${list.members.length}명 등록됨${styleMark} (클릭하여 ${open ? '접기' : '펼치기'})`;
+// 실제 타임라인 배지와 같은 모양의 배지 (카드·시트·미리보기)
+function createBadgeChip(name, list, settings, extraClass) {
+  const chip = makeElement('span', 'badge-chip' + (extraClass ? ' ' + extraClass : ''), name);
+  applyBadgeStyle(chip, list.color, settings || getEffectiveBadgeSettings(badgeSettings, list.style), true);
+  return chip;
 }
 
-// 리스트 한 줄: [이름·인원 (펼치기 버튼)] [모드] [색상] [삭제] + 펼치면 보이는 멤버 목록
-function createListRow(name, list, idx) {
-  const membersId = 'members-' + idx;
-  const isOpen = expandedLists.has(name);
+// 리스트 카드: [배지] N명 / "강조 · 개별 스타일 · @a, @b 외 N명". 누르면 설정 시트
+function createListCard(name, list) {
+  const card = makeElement('button', 'list-card' + (name === openSheetName ? ' is-open' : ''), undefined, 'button');
+  card.dataset.name = name;
+  card.setAttribute('aria-haspopup', 'dialog');
 
-  const toggleBtn = makeElement('button', 'list-toggle', undefined, 'button');
-  toggleBtn.setAttribute('aria-expanded', String(isOpen));
-  toggleBtn.setAttribute('aria-controls', membersId);
-  const countEl = makeElement('div', 'list-info', memberCountText(list, isOpen));
-  toggleBtn.append(makeElement('div', 'list-name', name), countEl);
-
-  const controlsDiv = makeElement('div', 'list-controls');
-  controlsDiv.append(createModeSelect(name, list), createColorInput(name, list), createDeleteButton(name));
-
-  const itemEl = makeElement('div', 'list-item');
-  itemEl.append(toggleBtn, controlsDiv);
-
-  const membersListEl = createMembersList(name, list, membersId, isOpen, idx);
-
-  toggleBtn.addEventListener('click', () => {
-    const open = membersListEl.classList.toggle('show');
-    if (open) expandedLists.add(name); else expandedLists.delete(name);
-    toggleBtn.setAttribute('aria-expanded', String(open));
-    countEl.textContent = memberCountText(list, open);
-  });
-
-  const wrapperEl = makeElement('div', 'list-wrapper');
-  wrapperEl.append(itemEl, membersListEl);
-  return wrapperEl;
+  const top = makeElement('span', 'list-card-top');
+  top.append(createBadgeChip(name, list, null, 'list-name'), makeElement('span', 'list-count', `${list.members.length}명`));
+  card.append(top, makeElement('span', 'list-info', summarizeList(list)));
+  card.addEventListener('click', () => openSheet(name));
+  return card;
 }
 
-// 표시 모드 선택 (기본 / 강조 / 흐리게)
-function createModeSelect(name, list) {
-  const select = makeElement('select', 'mode-select');
-  select.setAttribute('aria-label', `'${name}' 표시 모드`);
-  MODE_OPTIONS.forEach(([value, text]) => {
-    const opt = makeElement('option', null, text);
-    opt.value = value;
-    opt.selected = (list.mode || 'normal') === value;
-    select.appendChild(opt);
-  });
-  select.addEventListener('change', (e) => {
-    const mode = e.target.value;
-    updateLists((l) => { if (!l[name]) return false; l[name].mode = mode; });
-  });
-  return select;
+function findListCard(name) {
+  return [...document.querySelectorAll('#list-container .list-card')].find(c => c.dataset.name === name) || null;
 }
 
-// 배지 색상 선택
-function createColorInput(name, list) {
-  const input = makeElement('input', 'color-picker', undefined, 'color');
-  input.value = list.color || AG_DEFAULT_LIST_COLOR;
-  input.setAttribute('aria-label', `'${name}' 배지 색상`);
-  input.addEventListener('change', (e) => {
-    const color = e.target.value;
-    updateLists((l) => { if (!l[name]) return false; l[name].color = color; });
-  });
-  return input;
+// ==========================================
+// 8-1. 리스트 설정 시트
+// ==========================================
+
+function setupSheet() {
+  byId('sheet-close-btn')?.addEventListener('click', closeSheet);
+  byId('sheet-backdrop')?.addEventListener('click', closeSheet);
 }
 
-function createDeleteButton(name) {
-  const button = makeElement('button', 'delete-list-btn', '×', 'button');
-  button.title = '이 리스트 삭제';
-  button.setAttribute('aria-label', `'${name}' 리스트 삭제`);
-  button.addEventListener('click', async () => {
-    if (!await askConfirm(`'${name}' 리스트를 삭제할까요?`, '삭제')) return;
-    expandedLists.delete(name);
-    updateLists((l) => { if (!l[name]) return false; delete l[name]; });
-  });
-  return button;
+function openSheet(name) {
+  if (!renderedLists[name]) return;
+  openSheetName = name;
+  sheetMembersOpen = false;
+  document.body.classList.add('sheet-open');
+  byId('sheet-backdrop').hidden = false;
+  byId('list-sheet').hidden = false;
+  byId('list-sheet').scrollTop = 0;
+  renderSheet();
+  document.querySelectorAll('#list-container .list-card').forEach(c => c.classList.toggle('is-open', c.dataset.name === name));
+  updateInert();
+  byId('sheet-close-btn')?.focus();
 }
 
-// 펼치면 보이는 영역: 이 리스트의 글자 스타일 편집 + 멤버 목록
-function createMembersList(name, list, membersId, isOpen, idx) {
-  const membersListEl = makeElement('div', 'members-list' + (isOpen ? ' show' : ''));
-  membersListEl.id = membersId;
-  membersListEl.appendChild(createListStyleEditor(name, list, idx));
-  if (list.members.length === 0) {
-    membersListEl.appendChild(makeElement('span', 'members-empty', '멤버가 없습니다.'));
-  } else {
-    list.members.forEach(member => membersListEl.appendChild(createMemberChip(name, member)));
-  }
-  return membersListEl;
+function closeSheet() {
+  if (!openSheetName) return;
+  const name = openSheetName;
+  openSheetName = null;
+  sheetMembersOpen = false;
+  document.body.classList.remove('sheet-open');
+  byId('sheet-backdrop').hidden = true;
+  byId('list-sheet').hidden = true;
+  byId('sheet-body').textContent = '';
+  document.querySelectorAll('#list-container .list-card.is-open').forEach(c => c.classList.remove('is-open'));
+  updateInert();
+  // 연 카드로 포커스를 돌려줌 (리스트가 지워졌으면 [+ 추가])
+  (findListCard(name) || byId('toggle-manual-add-btn'))?.focus();
 }
 
-// 리스트별 배지 글자 스타일 편집: [글자 색상] [크기] px [폰트] / 미리보기 / [공통 설정 따르기] [이 스타일을 모든 리스트에 적용]
-// 값을 바꾸면 그 항목만 이 리스트에 저장되고, 나머지 항목은 공통 설정을 따름
-function createListStyleEditor(name, list, idx) {
-  const hasCustom = !!normalizeListStyle(list.style);
+// 시트 내용 그리기. 값을 바꾸면 저장 → onChanged → 다시 그리므로, 포커스와 스크롤 위치를 되살림
+function renderSheet() {
+  const name = openSheetName;
+  const list = renderedLists[name];
+  const sheet = byId('list-sheet');
+  const body = byId('sheet-body');
+  if (!list || !sheet || !body) return;
+
+  const active = document.activeElement;
+  const focusedId = active && sheet.contains(active) ? active.id : '';
+  const scrollTop = sheet.scrollTop;
   const effective = getEffectiveBadgeSettings(badgeSettings, list.style);
-  const editor = makeElement('div', 'list-style-editor');
 
-  const title = makeElement('div', 'list-style-title');
-  title.append(
-    makeElement('span', null, '배지 글자 스타일'),
+  const title = byId('sheet-title');
+  title.textContent = name;
+  applyBadgeStyle(title, list.color, effective, true);
+  byId('sheet-count').textContent = `${list.members.length}명`;
+
+  // 미리보기는 저장 전에도(색 고르는 중) 바로 바뀌어야 하므로 먼저 만들고 갱신 함수를 넘김
+  const preview = createSheetPreview(name, list, effective);
+  body.textContent = '';
+  body.append(
+    createColorField(name, list, preview.update),
+    createTextStyleFields(name, list, effective, preview.update),
+    createModeField(name, list),
+    preview.element,
+    createSheetFooter(name, list)
+  );
+  if (sheetMembersOpen) body.appendChild(createMembersList(name, list));
+
+  sheet.scrollTop = scrollTop;
+  if (focusedId) byId(focusedId)?.focus();
+}
+
+function createField(labelText, control) {
+  const field = makeElement('div', 'field');
+  field.append(makeElement('span', 'field-label', labelText), control);
+  return field;
+}
+
+// 배지 색: 빠른 선택 색 + [다른 색] (색상 선택 창)
+function createColorField(name, list, updatePreview) {
+  const current = (list.color || AG_DEFAULT_LIST_COLOR).toLowerCase();
+  const row = makeElement('div', 'swatches');
+  let matched = false;
+
+  AG_SWATCH_COLORS.forEach(([color, label], i) => {
+    const selected = color === current;
+    if (selected) matched = true;
+    const swatch = makeElement('button', 'swatch', undefined, 'button');
+    swatch.id = `sheet-swatch-${i}`;
+    swatch.style.background = color;
+    swatch.title = label;
+    swatch.setAttribute('aria-label', `배지 색 ${label}`);
+    swatch.setAttribute('aria-pressed', String(selected));
+    swatch.addEventListener('click', () => saveListField(name, 'color', color));
+    row.appendChild(swatch);
+  });
+
+  const custom = makeElement('input', 'swatch-custom' + (matched ? '' : ' is-selected'), undefined, 'color');
+  custom.id = 'sheet-color-custom';
+  custom.value = current;
+  custom.title = '다른 색 고르기';
+  custom.setAttribute('aria-label', '배지 색 직접 고르기');
+  custom.addEventListener('input', e => updatePreview({ color: e.target.value }));
+  custom.addEventListener('change', e => saveListField(name, 'color', e.target.value));
+  row.appendChild(custom);
+
+  return createField('배지 색', row);
+}
+
+// 이 리스트만의 글자 스타일: [글자 크기] [폰트] / 글자 색 · 상태 / [공통 설정 따르기] [모든 리스트에 적용]
+// 값을 바꾸면 그 항목만 이 리스트에 저장되고, 나머지 항목은 공통 설정을 따름
+function createTextStyleFields(name, list, effective, updatePreview) {
+  const hasCustom = !!normalizeListStyle(list.style);
+  const saveStyle = patch => updateLists(l => setListStyle(l, name, patch));
+  const wrap = makeElement('div', 'field');
+
+  const sizeSelect = makeElement('select', 'select');
+  sizeSelect.id = 'sheet-font-size';
+  sizeSelect.setAttribute('aria-label', `'${name}' 배지 글자 크기`);
+  fillSizeOptions(sizeSelect, effective.fontSize);
+  sizeSelect.addEventListener('change', e => saveStyle({ fontSize: parseInt(e.target.value, 10) }));
+
+  const fontSelect = makeElement('select', 'select');
+  fontSelect.id = 'sheet-font-family';
+  fontSelect.setAttribute('aria-label', `'${name}' 배지 폰트`);
+  fillFontOptions(fontSelect, effective.fontFamily);
+  fontSelect.addEventListener('change', e => saveStyle({ fontFamily: e.target.value }));
+
+  const grid = makeElement('div', 'grid-2');
+  grid.append(createField('글자 크기', sizeSelect), createField('폰트', fontSelect));
+
+  const colorInput = makeElement('input', 'color-input', undefined, 'color');
+  colorInput.id = 'sheet-text-color';
+  colorInput.value = effective.textColor;
+  colorInput.setAttribute('aria-label', `'${name}' 배지 글자 색`);
+  colorInput.addEventListener('input', e => updatePreview({ textColor: e.target.value }));
+  colorInput.addEventListener('change', e => saveStyle({ textColor: e.target.value }));
+
+  const colorRow = makeElement('div', 'text-color-row');
+  colorRow.append(
+    makeElement('span', 'field-label', '글자 색'),
+    colorInput,
     makeElement('span', 'list-style-state' + (hasCustom ? ' custom' : ''), hasCustom ? '이 리스트만 따로 설정됨' : '공통 설정 사용 중')
   );
 
-  const colorInput = makeElement('input', 'color-picker', undefined, 'color');
-  colorInput.id = `list-style-color-${idx}`;
-  colorInput.value = effective.textColor;
-  colorInput.setAttribute('aria-label', `'${name}' 배지 글자 색상`);
-
-  const sizeInput = makeElement('input', null, undefined, 'number');
-  sizeInput.id = `list-style-size-${idx}`;
-  sizeInput.min = '8';
-  sizeInput.max = '20';
-  sizeInput.value = String(effective.fontSize);
-  sizeInput.setAttribute('aria-label', `'${name}' 배지 글자 크기`);
-
-  const fontSelect = makeElement('select');
-  fontSelect.id = `list-style-font-${idx}`;
-  fontSelect.setAttribute('aria-label', `'${name}' 배지 폰트`);
-  AG_FONT_FAMILIES.forEach((font) => {
-    const opt = makeElement('option', null, AG_FONT_LABELS[font] || font);
-    opt.value = font;
-    opt.selected = effective.fontFamily === font;
-    fontSelect.appendChild(opt);
-  });
-
-  const controls = makeElement('div', 'list-style-controls');
-  controls.append(colorInput, sizeInput, 'px', fontSelect);
-
-  // 미리보기: 실제 배지와 같은 함수로 스타일 적용
-  const preview = makeElement('div', 'badge-preview list-style-preview', name);
-  const renderPreview = (overrides) => {
-    applyBadgeStyle(preview, list.color, Object.assign({}, effective, overrides || {}), true);
-  };
-  renderPreview();
-
-  const saveStyle = (patch) => {
-    updateLists(l => setListStyle(l, name, patch));
-  };
-
-  colorInput.addEventListener('input', e => renderPreview({ textColor: e.target.value }));
-  colorInput.addEventListener('change', e => saveStyle({ textColor: e.target.value }));
-
-  sizeInput.addEventListener('input', (e) => {
-    const size = parseInt(e.target.value, 10);
-    if (size >= 8 && size <= 20) renderPreview({ fontSize: size });
-  });
-  sizeInput.addEventListener('change', (e) => {
-    const size = parseInt(e.target.value, 10);
-    if (size >= 8 && size <= 20) {
-      saveStyle({ fontSize: size });
-    } else {
-      e.target.value = String(effective.fontSize); // 범위를 벗어나면 원래 값으로
-      showSyncStatus('글자 크기는 8~20 사이로 입력해주세요.', true);
-    }
-  });
-
-  fontSelect.addEventListener('change', e => saveStyle({ fontFamily: e.target.value }));
-
-  const resetBtn = makeElement('button', 'small-btn', '공통 설정 따르기', 'button');
+  const resetBtn = makeElement('button', 'btn small', '공통 설정 따르기', 'button');
+  resetBtn.id = 'sheet-style-reset-btn';
   resetBtn.disabled = !hasCustom;
   resetBtn.title = '이 리스트만의 글자 스타일을 지우고 공통 설정을 따릅니다.';
   resetBtn.addEventListener('click', () => {
@@ -825,15 +1018,113 @@ function createListStyleEditor(name, list, idx) {
     });
   });
 
-  const applyAllBtn = makeElement('button', 'small-btn', '이 스타일을 모든 리스트에 적용', 'button');
+  const applyAllBtn = makeElement('button', 'btn small', '이 스타일을 모든 리스트에 적용', 'button');
+  applyAllBtn.id = 'sheet-style-apply-all-btn';
   applyAllBtn.title = '이 스타일을 공통 설정으로 만들고, 다른 리스트의 개별 스타일을 지웁니다.';
   applyAllBtn.addEventListener('click', () => applyListStyleToAll(name, effective));
 
   const actions = makeElement('div', 'list-style-actions');
   actions.append(resetBtn, applyAllBtn);
 
-  editor.append(title, controls, preview, actions);
-  return editor;
+  wrap.append(grid, colorRow, actions);
+  return wrap;
+}
+
+// 타임라인 표시: 배지만 / 강조 / 흐리게 (라디오 버튼 → 방향키로 고를 수 있음)
+function createModeField(name, list) {
+  const group = makeElement('div', 'segmented');
+  group.setAttribute('role', 'radiogroup');
+  group.setAttribute('aria-label', '타임라인 표시');
+  const current = isValidMode(list.mode) ? list.mode : 'normal';
+  AG_VALID_MODES.forEach((mode) => {
+    const label = makeElement('label');
+    const input = makeElement('input', null, undefined, 'radio');
+    input.name = 'sheet-mode';
+    input.id = `sheet-mode-${mode}`;
+    input.value = mode;
+    input.checked = mode === current;
+    input.addEventListener('change', () => {
+      if (input.checked) saveListField(name, 'mode', mode);
+    });
+    label.append(input, makeElement('span', null, AG_MODE_LABELS[mode]));
+    group.appendChild(label);
+  });
+  return createField('타임라인 표시', group);
+}
+
+// 미리보기 트윗: 실제 배지와 같은 함수로 스타일 적용, 강조(왼쪽 색 띠)·흐리게(본문만 흐림)도 보여 줌
+function createSheetPreview(name, list, effective) {
+  const element = makeElement('div', 'tweet-preview');
+  element.setAttribute('aria-label', '타임라인 미리보기');
+  const chip = makeElement('span', 'badge-chip list-style-preview', name);
+  const main = makeElement('div', 'tweet-main');
+  const nameRow = makeElement('div', 'tweet-name');
+  const handle = list.members[0] || '@member';
+  nameRow.append(makeElement('strong', null, '미리보기'), chip, makeElement('span', 'muted', `${handle} · 방금`));
+  main.append(nameRow, makeElement('div', 'tweet-text', '이 리스트 멤버의 트윗은 이렇게 보입니다.'));
+  element.append(makeElement('div', 'tweet-avatar'), main);
+
+  const update = (overrides) => {
+    const o = overrides || {};
+    const color = o.color || list.color || AG_DEFAULT_LIST_COLOR;
+    applyBadgeStyle(chip, color, Object.assign({}, effective, o.textColor ? { textColor: o.textColor } : {}), true);
+    element.style.boxShadow = list.mode === 'highlight' ? `inset 4px 0 0 ${color}` : '';
+    element.classList.toggle('is-dim', list.mode === 'dim');
+  };
+  update();
+  return { element, update };
+}
+
+// [멤버 N명 보기] [리스트 삭제]
+function createSheetFooter(name, list) {
+  const footer = makeElement('div', 'sheet-footer');
+
+  const membersBtn = makeElement('button', 'btn', sheetMembersOpen ? '멤버 목록 접기' : `멤버 ${list.members.length}명 보기`, 'button');
+  membersBtn.id = 'sheet-members-btn';
+  membersBtn.setAttribute('aria-expanded', String(sheetMembersOpen));
+  membersBtn.setAttribute('aria-controls', 'sheet-members');
+  membersBtn.addEventListener('click', () => {
+    sheetMembersOpen = !sheetMembersOpen;
+    renderSheet();
+    if (sheetMembersOpen) byId('sheet-members')?.scrollIntoView({ block: 'nearest' });
+  });
+
+  const deleteBtn = makeElement('button', 'btn danger-text', '리스트 삭제', 'button');
+  deleteBtn.id = 'sheet-delete-btn';
+  deleteBtn.setAttribute('aria-label', `'${name}' 리스트 삭제`);
+  deleteBtn.addEventListener('click', async () => {
+    if (!await askConfirm(`'${name}' 리스트를 삭제할까요?`, '삭제')) return;
+    updateLists((l) => { if (!l[name]) return false; delete l[name]; });
+  });
+
+  footer.append(membersBtn, deleteBtn);
+  return footer;
+}
+
+function createMembersList(name, list) {
+  const el = makeElement('div', 'members-list');
+  el.id = 'sheet-members';
+  if (list.members.length === 0) {
+    el.appendChild(makeElement('span', 'members-empty', '멤버가 없습니다.'));
+  } else {
+    list.members.forEach((member, i) => el.appendChild(createMemberChip(name, member, i)));
+  }
+  return el;
+}
+
+// 멤버 한 명: "@handle ×"
+function createMemberChip(listName, member, index) {
+  const chip = makeElement('span', 'member-handle', member);
+  const removeBtn = makeElement('button', 'remove-member-btn', '×', 'button');
+  // 지운 뒤 다시 그리면 같은 자리(다음 멤버)의 버튼으로 포커스가 감
+  removeBtn.id = `sheet-member-remove-${index}`;
+  removeBtn.title = `'${member}' 제거`;
+  removeBtn.setAttribute('aria-label', `'${member}' 제거`);
+  removeBtn.addEventListener('click', () => {
+    updateLists(l => removeMemberFromLists(l, listName, member));
+  });
+  chip.appendChild(removeBtn);
+  return chip;
 }
 
 // 한 리스트의 글자 스타일을 모든 리스트에 적용: 공통 설정을 그 스타일로 바꾸고 모든 개별 스타일을 지움
@@ -854,6 +1145,28 @@ async function applyListStyleToAll(name, effective) {
     clearAllListStyles(l);
   });
   if (ok) showSyncStatus(`'${name}' 리스트의 글자 스타일을 모든 리스트에 적용했습니다.`, false);
+}
+
+// ==========================================
+// 9. 배지 기본 스타일 (모든 리스트 공통)
+// ==========================================
+
+function fillSizeOptions(select, selected) {
+  FONT_SIZES.forEach((size) => {
+    const opt = makeElement('option', null, `${size}px`);
+    opt.value = String(size);
+    opt.selected = size === selected;
+    select.appendChild(opt);
+  });
+}
+
+function fillFontOptions(select, selected) {
+  AG_FONT_FAMILIES.forEach((font) => {
+    const opt = makeElement('option', null, AG_FONT_LABELS[font] || font);
+    opt.value = font;
+    opt.selected = font === selected;
+    select.appendChild(opt);
+  });
 }
 
 // 공통 설정 영역의 "개별 스타일 N개" 안내
@@ -879,23 +1192,6 @@ async function applyCommonStyleToAll() {
   if (ok) showSyncStatus(`모든 리스트에 공통 스타일을 적용했습니다. (개별 스타일 ${count}개 해제)`, false);
 }
 
-// 멤버 한 명: "@handle ×"
-function createMemberChip(listName, member) {
-  const chip = makeElement('span', 'member-handle', member);
-  const removeBtn = makeElement('button', 'remove-member-btn', '×', 'button');
-  removeBtn.title = `'${member}' 제거`;
-  removeBtn.setAttribute('aria-label', `'${member}' 제거`);
-  removeBtn.addEventListener('click', () => {
-    updateLists(l => removeMemberFromLists(l, listName, member));
-  });
-  chip.appendChild(removeBtn);
-  return chip;
-}
-
-// ==========================================
-// 9. 배지 스타일 설정
-// ==========================================
-
 async function loadBadgeSettings() {
   const result = await chrome.storage.local.get(['badgeSettings']);
   badgeSettings = { ...AG_DEFAULT_BADGE_SETTINGS, ...(result.badgeSettings || {}) };
@@ -916,7 +1212,7 @@ function applyBadgeSettingsUI() {
   const sizeInput = byId('badge-font-size');
   const fontInput = byId('badge-font-family');
   if (colorInput) colorInput.value = badgeSettings.textColor;
-  if (sizeInput) sizeInput.value = badgeSettings.fontSize;
+  if (sizeInput) sizeInput.value = String(badgeSettings.fontSize);
   if (fontInput) fontInput.value = badgeSettings.fontFamily;
   updateBadgePreview();
 }
@@ -935,25 +1231,14 @@ function updateBadgeSetting(key, value) {
 }
 
 function setupBadgeSettings() {
-  const toggleBtn = byId('toggle-badge-settings');
-  const settingsBody = byId('badge-settings-body');
-  const arrow = byId('settings-arrow');
-  if (toggleBtn && settingsBody) {
-    toggleBtn.addEventListener('click', () => {
-      const open = settingsBody.classList.toggle('show');
-      if (arrow) arrow.textContent = open ? '▼' : '▶';
-      toggleBtn.setAttribute('aria-expanded', String(open));
-    });
-  }
+  const sizeSelect = byId('badge-font-size');
+  const fontSelect = byId('badge-font-family');
+  if (sizeSelect) fillSizeOptions(sizeSelect, badgeSettings.fontSize);
+  if (fontSelect) fillFontOptions(fontSelect, badgeSettings.fontFamily);
 
   byId('badge-text-color')?.addEventListener('input', e => updateBadgeSetting('textColor', e.target.value));
-
-  byId('badge-font-size')?.addEventListener('input', (e) => {
-    const size = parseInt(e.target.value, 10);
-    if (size >= 8 && size <= 20) updateBadgeSetting('fontSize', size);
-  });
-
-  byId('badge-font-family')?.addEventListener('change', e => updateBadgeSetting('fontFamily', e.target.value));
+  sizeSelect?.addEventListener('change', e => updateBadgeSetting('fontSize', parseInt(e.target.value, 10)));
+  fontSelect?.addEventListener('change', e => updateBadgeSetting('fontFamily', e.target.value));
 
   byId('badge-reset-btn')?.addEventListener('click', () => {
     badgeSettings = { ...AG_DEFAULT_BADGE_SETTINGS };

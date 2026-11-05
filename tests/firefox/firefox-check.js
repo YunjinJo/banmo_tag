@@ -142,6 +142,18 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     record('팝업 열림 (shared.js 로드, 빈 목록 안내)', popupState.empty.includes('저장된 리스트가 없습니다'));
     record('브라우저 구분 = firefox', popupState.kind === 'firefox');
     record('파이어폭스 안내 문구 표시', popupState.firefoxNote === 'block');
+
+    // 화면 테마: [기본 스타일] 탭에서 다크를 고르면 바로 적용·저장되고, 시스템으로 되돌릴 수 있음
+    await popup.click('#tab-style');
+    await popup.click('#theme-dark');
+    const themeState = await poll(() => popup.evaluate(async () => {
+      const { uiSettings } = await chrome.storage.local.get(['uiSettings']);
+      return document.documentElement.dataset.theme === 'dark' && uiSettings && uiSettings.theme === 'dark'
+        ? getComputedStyle(document.body).backgroundColor : null;
+    }), 5000);
+    record('화면 테마 다크 적용·저장', themeState === 'rgb(21, 32, 43)', String(themeState));
+    await popup.click('#theme-system');
+    await popup.click('#tab-lists');
     const granted = await popup.evaluate(() => chrome.permissions.contains({ origins: chrome.runtime.getManifest().host_permissions }));
     console.log(`INFO  x.com 접근 권한 기본값(임시 설치): ${granted ? '허용됨' : '꺼짐'} / 권한 안내 배너: ${popupState.permissionBanner}`);
     record('권한 상태와 안내 배너 일치', (granted && popupState.permissionBanner === 'none') || (!granted && popupState.permissionBanner === 'block'));
@@ -236,16 +248,18 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
       getComputedStyle(el).display === 'block' ? el.textContent.slice(0, 40) : null), 5000);
     record('팝업에 구조 변화 경고가 바로 표시됨', typeof banner === 'string', String(banner));
 
-    // 8. 팝업에서 📥 → 새 탭 화면으로 (파이어폭스 우회). 탭 주소는 파이어폭스 자체 목록(getTree)으로 확인
+    // 8. 팝업 ⋯ 메뉴의 [백업 파일 가져오기] → 새 탭 화면으로 (파이어폭스 우회). 탭 주소는 파이어폭스 자체 목록(getTree)으로 확인
     const contextUrls = async () => (await browser.connection.send('browsingContext.getTree', {})).result.contexts.map(c => c.url);
     const beforeUrls = await contextUrls();
+    await popup.click('#menu-btn');
+    await popup.waitForSelector('#import-btn', { visible: true });
     await popup.click('#import-btn');
     const opened = await poll(async () => {
       const urls = await contextUrls();
       const added = urls.find(u => u.includes('view=tab') && !beforeUrls.includes(u));
       return added || null;
     }, 5000);
-    record('팝업 📥 → 파일 선택 창 대신 새 탭 화면이 열림', String(opened).includes('view=tab'), String(opened));
+    record('팝업 [백업 파일 가져오기] → 파일 선택 창 대신 새 탭 화면이 열림', String(opened).includes('view=tab'), String(opened));
     const popupClosed = !(await contextUrls()).includes(`${BASE}/popup.html`);
     record('새 탭을 연 뒤 팝업은 닫힘', popupClosed);
   } catch (e) {

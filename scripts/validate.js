@@ -98,6 +98,28 @@ check('popup.html 스크립트 / CSP', () => {
   if (handler) errors.push(`popup.html 에 인라인 이벤트 핸들러가 있습니다 (MV3 CSP 에서 차단됨): ${handler[0].slice(0, 60)}`);
 });
 
+// 4-1. 테마 깜빡임 방지: theme.js 는 <head> 안에서 다른 스크립트보다 먼저 읽혀야 함
+check('popup.html 테마 스크립트 (<head>)', () => {
+  const html = read('extension/popup.html');
+  const head = (html.match(/<head>([\s\S]*?)<\/head>/) || [])[1] || '';
+  const first = head.match(/<script\b[^>]*\bsrc="([^"]+)"/);
+  if (!first || first[1] !== 'theme.js') errors.push('popup.html 의 <head> 첫 스크립트가 theme.js 가 아닙니다 (첫 화면 테마 깜빡임).');
+});
+
+// 4-2. 흐리게 모드 선택자: shared.js(AG_DIM_TARGET_SELECTOR) 와 styles.css([data-ag-dim="body"]) 가 같은 목록인지
+check('흐리게 모드 선택자 일치 (shared.js ↔ styles.css)', () => {
+  const pick = s => [...s.matchAll(/\[(data-testid|role)="([^"]+)"\]/g)].map(m => `${m[1]}=${m[2]}`).sort();
+  const js = (read('extension/shared.js').match(/var AG_DIM_TARGET_SELECTOR = \[([\s\S]*?)\]\.join/) || [])[1];
+  const css = (read('extension/styles.css').match(/\[data-ag-dim="body"\] :is\(([\s\S]*?)\)\s*\{/) || [])[1];
+  if (!js || !css) {
+    errors.push('AG_DIM_TARGET_SELECTOR 또는 styles.css 의 [data-ag-dim="body"] 규칙을 찾을 수 없습니다.');
+    return;
+  }
+  const a = pick(js).join(', ');
+  const b = pick(css).join(', ');
+  if (a !== b) errors.push(`선택자 목록이 다릅니다.\nshared.js : ${a}\nstyles.css: ${b}`);
+});
+
 // 5. background.js importScripts 대상 존재
 check('background.js importScripts', () => {
   const bg = read('extension/background.js');

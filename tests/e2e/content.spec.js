@@ -68,6 +68,56 @@ test.describe('타임라인 배지', () => {
     await expect(carol).toHaveCSS('border-left-width', '0px');
   });
 
+  test('배지가 많으면 2개만 보이고 나머지는 "+N" (툴팁에 모든 리스트 이름), 긴 이름은 말줄임 + 전체 이름 툴팁', async ({ context, serviceWorker }) => {
+    const longName = 'AI 연구자 모음 (국내·해외 연구소와 대학)';
+    await setStorage(serviceWorker, {
+      lists: {
+        'A 친구': { color: '#c8174d', mode: 'normal', members: ['@alice'] },
+        [longName]: { color: '#7a3fd1', mode: 'normal', members: ['@alice'] },
+        'C 뉴스': { color: '#0b74c4', mode: 'normal', members: ['@alice'] },
+        'D 동료': { color: '#0f7b3e', mode: 'normal', members: ['@alice', '@bob'] }
+      }
+    });
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const page = await context.newPage();
+    await page.goto('https://x.com/home');
+
+    const alice = page.locator('[data-fixture-id="t-alice"]');
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName]);
+    const more = alice.locator('.ag-badge-more');
+    await expect(more).toHaveText('+2');
+    await expect(more).toHaveAttribute('title', `banmo_tag 리스트 4개: A 친구, ${longName}, C 뉴스, D 동료`);
+
+    const long = alice.locator('.ag-list-badge').nth(1);
+    await expect(long).toHaveAttribute('title', longName);
+    await expect(long).toHaveCSS('text-overflow', 'ellipsis');
+    expect(await long.evaluate(el => el.scrollWidth > el.clientWidth), '긴 이름은 잘려서 보여야 함').toBe(true);
+
+    // 3개 이하면 묶지 않음 (bob 은 1개)
+    await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveText(['D 동료']);
+    await expect(page.locator('[data-fixture-id="t-bob"] .ag-badge-more')).toHaveCount(0);
+  });
+
+  test('흐리게 모드는 본문만 흐리게 하고 이름·배지는 또렷하게', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '뉴스': { color: '#0b74c4', mode: 'dim', members: ['@bob'] } } });
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const page = await context.newPage();
+    await page.goto('https://x.com/home');
+
+    const bob = page.locator('[data-fixture-id="t-bob"]');
+    await expect(bob.locator('.ag-list-badge')).toHaveText('뉴스');
+    await expect(bob).toHaveAttribute('data-ag-dim', 'body');
+    await expect(bob).toHaveCSS('opacity', '1');
+    await expect(bob.locator('[data-testid="tweetText"]')).toHaveCSS('opacity', '0.45');
+    await expect(bob.locator('[data-testid="User-Name"]')).toHaveCSS('opacity', '1');
+    await expect(bob.locator('.ag-list-badge')).toHaveCSS('opacity', '1');
+
+    // 모드를 바꾸면 흐리게 표시가 지워짐
+    await setStorage(serviceWorker, { lists: { '뉴스': { color: '#0b74c4', mode: 'normal', members: ['@bob'] } } });
+    await expect(bob).not.toHaveAttribute('data-ag-dim', /.+/);
+    await expect(bob.locator('[data-testid="tweetText"]')).toHaveCSS('opacity', '1');
+  });
+
   test('리스트가 바뀌면 바뀐 사람의 트윗만 다시 그림 (다른 트윗의 배지는 그대로)', async ({ context, serviceWorker }) => {
     const page = await openTimeline(context, serviceWorker);
     // alice 배지에 표시를 남겨 두고, bob 의 리스트만 바꿈
