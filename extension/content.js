@@ -183,6 +183,9 @@
 
   // 리스트 이름을 찾는 곳 (위에서부터 차례로 시도).
   // reliable: false 인 곳(표시 이름 등 엉뚱한 글자일 수 있음)에서 찾은 이름은 세션 캐시에 저장하지 않음
+  // behindDialog: true 인 곳은 멤버 창 뒤의 배경 화면을 읽으므로, 멤버 창이 떠 있으면 건너뜀.
+  //   멤버 화면 주소로 바로 들어가면 X 는 홈 타임라인 등 다른 화면을 배경으로 깔고 그 위에 멤버 창을 띄워서,
+  //   배경의 "내 홈 타임라인" 같은 제목을 리스트 이름으로 잘못 읽게 됨
   const LIST_NAME_SOURCES = [
     {
       // 1. 멤버 창의 제목
@@ -190,8 +193,9 @@
       find: ({ dialog }) => (dialog ? firstValidCleanName(dialog.querySelectorAll('h2, h1, [role="heading"]')) : '')
     },
     {
-      // 2. 본문 제목 (가장 믿을 만함)
+      // 2. 본문 제목 (멤버 창이 없을 때 가장 믿을 만함)
       reliable: true,
+      behindDialog: true,
       find: () => firstValidCleanName(
         document.querySelectorAll('[data-testid="primaryColumn"] h2, main h2, h1[role="heading"]'),
         isRecommendationTitle
@@ -209,6 +213,7 @@
     {
       // 4. 브라우저 탭 제목 (" - " 로 자르지 않고 시스템 문구만 지워 "AI - 연구자" 같은 이름 보존)
       reliable: true,
+      behindDialog: true,
       find: () => {
         const name = cleanListName(document.title || '');
         return isValidListName(name) ? name : '';
@@ -217,6 +222,7 @@
     {
       // 5. 상단 바의 짧은 글자
       reliable: false,
+      behindDialog: true,
       find: () => {
         const topNavBar = document.querySelector('[data-testid="TopNavBar"], header[role="banner"]');
         if (!topNavBar) return '';
@@ -240,6 +246,7 @@
     let candidate = '';
     let reliable = true;
     for (const source of LIST_NAME_SOURCES) {
+      if (dialog && source.behindDialog) continue;
       candidate = source.find(context);
       if (candidate) {
         reliable = source.reliable;

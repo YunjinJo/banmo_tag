@@ -32,6 +32,30 @@ test.describe('리스트 멤버 자동 수집', () => {
     await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual(['Core Members']);
     expect((await getLists(serviceWorker))['Core Members'].listId).toBe('123');
   });
+
+  test('멤버 화면 주소로 바로 들어가 홈 타임라인 위에 멤버 창이 떠도, 배경 제목("내 홈 타임라인")을 이름으로 쓰지 않음', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/members-modal-over-home.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+
+    await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual(['리스트 (123)']);
+    const entry = (await getLists(serviceWorker))['리스트 (123)'];
+    expect(entry.listId).toBe('123');
+    expect(entry.members).toEqual(['@alice', '@bob']);
+  });
+
+  test('리스트 메인 화면에서 읽은 이름이 있으면, 홈 타임라인 위의 멤버 창에서도 그 이름을 사용', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123', 'synthetic/list-main.html');
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/members-modal-over-home.html');
+    const page = await context.newPage();
+
+    await page.goto('https://x.com/i/lists/123');
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('ag_list_name_123'))).toBe('Core Members');
+
+    await page.goto(MEMBERS_URL);
+    await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual(['Core Members']);
+    expect((await getLists(serviceWorker))['Core Members'].members).toEqual(['@alice', '@bob']);
+  });
 });
 
 test.describe('타임라인 배지', () => {
