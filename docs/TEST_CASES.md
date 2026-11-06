@@ -62,9 +62,9 @@ banmo_tag는 별도의 Node.js, Python, 외부 패키지 설치 없이 윈도우
 | **TS-23** | `diagnoseStructure` & `getStructureWarnings` | v1.5.0 | 5건 | X 화면 구조 변경 의심 판정(멤버 화면/타임라인), 로딩 중 보류, 2주 지난 경고 제외 | Yes | **PASS (5/5)** |
 | **TS-24** | `manual` 리스트 & `getManualListNameError` | v1.5.0 | 4건 | 직접 추가 리스트는 "X"·"Home" 이름 허용·정제에서 보존·백업 보존, 자동 수집은 계속 차단 | Yes | **PASS (4/4)** |
 | **TS-25** | `normalizeListStyle`, `getEffectiveBadgeSettings`, `setListStyle`, `clearAllListStyles`, `countListsWithStyle` | v1.6.0 | 7건 | 리스트별 글자 스타일 검증·우선순위(기본값 ← 공통 ← 리스트)·부분 저장/해제, 배지 매핑·다시 그리기 대상, 백업·정리·저장에서 유지 | Yes | **PASS (7/7)** |
-| **TS-26** | `getBrowserKind` | Unreleased | 1건 | 확장 프로그램 주소로 크롬/파이어폭스 구분 | Yes | **PASS (1/1)** |
-| **TS-27** | `normalizeUiSettings`, `sortListNames`, `summarizeList`, `splitTimelineBadges` | Unreleased | 7건 | 팝업 화면 설정(테마·정렬) 정규화, 한국어 이름순·멤버 수 정렬, 리스트 카드 요약 문구, 타임라인 배지 묶기(3개까지 모두, 넘으면 2개 + "+N", 중복 제거), 빠른 선택 색 대비 4.5:1 이상, "+N" 자기 노드 인식 | Yes | **PASS (7/7)** |
-| **합계** | **28개 스위트 (`shared.js` 직접 로드)** | **Unreleased** | **105건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (105/105)** |
+| **TS-26** | `getBrowserKind` | v1.7.0 | 1건 | 확장 프로그램 주소로 크롬/파이어폭스 구분 | Yes | **PASS (1/1)** |
+| **TS-27** | `normalizeUiSettings`, `sortListNames`, `summarizeList`, `splitTimelineBadges` | v1.7.0 | 7건 | 팝업 화면 설정(테마·정렬) 정규화, 한국어 이름순·멤버 수 정렬, 리스트 카드 요약 문구, 타임라인 배지 묶기(3개까지 모두, 넘으면 2개 + "+N", 중복 제거), 빠른 선택 색 대비 4.5:1 이상, "+N" 자기 노드 인식 | Yes | **PASS (7/7)** |
+| **합계** | **28개 스위트 (`shared.js` 직접 로드)** | **v1.7.0** | **105건** | **모든 핵심 데이터 파이프라인, 수집 정책, 스타일 및 필터링 로직** | **Yes** | **ALL PASS (105/105)** |
 
 TS-13 은 v1.5.0 에서 "타임라인:" 제목 처리 1건이 추가되어 5건입니다.
 
@@ -247,7 +247,7 @@ E2E 의 X 화면은 `tests/fixtures/synthetic/` 의 **합성 페이지**입니�
 ---
 
 ### [TC-11] 팝업 화면 테마 (시스템 / 라이트 / 다크)
-- **대응 버전**: Unreleased
+- **대응 버전**: v1.7.0
 - **목적**: 팝업이 운영체제의 라이트/다크 설정을 따르고, 직접 고른 테마가 우선하며, 다시 열 때 깜빡이지 않는지 확인.
 - **테스트 절차**:
   1. 운영체제를 다크 모드로 두고 팝업을 연다 → 어두운 화면인지 확인한다.
@@ -259,7 +259,7 @@ E2E 의 X 화면은 `tests/fixtures/synthetic/` 의 **합성 페이지**입니�
 ---
 
 ### [TC-12] 타임라인 배지 개선 (+N 묶음 · 말줄임 · 흐리게)
-- **대응 버전**: Unreleased
+- **대응 버전**: v1.7.0
 - **사전 조건**: 한 사람을 리스트 4개 이상에 넣고, 이름이 긴 리스트 하나와 흐리게 모드 리스트 하나를 만든다.
 - **테스트 절차**:
   1. 그 사람의 트윗을 타임라인에서 찾는다.
