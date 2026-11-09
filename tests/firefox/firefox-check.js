@@ -151,7 +151,7 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
       return document.documentElement.dataset.theme === 'dark' && uiSettings && uiSettings.theme === 'dark'
         ? getComputedStyle(document.body).backgroundColor : null;
     }), 5000);
-    record('화면 테마 다크 적용·저장', themeState === 'rgb(21, 32, 43)', String(themeState));
+    record('화면 테마 다크 적용·저장', themeState === 'rgb(15, 15, 17)', String(themeState));
     await popup.click('#theme-system');
     await popup.click('#tab-lists');
     const granted = await popup.evaluate(() => chrome.permissions.contains({ origins: chrome.runtime.getManifest().host_permissions }));

@@ -809,6 +809,11 @@ function renderLists(lists) {
   const names = sortListNames(lists, uiSettings.listSort);
   const countEl = byId('list-count');
   if (countEl) countEl.textContent = String(names.length);
+  // 리스트가 없으면 칸 이름 줄과 "줄을 누르면…" 안내를 숨김
+  ['list-columns', 'list-hint'].forEach((id) => {
+    const el = byId(id);
+    if (el) el.hidden = names.length === 0;
+  });
 
   container.textContent = '';
   if (names.length === 0) container.appendChild(createEmptyState());
@@ -845,15 +850,23 @@ function createBadgeChip(name, list, settings, extraClass) {
   return chip;
 }
 
-// 리스트 카드: [배지] N명 / "강조 · 개별 스타일 · @a, @b 외 N명". 누르면 설정 시트
+// 리스트 표의 한 줄: [배지] (개별 스타일) / "@a, @b 외 N명" | 멤버 수. 누르면 설정 시트
+// 타임라인 표시(배지만/강조/흐리게)는 줄에 쓰지 않고 시트에서만 보여 줌
 function createListCard(name, list) {
   const card = makeElement('button', 'list-card' + (name === openSheetName ? ' is-open' : ''), undefined, 'button');
   card.dataset.name = name;
   card.setAttribute('aria-haspopup', 'dialog');
 
   const top = makeElement('span', 'list-card-top');
-  top.append(createBadgeChip(name, list, null, 'list-name'), makeElement('span', 'list-count', `${list.members.length}명`));
-  card.append(top, makeElement('span', 'list-info', summarizeList(list)));
+  top.append(createBadgeChip(name, list, null, 'list-name'));
+  if (normalizeListStyle(list.style)) top.append(makeElement('span', 'list-custom', '개별 스타일'));
+  const main = makeElement('span', 'list-main');
+  main.append(top, makeElement('span', 'list-info', summarizeMembers(list.members)));
+
+  // 숫자만 보이고, 화면 읽기 프로그램에는 "3명" 으로 읽힘
+  const count = makeElement('span', 'list-count num', String(list.members.length));
+  count.append(makeElement('span', 'sr-only', '명'));
+  card.append(main, count);
   card.addEventListener('click', () => openSheet(name));
   return card;
 }

@@ -19,7 +19,7 @@
 //   7. 입력 · 백업        parseHandles, normalizeImportedLists, mergeImportedLists,
 //                         normalizeBadgeSettings, buildBackup, parseBackup
 //   8. 화면 구조 진단     countProfileLinks, diagnoseStructure, getStructureWarnings
-//   9. 팝업 화면 · 배지 묶기  normalizeUiSettings, sortListNames, summarizeList, splitTimelineBadges
+//   9. 팝업 화면 · 배지 묶기  normalizeUiSettings, sortListNames, summarizeMembers, splitTimelineBadges
 
 // ==========================================
 // 0. 상수
@@ -900,20 +900,13 @@ function sortListNames(lists, sortKey) {
   return names.sort(byName);
 }
 
-// 리스트 카드의 한 줄 요약: "강조 · 개별 스타일 · @a, @b 외 3명"
-function summarizeList(list, maxHandles) {
+// 리스트 줄의 멤버 요약: "@a, @b 외 3명" (멤버가 없으면 "멤버 없음")
+function summarizeMembers(members, maxHandles) {
   const max = maxHandles || 2;
-  const info = list || {};
-  const parts = [AG_MODE_LABELS[info.mode] || AG_MODE_LABELS.normal];
-  if (normalizeListStyle(info.style)) parts.push('개별 스타일');
-  const members = Array.isArray(info.members) ? info.members : [];
-  if (members.length === 0) {
-    parts.push('멤버 없음');
-  } else {
-    const shown = members.slice(0, max).join(', ');
-    parts.push(members.length > max ? `${shown} 외 ${members.length - max}명` : shown);
-  }
-  return parts.join(' · ');
+  const all = Array.isArray(members) ? members : [];
+  if (all.length === 0) return '멤버 없음';
+  const shown = all.slice(0, max).join(', ');
+  return all.length > max ? `${shown} 외 ${all.length - max}명` : shown;
 }
 
 // 타임라인 배지 묶기: max 개 이하면 모두 보이고, 넘으면 (max - 1)개만 보이고 나머지는 "+N" 으로.

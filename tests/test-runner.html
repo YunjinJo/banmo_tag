@@ -683,7 +683,7 @@
           applyListReplace, diffHandleMaps, isTweetAffected, countProfileLinks,
           diagnoseStructure, getStructureWarnings, getManualListNameError,
           normalizeListStyle, getEffectiveBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle,
-          getBrowserKind, normalizeUiSettings, sortListNames, summarizeList, splitTimelineBadges
+          getBrowserKind, normalizeUiSettings, sortListNames, summarizeMembers, splitTimelineBadges
         ];
         requiredFns.forEach(fn => assertEqual(typeof fn, 'function'));
         assertEqual(typeof AG_DEFAULT_BADGE_SETTINGS, 'object');
@@ -1232,12 +1232,12 @@
         assertDeepEqual(sortListNames(undefined, 'name'), []);
       });
 
-      it('summarizeList: 모드 · 개별 스타일 · 멤버 일부', () => {
-        assertEqual(summarizeList({ mode: 'highlight', style: { fontSize: 14 }, members: ['@a', '@b', '@c', '@d'] }),
-          '강조 · 개별 스타일 · @a, @b 외 2명');
-        assertEqual(summarizeList({ mode: 'normal', members: ['@a', '@b'] }), '배지만 · @a, @b');
-        assertEqual(summarizeList({ mode: 'dim', members: [] }), '흐리게 · 멤버 없음');
-        assertEqual(summarizeList({ mode: 'weird', style: { textColor: 'bad' }, members: ['@a'] }), '배지만 · @a', '잘못된 스타일은 개별 스타일로 치지 않음');
+      it('summarizeMembers: 멤버 일부 + "외 N명", 없으면 "멤버 없음"', () => {
+        assertEqual(summarizeMembers(['@a', '@b', '@c', '@d']), '@a, @b 외 2명');
+        assertEqual(summarizeMembers(['@a', '@b']), '@a, @b');
+        assertEqual(summarizeMembers(['@a', '@b', '@c'], 3), '@a, @b, @c');
+        assertEqual(summarizeMembers([]), '멤버 없음');
+        assertEqual(summarizeMembers(undefined), '멤버 없음', '배열이 아니면 멤버 없음');
       });
 
       it('splitTimelineBadges: 3개까지는 모두, 넘으면 2개 + 나머지(+N)', () => {
