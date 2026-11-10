@@ -1,6 +1,6 @@
 # banmo_tag — Claude Code 작업 안내
 
-X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라우저 확장 프로그램입니다. **크롬과 파이어폭스(140+)를 같은 코드·같은 zip 으로** 지원합니다. 사용자 문서는 [README.md](README.md), 변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md).
+X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라우저 확장 프로그램입니다. **크롬과 파이어폭스(140+)를 같은 코드로** 지원합니다. `manifest.json` 만 다릅니다(크롬: `extension/manifest.json`, 파이어폭스: `extension/manifest.firefox.json` 을 합친 `dist/firefox/`, `npm run build:firefox`). 사용자 문서는 [README.md](README.md), 변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## 작업 규칙 (꼭 지킬 것)
 
@@ -17,7 +17,7 @@ X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라�
 | `npm run check` | 정적 검사 + ESLint + 파이어폭스 호환성(`web-ext lint`) + Playwright E2E(Chromium) + 단위 테스트. **push 전에 실행** |
 | `npm run test:firefox` | 실제 Firefox 에 임시 설치해 19가지 확인 (`FIREFOX_BIN` 또는 `%LOCALAPPDATA%\banmo_tag-test\firefox-*`) |
 | `npm run firefox:live` (백그라운드) → `npm run firefox:run -- <스크립트.js>` | 화면에 보이는 Firefox 로 **로그인한 실제 x.com** 에서 확인. 로그인은 사용자가 `npm run firefox:login` 으로 먼저 (Claude 는 비밀번호를 넣지 않음). Firefox 는 브라우저라 computer use 로 클릭할 수 없으므로 이 도구를 씀. 도우미는 `tests/firefox/live.js` 머리말 |
-| `powershell -ExecutionPolicy Bypass -File scripts\build.ps1` | 버전 확인 → 정적 검사 → 단위 테스트(Windows) → `dist\banmo_tag-v<버전>.zip` |
+| `powershell -ExecutionPolicy Bypass -File scripts\build.ps1` | 버전 확인 → 정적 검사 → 단위 테스트(Windows) → `dist\banmo_tag-v<버전>-chrome.zip`, `-firefox.zip` |
 | `powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1` | `shared.js` 단위 테스트만 (Node.js 없이) |
 | `npm run bump -- X.Y.Z` | **사용자가 릴리스를 요청할 때만**: `[Unreleased]` → 새 버전 항목 |
 | `gh pr checks <번호> --watch` | PR 의 CI 결과 기다리기 |
@@ -42,7 +42,7 @@ docs/             CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVAC
 - **화면에 글자를 넣을 때 `textContent` 만** (`innerHTML` 금지 — X 의 데이터와 사용자 입력이 섞임).
 - **X 화면 구조에 의존하는 선택자**(`data-testid="UserCell"`, `article[data-testid="tweet"]`, `User-Name` 등)를 바꾸면 `tests/fixtures/` 와 `diagnoseStructure` 도 함께 봅니다. 실제 X 화면 스냅샷은 `/x-snapshot` 스킬로 `tests/fixtures/real/` 에 추가합니다.
 - **팝업 동작을 바꾸면 `tests/e2e/popup.spec.js`**, X 페이지 동작이면 `tests/e2e/content.spec.js` 에 테스트를 추가합니다. `chrome.storage` 는 리스트를 **이름순**으로 돌려주므로, 테스트에서는 순서가 아니라 이름으로 줄을 찾습니다.
-- **파이어폭스**: `manifest.json` 의 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
+- **파이어폭스**: `extension/manifest.json` 에는 크롬용 키만 둡니다(`background.scripts` 를 넣으면 크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류). 파이어폭스 전용 키는 `extension/manifest.firefox.json` 에 적고, 그 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
 - **배포 zip** 경로는 `/` 로 (build.ps1 가 처리, CI 가 검사).
 - 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트를 추가·변경하면 `npm run test:report -- --catalog` 로 `docs/TEST_CASES.md` 목록을 다시 만듭니다(수동 시나리오는 직접 수정). 릴리스 때는 `npm run test:report -- --firefox --write` 로 `docs/TEST_RESULTS.md` 에 결과를 기록합니다.
 

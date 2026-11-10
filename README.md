@@ -1,6 +1,6 @@
 # banmo_tag (Chrome · Firefox Extension)
 
-banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게 해 주는 브라우저 확장 프로그램입니다. 크롬(크롬 계열 브라우저)과 파이어폭스 140 이상을 같은 코드로 지원합니다. 리스트 멤버가 쓴 트윗의 이름 옆에 배지를 붙이고, 리스트별로 강조하거나 흐리게 표시합니다.
+banmo_tag는 X(Twitter) 타임라인에서 내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게 해 주는 브라우저 확장 프로그램입니다. 크롬(크롬 계열 브라우저)과 파이어폭스 140 이상을 같은 코드로 지원합니다(`manifest.json` 만 브라우저별로 다름). 리스트 멤버가 쓴 트윗의 이름 옆에 배지를 붙이고, 리스트별로 강조하거나 흐리게 표시합니다.
 
 - 현재 버전: **v1.7.1** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
 - 모든 데이터는 브라우저(`chrome.storage.local`)에만 저장되며 외부로 전송되지 않습니다. ([개인정보 처리방침](docs/PRIVACY.md))
@@ -63,8 +63,11 @@ dist/             빌드 결과 zip (git 에 올리지 않음)
 
 **파이어폭스 (140 이상)**
 1. 주소창에 `about:debugging#/runtime/this-firefox` 를 엽니다.
-2. **임시 부가 기능 로드…**를 누르고 `extension\manifest.json` 을 선택합니다.
-3. 임시 설치는 파이어폭스를 다시 시작하면 사라집니다. 계속 쓰려면 Mozilla 서명이 필요합니다(부가 기능 사이트 AMO 에 올려 서명. 목록에 공개하지 않는 "unlisted" 도 가능).
+2. 파이어폭스용 폴더를 만듭니다: `npm run build:firefox` → `dist\firefox\`
+   - `extension/manifest.json` 은 크롬용입니다. 파이어폭스 전용 항목(`background.scripts`, 확장 프로그램 ID 등)은 `extension/manifest.firefox.json` 에 있고, 빌드할 때 합쳐집니다.
+   - 코드를 고친 뒤에는 다시 실행하고, about:debugging 에서 [다시 로드]를 누릅니다.
+3. **임시 부가 기능 로드…**를 누르고 `dist\firefox\manifest.json` 을 선택합니다.
+4. 임시 설치는 파이어폭스를 다시 시작하면 사라집니다. 계속 쓰려면 Mozilla 서명이 필요합니다(부가 기능 사이트 AMO 에 올려 서명. 목록에 공개하지 않는 "unlisted" 도 가능).
 
 **파이어폭스에서 알아둘 점**
 - 파이어폭스는 팝업에서 파일·색상 선택 창이나 다운로드를 열면 팝업이 닫혀 버립니다. 그래서 팝업에서 내보내기, 가져오기, 색상 직접 고르기를 누르면 같은 화면이 **새 탭**에서 열립니다(리스트 설정 창에서 눌렀으면 그 창도 열린 채로). 팝업 위쪽 [↗] 버튼으로 언제든 새 탭에서 열 수 있으며, 새 탭에서도 [현재 탭에서 가져오기]·[뺀 멤버 정리]는 열 때 보던 X 탭을 대상으로 동작합니다.
@@ -131,9 +134,9 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 
 1. 버전 올리기: `npm run bump -- X.Y.Z` → `[Unreleased]` 내용이 `## [vX.Y.Z]` 항목이 됩니다. 내용을 확인하고 커밋·push 합니다.
 2. GitHub Actions 의 CI 가 통과했는지 확인합니다.
-3. 배포 zip 만들기: `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1` → `dist\banmo_tag-vX.Y.Z.zip`
-4. GitHub 저장소 → **Releases** → **Draft a new release** → 태그 `vX.Y.Z` 생성, 제목 `banmo_tag vX.Y.Z`, 본문에 CHANGELOG 의 해당 버전 내용 붙여 넣기, zip 첨부 → **Publish release**
-5. (파이어폭스 배포 시) 같은 zip 을 Mozilla 부가 기능 사이트(addons.mozilla.org)에 올려 서명받습니다. 크롬과 파이어폭스가 같은 zip 을 씁니다.
+3. 배포 zip 만들기: `powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1` → `dist\banmo_tag-vX.Y.Z-chrome.zip`, `dist\banmo_tag-vX.Y.Z-firefox.zip`
+4. GitHub 저장소 → **Releases** → **Draft a new release** → 태그 `vX.Y.Z` 생성, 제목 `banmo_tag vX.Y.Z`, 본문에 CHANGELOG 의 해당 버전 내용 붙여 넣기, zip 두 개 첨부 → **Publish release**
+5. Chrome 웹 스토어에는 `-chrome.zip`, Mozilla 부가 기능 사이트(addons.mozilla.org)에는 `-firefox.zip` 을 올립니다. 두 zip 은 `manifest.json` 만 다릅니다(크롬 MV3 는 `background.scripts` 를 허용하지 않고, 파이어폭스는 `background.service_worker` 를 지원하지 않음).
 
 ## 빌드
 
@@ -141,7 +144,7 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 ```
 
-버전 일치 확인(`extension/manifest.json` ↔ `docs/CHANGELOG.md`) → 정적 검사·ESLint(Node.js 가 있을 때) → 단위 테스트 → `dist/banmo_tag-v<버전>.zip` 생성 순서로 진행합니다. 하나라도 실패하면 zip을 만들지 않습니다.
+버전 일치 확인(`extension/manifest.json` ↔ `docs/CHANGELOG.md`) → 정적 검사·ESLint(Node.js 가 있을 때) → 단위 테스트 → `dist/banmo_tag-v<버전>-chrome.zip` 과 `dist/banmo_tag-v<버전>-firefox.zip`(파이어폭스용 manifest 를 합친 `dist/firefox/` 를 압축) 생성 순서로 진행합니다. 하나라도 실패하면 zip을 만들지 않습니다.
 
 ## 문서
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): 버전별 변경 내역
