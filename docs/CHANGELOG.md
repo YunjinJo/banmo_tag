@@ -9,6 +9,10 @@
 
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
+---
+
+## [v1.7.2] - 2026-11-10
+
 ### 🐛 Fixed (버그 수정)
 - **크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류가 뜨던 문제 (`manifest.json`)**
   - 원인: 크롬과 파이어폭스가 한 `manifest.json` 을 함께 쓰느라, 크롬 MV3 가 허용하지 않는 `background.scripts`(파이어폭스용)가 들어 있었습니다.
