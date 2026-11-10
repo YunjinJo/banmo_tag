@@ -42,7 +42,7 @@ jobs:
 
       # Mozilla 부가 기능 사이트(AMO) 제출 때와 같은 검사. 오류가 있으면 실패 (경고는 통과)
       - name: 파이어폭스 호환성 검사 (web-ext lint)
-        run: npx web-ext lint --source-dir extension --no-input
+        run: npm run lint:firefox
 
   e2e:
     name: E2E 테스트 (실제 확장 프로그램)
@@ -121,18 +121,32 @@ jobs:
         shell: pwsh
         run: |
           $v = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
-          $zip = "dist/banmo_tag-v$v.zip"
-          if (-not (Test-Path $zip)) { Write-Error "$zip 이 없습니다"; exit 1 }
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
-          $entries = $archive.Entries.FullName
-          $archive.Dispose()
-          $entries | ForEach-Object { Write-Host "  $_" }
           $required = 'manifest.json', 'shared.js', 'content.js', 'background.js', 'popup.html', 'popup.js', 'theme.js', 'styles.css',
             'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png'
-          $missing = $required | Where-Object { $entries -notcontains $_ }
-          if ($missing) { Write-Error "zip 에 없는 파일: $($missing -join ', ')"; exit 1 }
-          # zip 표준은 경로 구분자로 / 를 씀 (\ 가 있으면 폴더로 인식되지 않을 수 있음)
-          $backslash = $entries | Where-Object { $_ -like '*\*' }
-          if ($backslash) { Write-Error "zip 경로에 \ 가 있습니다: $($backslash -join ', ')"; exit 1 }
-          "### 패키징 확인`n`n- 버전: v$v (zip 은 업로드하지 않음)`n- 파일 $($entries.Count)개, 필수 파일 모두 포함" >> $env:GITHUB_STEP_SUMMARY
+          $summary = "### 패키징 확인`n`n- 버전: v$v (zip 은 업로드하지 않음)"
+          foreach ($browser in 'chrome', 'firefox') {
+            $zip = "dist/banmo_tag-v$v-$browser.zip"
+            if (-not (Test-Path $zip)) { Write-Error "$zip 이 없습니다"; exit 1 }
+            $archive = [IO.Compression.ZipFile]::OpenRead((Resolve-Path $zip))
+            $entries = $archive.Entries.FullName
+            $reader = New-Object IO.StreamReader($archive.GetEntry('manifest.json').Open())
+            $manifest = $reader.ReadToEnd() | ConvertFrom-Json
+            $reader.Close()
+            $archive.Dispose()
+            Write-Host "[$browser]"; $entries | ForEach-Object { Write-Host "  $_" }
+            $missing = $required | Where-Object { $entries -notcontains $_ }
+            if ($missing) { Write-Error "$browser zip 에 없는 파일: $($missing -join ', ')"; exit 1 }
+            # zip 표준은 경로 구분자로 / 를 씀 (\ 가 있으면 폴더로 인식되지 않을 수 있음)
+            $backslash = $entries | Where-Object { $_ -like '*\*' }
+            if ($backslash) { Write-Error "$browser zip 경로에 \ 가 있습니다: $($backslash -join ', ')"; exit 1 }
+            # 크롬 MV3 는 background.scripts 가 있으면 오류, 파이어폭스는 service_worker 를 지원하지 않음
+            if ($browser -eq 'chrome' -and ($manifest.background.scripts -or -not $manifest.background.service_worker -or $manifest.browser_specific_settings)) {
+              Write-Error "chrome zip 의 manifest 는 background.service_worker 만 있어야 합니다"; exit 1
+            }
+            if ($browser -eq 'firefox' -and (-not $manifest.background.scripts -or $manifest.background.service_worker -or -not $manifest.browser_specific_settings.gecko.id)) {
+              Write-Error "firefox zip 의 manifest 는 background.scripts 와 gecko.id 가 있어야 합니다"; exit 1
+            }
+            $summary += "`n- ${browser}: 파일 $($entries.Count)개, 필수 파일과 manifest 확인"
+          }
+          $summary >> $env:GITHUB_STEP_SUMMARY

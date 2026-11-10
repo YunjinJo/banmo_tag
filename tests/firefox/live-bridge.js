@@ -18,8 +18,8 @@ const http = require('http');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
 
-const ROOT = path.resolve(__dirname, '..', '..');
-const EXT_DIR = path.join(ROOT, 'extension');
+// 파이어폭스용 manifest 를 합친 폴더 (dist/firefox/) 를 새로 만들어 설치
+const EXT_DIR = require('../../scripts/build-firefox').buildFirefox();
 const EXT_ID = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8')).browser_specific_settings.gecko.id;
 const PROFILE = process.env.FIREFOX_LIVE_PROFILE ||
   path.join(process.env.LOCALAPPDATA || path.join(os.homedir(), '.cache'), 'banmo_tag-test', 'ff-live-profile');

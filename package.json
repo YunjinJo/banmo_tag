@@ -7,7 +7,8 @@
   "scripts": {
     "validate": "node scripts/validate.js",
     "lint": "eslint .",
-    "lint:firefox": "web-ext lint --source-dir extension --no-input",
+    "lint:firefox": "node scripts/build-firefox.js && web-ext lint --source-dir dist/firefox --no-input",
+    "build:firefox": "node scripts/build-firefox.js",
     "test": "playwright test",
     "check": "npm run validate && npm run lint && npm run lint:firefox && npm test",
     "bump": "node scripts/bump-version.js",

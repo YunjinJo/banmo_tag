@@ -61,7 +61,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 |:-:|---|
 | S-01 | manifest.json 형식 |
 | S-02 | manifest 참조 파일 존재 |
-| S-03 | 크롬·파이어폭스 공용 manifest |
+| S-03 | 크롬 manifest · 파이어폭스 manifest |
 | S-04 | 버전 일치 (manifest ↔ CHANGELOG) |
 | S-05 | popup.html 스크립트 / CSP |
 | S-06 | popup.html 테마 스크립트 (&lt;head&gt;) |
@@ -71,7 +71,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 | S-10 | 테스트 러너 shared.js 경로 |
 | S-11 | 문서 링크 (로컬 절대 경로 금지) |
 
-이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(web-ext lint, 오류 0건 · 경고 1건 `BACKGROUND_SERVICE_WORKER_IGNORED` 는 의도된 것)를 실행합니다.
+이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.
 
 ### 단위 테스트 (`tests/test-runner.html`, 28개 묶음 · 105건)
 

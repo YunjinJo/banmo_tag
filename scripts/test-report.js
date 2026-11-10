@@ -99,7 +99,7 @@ function buildCatalog() {
   lines.push(`### 정적 검사 (\`npm run validate\`, ${statics.length}항목)`, '');
   lines.push('| 번호 | 항목 |', '|:-:|---|');
   statics.forEach((n, i) => lines.push(`| S-${pad(i + 1)} | ${escapeCell(n)} |`));
-  lines.push('', '이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(web-ext lint, 오류 0건 · 경고 1건 `BACKGROUND_SERVICE_WORKER_IGNORED` 는 의도된 것)를 실행합니다.', '');
+  lines.push('', '이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.', '');
 
   const suites = listUnitSuites();
   const unitTotal = suites.reduce((a, s) => a + s.count, 0);
@@ -174,11 +174,13 @@ function runEslint() {
 }
 
 function runWebExtLint() {
-  const r = node('node_modules/web-ext/bin/web-ext.js', ['lint', '--source-dir', 'extension', '--no-input', '--output', 'json']);
+  // 파이어폭스용 manifest 를 합친 dist/firefox/ 를 검사 (scripts/build-firefox.js)
+  const firefoxDir = path.relative(root, require('./build-firefox').buildFirefox());
+  const r = node('node_modules/web-ext/bin/web-ext.js', ['lint', '--source-dir', firefoxDir, '--no-input', '--output', 'json']);
   try {
     const j = JSON.parse(r.stdout.slice(r.stdout.indexOf('{')));
     const warningCodes = j.warnings.map(w => w.code);
-    const unexpected = warningCodes.filter(c => c !== 'BACKGROUND_SERVICE_WORKER_IGNORED');
+    const unexpected = warningCodes; // 경고도 0건이어야 함
     return {
       name: 'Firefox 호환성 (`npm run lint:firefox`)',
       pass: j.summary.errors === 0 && unexpected.length === 0,

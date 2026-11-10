@@ -17,7 +17,8 @@ const http = require('http');
 const puppeteer = require('puppeteer-core');
 
 const ROOT = path.resolve(__dirname, '..', '..');
-const EXT_DIR = path.join(ROOT, 'extension');
+// 파이어폭스용 manifest 를 합친 폴더 (dist/firefox/) 를 새로 만들어 설치
+const EXT_DIR = require('../../scripts/build-firefox').buildFirefox();
 const FIXTURES = path.join(ROOT, 'tests', 'fixtures', 'synthetic');
 const PORT = 80; // 실제 X 처럼 포트 없는 주소 (http://x.com/...)
 const EXT_ID = JSON.parse(fs.readFileSync(path.join(EXT_DIR, 'manifest.json'), 'utf8')).browser_specific_settings.gecko.id;

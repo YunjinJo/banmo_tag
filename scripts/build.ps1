@@ -61,6 +61,9 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host "[3/3] Packaging runtime extension files..." -ForegroundColor Cyan
+# Same code for both browsers; only manifest.json differs.
+#   Chrome : extension/manifest.json (background.service_worker only; Chrome MV3 rejects background.scripts)
+#   Firefox: dist/firefox/ built by scripts/build-firefox.js (extension/manifest.json + extension/manifest.firefox.json)
 $runtimeItems = @(
     "manifest.json",
     "shared.js",
@@ -84,35 +87,51 @@ foreach ($item in $runtimeItems) {
 if (-not (Test-Path $distDir)) {
     New-Item -ItemType Directory -Path $distDir | Out-Null
 }
-$zipName = "banmo_tag-v$($manifestJson.version).zip"
-$zipPath = Join-Path $distDir $zipName
-if (Test-Path $zipPath) {
-    Remove-Item -Force $zipPath
-}
 
-# Build the zip with forward-slash entry names ("icons/icon16.png").
+# Build a zip with forward-slash entry names ("icons/icon16.png").
 # Compress-Archive on Windows PowerShell 5.1 writes backslashes ("icons\icon16.png"),
 # which other tools and the Chrome Web Store may not treat as folders.
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$extFull = (Resolve-Path $extDir).Path.TrimEnd('\')
-$zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
-try {
-    foreach ($item in $runtimeItems) {
-        $p = Join-Path $extFull $item
-        if (Test-Path $p -PathType Container) {
-            $files = Get-ChildItem -Path $p -Recurse -File | Sort-Object FullName
-        } else {
-            $files = @(Get-Item $p)
-        }
-        foreach ($f in $files) {
-            $entryName = $f.FullName.Substring($extFull.Length + 1).Replace('\', '/')
-            [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $f.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
-        }
+function New-ExtensionZip([string]$sourceDir, [string]$zipPath) {
+    if (Test-Path $zipPath) {
+        Remove-Item -Force $zipPath
     }
-} finally {
-    $zip.Dispose()
+    $srcFull = (Resolve-Path $sourceDir).Path.TrimEnd('\')
+    $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Create)
+    try {
+        foreach ($item in $runtimeItems) {
+            $p = Join-Path $srcFull $item
+            if (Test-Path $p -PathType Container) {
+                $files = Get-ChildItem -Path $p -Recurse -File | Sort-Object FullName
+            } else {
+                $files = @(Get-Item $p)
+            }
+            foreach ($f in $files) {
+                $entryName = $f.FullName.Substring($srcFull.Length + 1).Replace('\', '/')
+                [System.IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $f.FullName, $entryName, [System.IO.Compression.CompressionLevel]::Optimal) | Out-Null
+            }
+        }
+    } finally {
+        $zip.Dispose()
+    }
 }
 
-Write-Host "SUCCESS: Packaged runtime files and icons to dist\$zipName" -ForegroundColor Green
+$version = $manifestJson.version
+$chromeZip = Join-Path $distDir "banmo_tag-v$version-chrome.zip"
+New-ExtensionZip $extDir $chromeZip
+Write-Host "SUCCESS: Chrome  -> dist/banmo_tag-v$version-chrome.zip" -ForegroundColor Green
+
+if (-not $node) {
+    Write-Host "[ERROR] Node.js is required to build the Firefox package (scripts/build-firefox.js)." -ForegroundColor Red
+    exit 1
+}
+& node (Join-Path $rootDir "scripts/build-firefox.js") | Out-Null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "[ERROR] Failed to build dist/firefox." -ForegroundColor Red
+    exit 1
+}
+$firefoxZip = Join-Path $distDir "banmo_tag-v$version-firefox.zip"
+New-ExtensionZip (Join-Path $distDir "firefox") $firefoxZip
+Write-Host "SUCCESS: Firefox -> dist/banmo_tag-v$version-firefox.zip" -ForegroundColor Green
 exit 0

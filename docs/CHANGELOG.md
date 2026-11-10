@@ -9,6 +9,16 @@
 
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
+### 🐛 Fixed (버그 수정)
+- **크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류가 뜨던 문제 (`manifest.json`)**
+  - 원인: 크롬과 파이어폭스가 한 `manifest.json` 을 함께 쓰느라, 크롬 MV3 가 허용하지 않는 `background.scripts`(파이어폭스용)가 들어 있었습니다.
+  - 영향: 크롬 121 미만과 일부 크롬 계열 브라우저는 이 오류를 내고, 확장 프로그램 관리 화면에 오류가 표시됩니다.
+  - 수정: 크롬용 `extension/manifest.json` 에는 `background.service_worker` 만 둡니다. 파이어폭스 전용 항목(`background.scripts`, `browser_specific_settings`)은 `extension/manifest.firefox.json` 으로 옮겼고, 빌드할 때 합쳐 `dist/firefox/` 를 만듭니다(`npm run build:firefox`, `scripts/build-firefox.js`). 코드 파일은 두 브라우저가 똑같이 씁니다.
+  - **배포 zip 이 두 개로 나뉩니다**: `banmo_tag-vX.Y.Z-chrome.zip`(크롬·크롬 계열), `banmo_tag-vX.Y.Z-firefox.zip`(파이어폭스).
+  - 파이어폭스 manifest 에서도 쓰지 않는 `background.service_worker` 가 빠져, `web-ext lint` 경고(`BACKGROUND_SERVICE_WORKER_IGNORED`)가 0건이 됐습니다.
+  - 정적 검사와 CI 패키징 확인이 크롬 manifest 에 `background.scripts`·`browser_specific_settings` 가 없는지, 파이어폭스 manifest 에 `background.scripts`(순서)·확장 프로그램 ID 가 있는지 확인합니다.
+  - 파이어폭스 개발용 설치는 `extension\manifest.json` 대신 `dist\firefox\manifest.json` 을 로드합니다(README 참고).
+
 ---
 
 ## [v1.7.1] - 2026-11-10
