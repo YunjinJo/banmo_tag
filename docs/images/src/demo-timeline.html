@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>예시 타임라인</title>
+<style>
+  body { margin: 0; background: #ffffff; color: #0f1419; font: 15px/1.4 -apple-system, "Segoe UI", "Malgun Gothic", sans-serif; }
+  main { width: 600px; margin: 0 auto; border-left: 1px solid #eff3f4; border-right: 1px solid #eff3f4; }
+  h1 { margin: 0; padding: 14px 16px; font-size: 19px; font-weight: 800; border-bottom: 1px solid #eff3f4; }
+  article { display: flex; gap: 12px; padding: 12px 16px; border-bottom: 1px solid #eff3f4; }
+  .avatar { width: 40px; height: 40px; border-radius: 50%; flex-shrink: 0; }
+  .body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+  [data-testid="User-Name"] { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+  [data-testid="User-Name"] > div { display: flex; align-items: center; gap: 4px; }
+  [data-testid="User-Name"] > div:first-child span { font-weight: 700; }
+  [data-testid="User-Name"] > div + div, [data-testid="User-Name"] a[tabindex="-1"], time { color: #536471; }
+  a { color: inherit; text-decoration: none; }
+  [data-testid="tweetText"] { white-space: pre-wrap; }
+  .quote { border: 1px solid #cfd9de; border-radius: 14px; padding: 10px 12px; margin-top: 6px; display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+  [role="group"] { display: flex; gap: 48px; color: #536471; font-size: 13px; margin-top: 6px; }
+</style>
+</head>
+<body>
+<main role="main">
+  <div data-testid="primaryColumn">
+    <h1>홈</h1>
+    <div aria-label="타임라인">
+
+      <div data-testid="cellInnerDiv"><article data-testid="tweet" role="article">
+        <div data-testid="Tweet-User-Avatar" class="avatar" style="background:#f4a6b8"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <div><div><a href="/alice" role="link"><div><span>Alice Kim</span></div></a></div></div>
+            <div><div><a href="/alice" role="link" tabindex="-1"><div><span>@alice</span></div></a></div>
+              <div><a href="/alice/status/1" role="link"><time datetime="2026-11-10T01:00:00.000Z">· 1시간</time></a></div></div>
+          </div>
+          <div data-testid="tweetText"><span>주말에 같이 전시 보러 갈 사람? 🎨</span></div>
+          <div role="group"><span>💬 3</span><span>🔁 1</span><span>♡ 12</span></div>
+        </div>
+      </article></div>
+
+      <div data-testid="cellInnerDiv"><article data-testid="tweet" role="article">
+        <div data-testid="Tweet-User-Avatar" class="avatar" style="background:#a7c7e7"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <div><div><a href="/minjun" role="link"><div><span>Minjun Park</span></div></a></div></div>
+            <div><div><a href="/minjun" role="link" tabindex="-1"><div><span>@minjun</span></div></a></div>
+              <div><a href="/minjun/status/2" role="link"><time datetime="2026-11-10T02:00:00.000Z">· 2시간</time></a></div></div>
+          </div>
+          <div data-testid="tweetText"><span>새 모델 논문 정리해서 올렸습니다. 요약은 스레드로 👇</span></div>
+          <div role="group"><span>💬 8</span><span>🔁 21</span><span>♡ 96</span></div>
+        </div>
+      </article></div>
+
+      <div data-testid="cellInnerDiv"><article data-testid="tweet" role="article">
+        <div data-testid="Tweet-User-Avatar" class="avatar" style="background:#c9d6a3"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <div><div><a href="/news_daily" role="link"><div><span>Daily News</span></div></a></div></div>
+            <div><div><a href="/news_daily" role="link" tabindex="-1"><div><span>@news_daily</span></div></a></div>
+              <div><a href="/news_daily/status/3" role="link"><time datetime="2026-11-10T03:00:00.000Z">· 3시간</time></a></div></div>
+          </div>
+          <div data-testid="tweetText"><span>[속보] 오늘의 주요 뉴스 10건을 정리했습니다.</span></div>
+          <div role="group"><span>💬 0</span><span>🔁 4</span><span>♡ 7</span></div>
+        </div>
+      </article></div>
+
+      <div data-testid="cellInnerDiv"><article data-testid="tweet" role="article">
+        <div data-testid="Tweet-User-Avatar" class="avatar" style="background:#e6c99f"></div>
+        <div class="body">
+          <div data-testid="User-Name">
+            <div><div><a href="/jisoo" role="link"><div><span>Jisoo</span></div></a></div></div>
+            <div><div><a href="/jisoo" role="link" tabindex="-1"><div><span>@jisoo</span></div></a></div>
+              <div><a href="/jisoo/status/4" role="link"><time datetime="2026-11-10T04:00:00.000Z">· 4시간</time></a></div></div>
+          </div>
+          <div data-testid="tweetText"><span>이거 완전 공감 😂</span></div>
+          <div role="link" tabindex="0" class="quote">
+            <div data-testid="User-Name">
+              <div><div><div><span>Alice Kim</span></div></div></div>
+              <div><div><div><span>@alice</span></div></div><div><time datetime="2026-11-10T01:00:00.000Z">· 1시간</time></div></div>
+            </div>
+            <div data-testid="tweetText"><span>월요일 아침 커피는 두 잔부터 시작입니다</span></div>
+          </div>
+          <div role="group"><span>💬 1</span><span>🔁 0</span><span>♡ 5</span></div>
+        </div>
+      </article></div>
+
+    </div>
+  </div>
+</main>
+</body>
+</html>
