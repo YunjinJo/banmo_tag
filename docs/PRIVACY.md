@@ -61,7 +61,7 @@ Chrome 웹 스토어 등록 페이지에 적힌 개발자 연락처로 문의해
 
 ## 파이어폭스
 
-파이어폭스용 설정(`manifest.json` 의 `browser_specific_settings.gecko.data_collection_permissions`)에도 수집하는 데이터가 없음(`none`)을 신고합니다. 파이어폭스에서도 위 내용이 그대로 적용됩니다.
+파이어폭스용 설정(`extension/manifest.firefox.json` 의 `browser_specific_settings.gecko.data_collection_permissions`)에도 수집하는 데이터가 없음(`none`)을 신고합니다. 파이어폭스에서도 위 내용이 그대로 적용됩니다.
 
 ## English summary
 

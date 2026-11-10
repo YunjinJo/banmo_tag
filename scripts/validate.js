@@ -55,21 +55,33 @@ check('manifest 참조 파일 존재', () => {
   });
 });
 
-// 2-1. 크롬·파이어폭스 공용 manifest 설정
-//   - 크롬은 background.service_worker, 파이어폭스는 background.scripts(이벤트 페이지)를 씀
-//   - 파이어폭스 이벤트 페이지에는 importScripts 가 없으므로 shared.js 가 background.js 보다 먼저 와야 함
+// 2-1. 크롬 manifest 와 파이어폭스 manifest (scripts/build-firefox.js 가 합쳐서 만듦)
+//   - 크롬(extension/manifest.json): background.service_worker 만. background.scripts 가 있으면 크롬이
+//     "'background.scripts' requires manifest version of 2 or lower." 오류를 냄. 파이어폭스 전용 키도 넣지 않음
+//   - 파이어폭스(extension/manifest.firefox.json 을 합친 것): background.scripts(이벤트 페이지).
+//     이벤트 페이지에는 importScripts 가 없으므로 shared.js 가 background.js 보다 먼저 와야 함
 //   - 파이어폭스 MV3 서명에는 확장 프로그램 ID 와 데이터 수집 신고(data_collection_permissions)가 필요
-check('크롬·파이어폭스 공용 manifest', () => {
+check('크롬 manifest · 파이어폭스 manifest', () => {
   if (!manifest) return;
   const bg = manifest.background || {};
-  if (!bg.service_worker) errors.push('background.service_worker 가 없습니다 (크롬).');
-  const scripts = bg.scripts || [];
+  if (!bg.service_worker) errors.push('extension/manifest.json 에 background.service_worker 가 없습니다 (크롬).');
+  if (bg.scripts) errors.push('extension/manifest.json 에 background.scripts 가 있습니다. 크롬 MV3 에서 오류가 나므로 extension/manifest.firefox.json 에만 적으세요.');
+  if (manifest.browser_specific_settings) errors.push('extension/manifest.json 에 browser_specific_settings 가 있습니다. 파이어폭스 전용 항목은 extension/manifest.firefox.json 에 적으세요.');
+
+  const { buildFirefoxManifest } = require('./build-firefox');
+  const firefox = buildFirefoxManifest(manifest, JSON.parse(read('extension/manifest.firefox.json')));
+  const ffBg = firefox.background || {};
+  if (ffBg.service_worker) errors.push('파이어폭스 manifest 에 background.service_worker 가 남아 있습니다 (파이어폭스는 지원하지 않음).');
+  const scripts = ffBg.scripts || [];
   const sharedIdx = scripts.indexOf('shared.js');
   const bgIdx = scripts.indexOf(bg.service_worker);
   if (sharedIdx === -1 || bgIdx === -1 || sharedIdx > bgIdx) {
-    errors.push('background.scripts 는 ["shared.js", "background.js"] 순서여야 합니다 (파이어폭스).');
+    errors.push('파이어폭스 background.scripts 는 ["shared.js", "background.js"] 순서여야 합니다 (extension/manifest.firefox.json).');
   }
-  const gecko = (manifest.browser_specific_settings || {}).gecko || {};
+  scripts.forEach((p) => {
+    if (!fs.existsSync(path.join(extDir, p))) errors.push(`extension/manifest.firefox.json 이 참조하는 파일이 없음: extension/${p}`);
+  });
+  const gecko = (firefox.browser_specific_settings || {}).gecko || {};
   if (!/^[A-Za-z0-9._-]*@[A-Za-z0-9._-]+$|^\{[0-9a-fA-F-]{36}\}$/.test(gecko.id || '')) {
     errors.push('browser_specific_settings.gecko.id 가 없거나 형식이 잘못됐습니다 (파이어폭스).');
   }
