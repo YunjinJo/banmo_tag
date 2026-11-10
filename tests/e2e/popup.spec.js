@@ -92,7 +92,14 @@ test.describe('팝업 기본 동작', () => {
     await expect(popup.locator('#list-count')).toHaveText('3');
     await expect(popup.locator('.list-name')).toHaveText(['뉴스', '친구', 'AI']); // 한국어 정렬: 한글 먼저
     const friend = listCard(popup, '친구');
-    await expect(friend.locator('.list-info')).toHaveText('강조 · 개별 스타일 · @alice, @bob 외 1명');
+    // 줄에는 멤버 요약과 "개별 스타일"만 보이고, 타임라인 표시(강조 등)는 보이지 않음
+    await expect(friend.locator('.list-info')).toHaveText('@alice, @bob 외 1명');
+    await expect(friend.locator('.list-custom')).toHaveText('개별 스타일');
+    await expect(friend).not.toContainText('강조');
+    await expect(listCard(popup, 'AI').locator('.list-custom')).toHaveCount(0);
+    await expect(listCard(popup, 'AI').locator('.list-count')).toHaveText('4명'); // 화면에는 4, 읽기 프로그램에는 "4명"
+    await expect(popup.locator('#list-columns')).toBeVisible();
+    await expect(popup.locator('#list-hint')).toBeVisible();
     await expect(friend.locator('.list-name')).toHaveCSS('background-color', 'rgb(200, 23, 77)');
     await expect(friend.locator('.list-name')).toHaveCSS('font-family', 'monospace');
 
@@ -132,7 +139,7 @@ test.describe('화면 테마 (시스템 / 라이트 / 다크)', () => {
     const popup = await openPopup(context, extensionId);
     await expect(popup.locator('#theme-system')).toBeChecked();
     await popup.emulateMedia({ colorScheme: 'dark' });
-    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+    expect(await bg(popup)).toBe('rgb(15, 15, 17)');
     await popup.emulateMedia({ colorScheme: 'light' });
     expect(await bg(popup)).toBe('rgb(255, 255, 255)');
     expect(await popup.evaluate(() => document.documentElement.dataset.theme)).toBeUndefined();
@@ -144,7 +151,7 @@ test.describe('화면 테마 (시스템 / 라이트 / 다크)', () => {
     await popup.click('#tab-style');
     await popup.locator('#theme-dark').check();
     await expect(popup.locator('html')).toHaveAttribute('data-theme', 'dark');
-    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+    expect(await bg(popup)).toBe('rgb(15, 15, 17)');
     await expect.poll(async () => (await getStorage(serviceWorker, ['uiSettings'])).uiSettings).toEqual({ theme: 'dark', listSort: 'name' });
 
     // 다시 열 때: popup.js 가 chrome.storage 를 읽기 전(theme.js 시점)에 이미 다크여야 함 (깜빡임 없음)
@@ -153,7 +160,7 @@ test.describe('화면 테마 (시스템 / 라이트 / 다크)', () => {
     await again.route('**/popup.js', route => route.abort()); // popup.js 없이 theme.js 만으로
     await again.goto(`chrome-extension://${extensionId}/popup.html`);
     await expect(again.locator('html')).toHaveAttribute('data-theme', 'dark');
-    expect(await bg(again)).toBe('rgb(21, 32, 43)');
+    expect(await bg(again)).toBe('rgb(15, 15, 17)');
 
     // 라이트로 고정하면 운영체제가 다크여도 라이트
     await popup.emulateMedia({ colorScheme: 'dark' });
@@ -162,7 +169,7 @@ test.describe('화면 테마 (시스템 / 라이트 / 다크)', () => {
     // 시스템으로 되돌리면 운영체제 설정(다크)을 따름
     await popup.locator('#theme-system').check();
     await expect(popup.locator('html')).not.toHaveAttribute('data-theme', /.+/);
-    expect(await bg(popup)).toBe('rgb(21, 32, 43)');
+    expect(await bg(popup)).toBe('rgb(15, 15, 17)');
   });
 
   test('다른 창에서 테마를 바꾸면 열려 있는 화면에도 바로 반영', async ({ context, extensionId, serviceWorker }) => {
@@ -217,7 +224,7 @@ test.describe('리스트 설정 시트', () => {
     await popup.locator('#sheet-mode-highlight').check();
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].mode).toBe('highlight');
     await expect(popup.locator('.tweet-preview')).toHaveCSS('box-shadow', /rgb\(18, 52, 86\)/);
-    await expect(listCard(popup, '친구').locator('.list-info')).toContainText('강조');
+    await expect(listCard(popup, '친구')).not.toContainText('강조'); // 표시 방식은 줄에 쓰지 않음
 
     await popup.locator('#sheet-mode-dim').check();
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].mode).toBe('dim');
@@ -241,7 +248,7 @@ test.describe('리스트 설정 시트', () => {
 
     await size.selectOption('16');
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ fontSize: 16 });
-    await expect(listCard(popup, '친구').locator('.list-info')).toContainText('개별 스타일');
+    await expect(listCard(popup, '친구').locator('.list-custom')).toHaveText('개별 스타일');
     // 다시 그린 뒤에도 시트와 값이 유지됨
     await expect(size).toHaveValue('16');
     await expect(popup.locator('.list-style-preview')).toHaveCSS('font-size', '16px');
@@ -298,6 +305,8 @@ test.describe('리스트 설정 시트', () => {
     await popup.click('#confirm-ok-btn');
     await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual([]);
     await expect(popup.locator('.empty-state')).toBeVisible();
+    await expect(popup.locator('#list-columns')).toBeHidden(); // 빈 표에는 칸 이름·안내 없음
+    await expect(popup.locator('#list-hint')).toBeHidden();
     await expect(popup.locator('#list-sheet')).toBeHidden(); // 지운 리스트의 시트는 닫힘
     expect(nativeDialog, '브라우저 기본 대화상자가 뜨면 안 됨').toBe(false);
   });
