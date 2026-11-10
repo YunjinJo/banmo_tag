@@ -27,7 +27,7 @@ $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Env
 
 - CLAUDE.md 의 "코드 규칙"을 따릅니다 (shared.js 최상위 function/var, textContent, 테스트 추가 등).
 - 사용자에게 보이는 변경은 `docs/CHANGELOG.md` 의 `## [Unreleased]` 에 Added / Changed / Fixed 로 적습니다. **버전은 올리지 않습니다.**
-- 테스트 수가 바뀌면 `docs/TEST_CASES.md`, 저장 데이터가 바뀌면 `docs/PRIVACY.md`, 사용법이 바뀌면 `README.md` 를 고칩니다.
+- 테스트 수가 바뀌면 `docs/TEST_CASES.md`, 저장 데이터가 바뀌면 `docs/PRIVACY.md`, 사용법이 바뀌면 `README.md`, 개발 방법(명령·테스트·빌드·릴리스)이 바뀌면 `docs/DEVELOPMENT.md` 를 고칩니다.
 
 ## 3. 로컬 검사 (모두 통과해야 다음 단계)
 
