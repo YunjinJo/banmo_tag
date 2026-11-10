@@ -25,9 +25,9 @@
 
 <!-- 새 결과는 이 줄 아래에 추가됩니다 (npm run test:report -- --write) -->
 
-## [Unreleased] - 2026-11-10
+## [v1.7.1] - 2026-11-10
 
-- 대상: `a8c170b` (feature/test-case-docs) · manifest 1.7.0
+- 대상: `8436f0e` (release/v1.7.1) · manifest 1.7.1
 - 환경: Windows_NT 10.0.26300 · Node v26.13.0
 - 자동 테스트 결과: **모두 통과**
 
@@ -67,4 +67,3 @@
 | M-14 | 새 탭 화면 · Firefox 팝업 우회 · x.com 접근 권한 |  |  |
 | M-15 | X 화면 구조 변화 경고가 잘못 뜨지 않음 |  |  |
 
----
