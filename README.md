@@ -108,7 +108,7 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
   ```
   탐색기에서 `tests\run-tests.bat` 더블 클릭, 또는 `tests\test-runner.html` 을 브라우저로 열어도 됩니다.
 
-테스트 목록과 수동 확인 시나리오는 [docs/TEST_CASES.md](docs/TEST_CASES.md)에 있습니다.
+테스트 목록과 수동 확인 시나리오는 [docs/TEST_CASES.md](docs/TEST_CASES.md)에, 버전별 테스트 결과는 [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md)에 있습니다. `npm run test:report -- --firefox --write` 로 모든 자동 검사를 실행하고 결과를 기록합니다.
 
 ## CI (GitHub Actions)
 
@@ -145,6 +145,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 
 ## 문서
 - [docs/CHANGELOG.md](docs/CHANGELOG.md): 버전별 변경 내역
-- [docs/TEST_CASES.md](docs/TEST_CASES.md): 자동 테스트 스위트와 수동 QA 시나리오
+- [docs/TEST_CASES.md](docs/TEST_CASES.md): 자동 테스트 목록과 수동 확인 시나리오
+- [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md): 버전별 테스트 결과
 - [docs/CODE_IMPROVEMENTS.md](docs/CODE_IMPROVEMENTS.md): 코드 개선 과제와 진행 상태
 - [docs/PRIVACY.md](docs/PRIVACY.md): 개인정보 처리방침

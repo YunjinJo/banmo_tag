@@ -158,7 +158,7 @@ check('테스트 러너 shared.js 경로', () => {
 });
 
 // 8. 문서에 로컬 절대 경로 링크가 남아 있지 않은지
-check('문서 링크 (file:/// 금지)', () => {
+check('문서 링크 (로컬 절대 경로 금지)', () => {
   const docs = ['README.md', ...fs.readdirSync(path.join(root, 'docs')).filter(f => f.endsWith('.md')).map(f => 'docs/' + f)];
   for (const d of docs) {
     if (/file:\/\/\//i.test(read(d))) errors.push(`${d} 에 file:/// 로컬 경로 링크가 있습니다.`);
