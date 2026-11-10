@@ -209,7 +209,12 @@ test.describe('리스트 설정 시트', () => {
     await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@alice'] } } });
     const popup = await openPopup(context, extensionId);
     await openSheet(popup, '친구');
-    await expect(popup.locator('#sheet-color-custom')).toHaveClass(/is-selected/); // 빠른 선택에 없는 색
+    // [다른 색] 버튼이 글자와 함께 보이고, 빠른 선택에 없는 색이면 선택 표시 + 점에 그 색
+    const customBtn = popup.locator('.swatch-custom-btn');
+    await expect(customBtn).toBeVisible();
+    await expect(customBtn).toContainText('다른 색');
+    await expect(customBtn).toHaveClass(/is-selected/);
+    await expect(customBtn.locator('.swatch-custom-dot')).toHaveCSS('background-color', 'rgb(255, 0, 0)');
 
     await popup.click('#sheet-swatch-2'); // 초록
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].color).toBe('#0f7b3e');
@@ -217,6 +222,14 @@ test.describe('리스트 설정 시트', () => {
     await expect(popup.locator('#sheet-swatch-2')).toBeFocused(); // 다시 그린 뒤에도 포커스 유지
     await expect(popup.locator('.list-style-preview')).toHaveCSS('background-color', 'rgb(15, 123, 62)');
     await expect(listCard(popup, '친구').locator('.list-name')).toHaveCSS('background-color', 'rgb(15, 123, 62)');
+    // 빠른 선택 색을 쓰면 [다른 색]은 선택 표시 없이 무지개 점
+    await expect(customBtn).not.toHaveClass(/is-selected/);
+    await expect(customBtn.locator('.swatch-custom-dot')).toHaveCSS('background-image', /conic-gradient/);
+    // 버튼의 어느 곳(글자 위)을 눌러도 색상 입력란이 눌려 색상 창이 열림
+    expect(await customBtn.evaluate((btn) => {
+      const r = btn.querySelector('span:not(.swatch-custom-dot)').getBoundingClientRect();
+      return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2).id;
+    })).toBe('sheet-color-custom');
 
     await popup.locator('#sheet-color-custom').evaluate((el) => { el.value = '#123456'; el.dispatchEvent(new Event('change')); });
     await expect.poll(async () => (await getLists(serviceWorker))['친구'].color).toBe('#123456');

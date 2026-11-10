@@ -972,14 +972,23 @@ function createColorField(name, list, updatePreview) {
     row.appendChild(swatch);
   });
 
-  const custom = makeElement('input', 'swatch-custom' + (matched ? '' : ' is-selected'), undefined, 'color');
+  // [다른 색] 버튼: 빠른 선택에 없는 색을 쓰는 중이면 점에 그 색을 보여 주고 선택 표시
+  const customBtn = makeElement('label', 'swatch-custom-btn' + (matched ? '' : ' is-selected'));
+  customBtn.title = '색상 창에서 원하는 색을 고릅니다';
+  const dot = makeElement('span', 'swatch-custom-dot');
+  dot.setAttribute('aria-hidden', 'true');
+  if (!matched) dot.style.background = current;
+  const custom = makeElement('input', null, undefined, 'color');
   custom.id = 'sheet-color-custom';
   custom.value = current;
-  custom.title = '다른 색 고르기';
-  custom.setAttribute('aria-label', '배지 색 직접 고르기');
-  custom.addEventListener('input', e => updatePreview({ color: e.target.value }));
+  custom.setAttribute('aria-label', matched ? '배지 색 직접 고르기' : `배지 색 직접 고르기 (지금 ${current})`);
+  custom.addEventListener('input', (e) => {
+    dot.style.background = e.target.value;
+    updatePreview({ color: e.target.value });
+  });
   custom.addEventListener('change', e => saveListField(name, 'color', e.target.value));
-  row.appendChild(custom);
+  customBtn.append(dot, makeElement('span', null, '다른 색'), custom);
+  row.appendChild(customBtn);
 
   return createField('배지 색', row);
 }

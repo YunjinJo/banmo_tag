@@ -18,6 +18,7 @@
   - 파이어폭스 manifest 에서도 쓰지 않는 `background.service_worker` 가 빠져, `web-ext lint` 경고(`BACKGROUND_SERVICE_WORKER_IGNORED`)가 0건이 됐습니다.
   - 정적 검사와 CI 패키징 확인이 크롬 manifest 에 `background.scripts`·`browser_specific_settings` 가 없는지, 파이어폭스 manifest 에 `background.scripts`(순서)·확장 프로그램 ID 가 있는지 확인합니다.
   - 파이어폭스 개발용 설치는 `extension\manifest.json` 대신 `dist\firefox\manifest.json` 을 로드합니다(README 참고).
+- **리스트 설정 창에서 배지 색을 직접 고르는 버튼이 보이지 않던 문제 (`popup.html`, `popup.js`)**: 색상 선택 창을 여는 칸이 지금 배지 색을 그대로 칠한 동그라미라서, 빠른 선택 색과 똑같아 보이거나(같은 색일 때) 어두운 점으로만 보였습니다. 이제 **무지개 점 + "다른 색"** 글자가 있는 버튼으로 보이고, 버튼 어디를 눌러도 색상 창이 열립니다. 빠른 선택에 없는 색을 쓰는 중이면 점에 그 색을 보여 주고 선택 표시를 합니다.
 
 ---
 
