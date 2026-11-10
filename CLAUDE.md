@@ -44,7 +44,7 @@ docs/             CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVAC
 - **팝업 동작을 바꾸면 `tests/e2e/popup.spec.js`**, X 페이지 동작이면 `tests/e2e/content.spec.js` 에 테스트를 추가합니다. `chrome.storage` 는 리스트를 **이름순**으로 돌려주므로, 테스트에서는 순서가 아니라 이름으로 줄을 찾습니다.
 - **파이어폭스**: `extension/manifest.json` 에는 크롬용 키만 둡니다(`background.scripts` 를 넣으면 크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류). 파이어폭스 전용 키는 `extension/manifest.firefox.json` 에 적고, 그 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
 - **배포 zip** 경로는 `/` 로 (build.ps1 가 처리, CI 가 검사).
-- 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트를 추가·변경하면 `npm run test:report -- --catalog` 로 `docs/TEST_CASES.md` 목록을 다시 만듭니다(수동 시나리오는 직접 수정). 릴리스 때는 `npm run test:report -- --firefox --write` 로 `docs/TEST_RESULTS.md` 에 결과를 기록합니다.
+- 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트를 추가·변경하면 `npm run test:report -- --catalog` 로 `docs/TEST_CASES.md` 목록을 다시 만듭니다(수동 시나리오는 직접 수정). 릴리스 때는 `npm run test:report -- --firefox --write` 로 `docs/TEST_RESULTS.md` 에 결과를 기록합니다. 팝업 화면을 바꾸면 `npm run docs:screenshots` 로 README 스크린샷(`docs/images/`)을 다시 찍습니다.
 
 ## 이 PC(Windows)에서 주의할 점
 

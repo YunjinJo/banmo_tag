@@ -56,7 +56,7 @@ module.exports = [
   },
   {
     // E2E 테스트의 page.evaluate / serviceWorker.evaluate 콜백은 브라우저·확장 프로그램 안에서 실행됨
-    files: ['tests/e2e/**/*.js', 'tests/firefox/**/*.js'],
+    files: ['tests/e2e/**/*.js', 'tests/firefox/**/*.js', 'scripts/readme-screenshots.js'],
     languageOptions: { globals: { ...globals.node, ...globals.browser, ...globals.webextensions } }
   },
   {

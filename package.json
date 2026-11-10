@@ -16,7 +16,8 @@
     "firefox:login": "node tests/firefox/live-bridge.js --login",
     "firefox:live": "node tests/firefox/live-bridge.js",
     "firefox:run": "node tests/firefox/live.js",
-    "test:report": "node scripts/test-report.js"
+    "test:report": "node scripts/test-report.js",
+    "docs:screenshots": "node scripts/readme-screenshots.js"
   },
   "engines": {
     "node": ">=22"
