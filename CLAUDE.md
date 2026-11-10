@@ -1,6 +1,6 @@
 # banmo_tag — Claude Code 작업 안내
 
-X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라우저 확장 프로그램입니다. **크롬과 파이어폭스(140+)를 같은 코드로** 지원합니다. `manifest.json` 만 다릅니다(크롬: `extension/manifest.json`, 파이어폭스: `extension/manifest.firefox.json` 을 합친 `dist/firefox/`, `npm run build:firefox`). 사용자 문서는 [README.md](README.md), 변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md).
+X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라우저 확장 프로그램입니다. **크롬과 파이어폭스(140+)를 같은 코드로** 지원합니다. `manifest.json` 만 다릅니다(크롬: `extension/manifest.json`, 파이어폭스: `extension/manifest.firefox.json` 을 합친 `dist/firefox/`, `npm run build:firefox`). 사용자 문서는 [README.md](README.md)(설치·사용법), 개발 문서는 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md), 변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md).
 
 ## 작업 규칙 (꼭 지킬 것)
 
@@ -32,7 +32,7 @@ extension/        확장 프로그램 (Chrome 에 로드 / Firefox 임시 로드
   background.js   저장 큐 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 tests/            test-runner.html(단위), e2e/(Playwright), firefox/(실제 Firefox), fixtures/(X 화면)
 scripts/          build.ps1, validate.js, bump-version.js
-docs/             CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVACY
+docs/             DEVELOPMENT(개발 가이드), CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVACY
 .claude/          훅(hooks/), 스킬(skills/), 설정(settings.json)
 ```
 

@@ -221,7 +221,7 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 로그인한 실제 X 화면에서 확인합니다.
 
 - 크롬: `chrome://extensions` 에서 `extension` 폴더를 로드합니다.
-- Firefox: `npm run firefox:live` 와 `npm run firefox:run` 을 씁니다. 사용법은 README 의 "실제 x.com 에서 Firefox 확인" 에 있습니다.
+- Firefox: `npm run firefox:live` 와 `npm run firefox:run` 을 씁니다. 사용법은 [DEVELOPMENT.md](DEVELOPMENT.md#테스트) 의 "실제 x.com 에서 Firefox 확인" 에 있습니다.
 
 결과는 [TEST_RESULTS.md](TEST_RESULTS.md)의 그 버전 표에 적습니다.
 

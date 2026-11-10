@@ -8,7 +8,7 @@
 //   - README.md 의 "현재 버전"
 //   - tests/test-runner.html 제목의 버전
 // 모든 변경 내용을 먼저 계산한 뒤 마지막에 한꺼번에 저장하므로, 중간에 실패해도 파일이 반쯤 바뀌지 않습니다.
-// 이 스크립트는 GitHub Release 를 만들지 않습니다. 릴리스는 GitHub 에서 직접 만듭니다 (README "릴리스 (수동)").
+// 이 스크립트는 GitHub Release 를 만들지 않습니다. 릴리스는 GitHub 에서 직접 만듭니다 (docs/DEVELOPMENT.md "릴리스 (수동)").
 'use strict';
 
 const fs = require('fs');

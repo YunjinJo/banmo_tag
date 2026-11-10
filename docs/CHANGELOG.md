@@ -13,7 +13,7 @@
 - **README 에 설치 방법과 사용법을 스크린샷과 함께 정리 (`README.md`, `docs/images/`)**
   - **설치**: 릴리스 zip 으로 크롬·파이어폭스에 설치하는 방법(업데이트할 때 같은 폴더에 덮어쓰기 안내 포함).
   - **사용법**: 멤버 가져오기 → 타임라인 배지 → 리스트 관리·설정 창 → 직접 만들기 → 뺀 멤버 정리 → 기본 스타일·테마 → 백업, 자주 묻는 질문.
-  - 개발 관련 내용은 README 아래쪽 "개발" 으로 옮겼습니다.
+  - 개발 관련 내용(폴더 구조, 소스 코드로 설치, 테스트, CI, 릴리스, 빌드)은 새 문서 [docs/DEVELOPMENT.md](DEVELOPMENT.md)로 옮기고 README 에서 링크합니다.
   - 스크린샷은 실제 확장 프로그램을 찍었습니다. 타임라인은 실제 X 가 아니라 예시 페이지(`docs/images/src/demo-timeline.html`)에 실제 확장 프로그램을 적용한 화면입니다.
   - `npm run docs:screenshots`(`scripts/readme-screenshots.js`)로 스크린샷을 다시 찍을 수 있습니다.
 
