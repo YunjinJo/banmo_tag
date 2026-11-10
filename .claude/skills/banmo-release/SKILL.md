@@ -23,7 +23,9 @@ npm run bump -- X.Y.Z
 ```
 
 - `[Unreleased]` 내용이 `## [vX.Y.Z] - 날짜` 로 옮겨졌는지 확인하고 문장을 다듬습니다.
-- `npm run check`, `scripts\build.ps1`, `npm run test:firefox` 모두 통과 확인 → 커밋·push → PR ("vX.Y.Z 릴리스 준비") → CI 확인.
+- `npm run check`, `scripts\build.ps1`, `npm run test:firefox` 모두 통과 확인.
+- 테스트 결과 기록: `npm run test:report -- --firefox --write` → `docs/TEST_RESULTS.md` 맨 위에 `## [vX.Y.Z]` 결과가 들어갑니다. 수동 확인 표(M-xx)는 사용자에게 채워 달라고 안내합니다 (직접 확인하지 않은 결과를 채우지 않음).
+- 커밋·push → PR ("vX.Y.Z 릴리스 준비") → CI 확인.
 - 사용자가 PR 을 merge 할 때까지 기다립니다.
 
 ## 3. 배포 zip 과 릴리스 본문 (merge 후)

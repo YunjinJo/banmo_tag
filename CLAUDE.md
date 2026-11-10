@@ -32,7 +32,7 @@ extension/        확장 프로그램 (Chrome 에 로드 / Firefox 임시 로드
   background.js   저장 큐 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 tests/            test-runner.html(단위), e2e/(Playwright), firefox/(실제 Firefox), fixtures/(X 화면)
 scripts/          build.ps1, validate.js, bump-version.js
-docs/             CHANGELOG, TEST_CASES, CODE_IMPROVEMENTS, PRIVACY
+docs/             CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVACY
 .claude/          훅(hooks/), 스킬(skills/), 설정(settings.json)
 ```
 
@@ -44,7 +44,7 @@ docs/             CHANGELOG, TEST_CASES, CODE_IMPROVEMENTS, PRIVACY
 - **팝업 동작을 바꾸면 `tests/e2e/popup.spec.js`**, X 페이지 동작이면 `tests/e2e/content.spec.js` 에 테스트를 추가합니다. `chrome.storage` 는 리스트를 **이름순**으로 돌려주므로, 테스트에서는 순서가 아니라 이름으로 줄을 찾습니다.
 - **파이어폭스**: `manifest.json` 의 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
 - **배포 zip** 경로는 `/` 로 (build.ps1 가 처리, CI 가 검사).
-- 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트가 늘면 `docs/TEST_CASES.md`.
+- 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트를 추가·변경하면 `npm run test:report -- --catalog` 로 `docs/TEST_CASES.md` 목록을 다시 만듭니다(수동 시나리오는 직접 수정). 릴리스 때는 `npm run test:report -- --firefox --write` 로 `docs/TEST_RESULTS.md` 에 결과를 기록합니다.
 
 ## 이 PC(Windows)에서 주의할 점
 

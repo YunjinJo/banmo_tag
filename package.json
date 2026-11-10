@@ -14,7 +14,8 @@
     "test:firefox": "node tests/firefox/firefox-check.js",
     "firefox:login": "node tests/firefox/live-bridge.js --login",
     "firefox:live": "node tests/firefox/live-bridge.js",
-    "firefox:run": "node tests/firefox/live.js"
+    "firefox:run": "node tests/firefox/live.js",
+    "test:report": "node scripts/test-report.js"
   },
   "engines": {
     "node": ">=22"
