@@ -96,5 +96,5 @@ console.log(`[bump] v${current} → v${next}`);
 console.log(changelog.movedUnreleased
   ? '[bump] CHANGELOG 의 [Unreleased] 내용을 v' + next + ' 항목으로 옮겼습니다. 내용을 확인한 뒤 커밋하세요.'
   : '[bump] CHANGELOG 에 v' + next + ' 빈 항목을 만들었습니다. 변경 내용을 채운 뒤 커밋하세요.');
-console.log('[bump] 배포 zip: powershell -ExecutionPolicy Bypass -File scripts\\build.ps1 → dist/banmo_tag-v' + next + '.zip');
-console.log('[bump] 릴리스는 GitHub 에서 직접 만드세요 (태그 v' + next + ', zip 첨부). CI 는 릴리스를 만들지 않습니다.');
+console.log('[bump] 배포 zip: powershell -ExecutionPolicy Bypass -File scripts\\build.ps1 → dist/banmo_tag-v' + next + '-chrome.zip, dist/banmo_tag-v' + next + '-firefox.zip');
+console.log('[bump] 릴리스는 GitHub 에서 직접 만드세요 (태그 v' + next + ', zip 두 개 첨부). CI 는 릴리스를 만들지 않습니다.');
