@@ -122,5 +122,6 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build.ps1
 - [docs/TEST_CASES.md](TEST_CASES.md): 자동 테스트 목록과 수동 확인 시나리오
 - [docs/TEST_RESULTS.md](TEST_RESULTS.md): 버전별 테스트 결과
 - [docs/CODE_IMPROVEMENTS.md](CODE_IMPROVEMENTS.md): 코드 개선 과제와 진행 상태
+- [docs/TODO.md](TODO.md): 남은 할 일 (실제 화면 확인, 배포, 코드 개선, 정리)
 - [docs/MOBILE_TODO.md](MOBILE_TODO.md): 모바일(안드로이드·아이폰) 지원 할 일 목록
 - [docs/PRIVACY.md](PRIVACY.md): 개인정보 처리방침

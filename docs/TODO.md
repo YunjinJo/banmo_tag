@@ -1,0 +1,54 @@
+# banmo_tag 할 일
+
+모바일 지원을 뺀 남은 할 일 목록입니다. 모바일 지원은 [MOBILE_TODO.md](MOBILE_TODO.md)에 따로 있습니다.
+
+- 2026-11-11 기준(v1.7.2)으로 정리했습니다.
+- 끝낸 일은 체크하고, 사용자에게 보이는 변경은 [CHANGELOG.md](CHANGELOG.md) `[Unreleased]` 에도 적습니다.
+- 담당 표시: 👤 사용자가 직접 해야 하는 일, 🤖 코드·문서 작업(Claude Code 로 진행 가능), 🔗 크롬 연결(Claude in Chrome)이 필요한 일
+
+## 추천 순서
+
+1. [실제 화면 확인](#1-실제-화면-확인) 👤
+2. [코드 개선](#3-코드-개선) 🤖: 팝업 파일 분할, ✔ 알림 지우기를 `chrome.alarms` 로
+3. [실제 X 스냅샷과 README 이미지](#1-실제-화면-확인) 🔗
+4. [배포](#2-배포): AMO 서명, 스토어 등록
+5. 필요할 때: 다국어, [모바일](MOBILE_TODO.md)
+
+---
+
+## 1. 실제 화면 확인
+
+자동 테스트는 X 구조를 추정해 만든 합성 페이지로만 돌기 때문에, 로그인한 실제 X 에서 한 번씩 확인해야 합니다.
+
+- [ ] 👤 **수동 확인 표 채우기**: [TEST_RESULTS.md](TEST_RESULTS.md) 의 v1.7.2 수동 확인 M-01~M-15 를 실제 X 에서 확인하고 결과를 적기. 시나리오는 [TEST_CASES.md](TEST_CASES.md#수동-확인-시나리오)에 있습니다.
+  - 특히 **M-08 흐리게 모드**: 흐리게 할 부분(프로필 사진·본문·사진)을 실제 X 화면에서 제대로 찾는지 아직 한 번도 확인하지 못했습니다.
+  - v1.7.1 표도 비어 있습니다. 같은 코드가 v1.7.2 에 들어 있으니 v1.7.2 만 채우고 v1.7.1 은 ➖(해당 없음)로 둬도 됩니다.
+- [ ] 👤 **크롬 오류 해결 확인**: v1.7.2 에서 고친 `'background.scripts' requires manifest version of 2 or lower.` 오류가, 오류를 봤던 브라우저에서 사라졌는지 확인. 테스트 환경(Chromium 156)에서는 원래 오류가 재현되지 않았습니다.
+- [ ] 🔗 **실제 X 화면 스냅샷 추가**: `tests/fixtures/real/` 이 비어 있음. Claude in Chrome 을 연결하고 `/x-snapshot` 으로 홈 타임라인, 리스트 메인, 리스트 멤버 화면을 저장하면 `real-snapshots.spec.js` 가 자동으로 검사합니다. X 가 화면 구조를 바꿨는지 빨리 알 수 있습니다.
+- [ ] 🔗 **README 타임라인 이미지 교체**: 지금 `docs/images/timeline.png` 는 예시 페이지에 실제 확장 프로그램을 적용한 화면입니다. 실제 X 화면으로 바꾸려면 크롬 연결이 필요합니다(또는 직접 찍은 이미지로 교체).
+
+## 2. 배포
+
+- [ ] 👤 **Firefox 서명 (AMO)**: 서명이 없으면 파이어폭스를 다시 시작할 때마다 임시로 다시 설치해야 합니다. 목록에 공개하지 않는 "unlisted" 로 서명만 받아도 계속 쓸 수 있습니다. 올릴 파일: 릴리스의 `-firefox.zip`.
+- [ ] 👤 **Chrome 웹 스토어 등록** (필요하면): 개발자 등록비가 한 번 있습니다. 올릴 파일: `-chrome.zip`. 권한 사용 이유와 [PRIVACY.md](PRIVACY.md) 를 준비합니다.
+- [ ] 🤖 **다음 릴리스**: CHANGELOG `[Unreleased]` 에 문서 변경(README 사용법·스크린샷, 할 일 목록)이 쌓여 있습니다. 문서만이라 급하지 않으니 다음 코드 변경과 함께 릴리스합니다.
+
+## 3. 코드 개선
+
+[CODE_IMPROVEMENTS.md](CODE_IMPROVEMENTS.md) 15번 "기타" 중 남은 항목입니다.
+
+- [ ] 🤖 **팝업 파일 분할**: `popup.js` 1,272줄, `popup.html` 880줄(CSS 포함)로 커졌습니다(문서를 쓸 때는 560줄).
+  - CSS 를 `popup.css` 로 분리
+  - `popup.js` 를 기능별로 분리 (예: 저장·탭 연동 / 리스트 표·설정 창 / 백업 / 배지 설정). 팝업은 ES Module(`<script type="module">`)을 쓸 수 있음
+  - 배포 zip 파일 목록(`scripts/build.ps1`), CI 패키징 확인, 정적 검사(`validate.js`)도 함께 고치기
+- [ ] 🤖 **✔ 알림 지우기를 `chrome.alarms` 로**: `background.js` 가 `setTimeout` 으로 3초 뒤 아이콘 표시를 지우는데, 서비스 워커가 먼저 종료되면 실행되지 않습니다. 지금은 팝업을 열면 지워져서 영향은 작습니다. `alarms` 권한이 추가되므로 [PRIVACY.md](PRIVACY.md) 권한 표도 고칩니다.
+- [ ] 🤖 **다국어(i18n)** (필요할 때): 문구가 모두 한국어로 코드에 들어 있습니다. 영어 사용자도 대상이면 `_locales/ko`, `_locales/en` 과 `chrome.i18n.getMessage` 로 분리합니다.
+- [ ] 🤖 **CODE_IMPROVEMENTS.md 상태표 갱신**: 상태표가 v1.4.1 기준(2026-11-04)입니다. 이후 버전 내용과 이 목록을 반영합니다.
+
+## 4. 정리
+
+- [ ] 👤 **저장소 루트의 옛날 파일 지우기**: 아래 파일은 git 에는 올라가지 않지만 PC 의 `C:\banmo_tag` 에 남아 있습니다. 백업은 `C:\banmo_tag-backup\2026-11-05\` 에 있습니다.
+  - `antigravity-extension/`: 크롬에서 아직 이 폴더를 로드하고 있다면, 그 확장 프로그램 팝업에서 백업 파일로 내보내고 → 새 banmo_tag 에서 가져온 뒤 지웁니다(폴더가 다르면 저장 데이터가 이어지지 않음).
+  - `banmo_tag-v1.4.1.zip`: 옛 배포 파일
+  - `Gemini_Generated_Image_*.png`: 아이콘 원본 이미지 (보관할 거면 다른 곳으로 옮기기)
+- [ ] 🤖 **Dependabot 주간 요약 예약 작업**: 매주 월요일 Dependabot PR 과 CI 상태를 요약하는 예약 작업(`/schedule`, merge 는 하지 않음). 만들기 전에 사용자 확인이 필요합니다.

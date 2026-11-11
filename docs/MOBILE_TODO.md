@@ -3,7 +3,7 @@
 banmo_tag 를 휴대폰에서도 쓰기 위한 할 일 목록입니다. 2026-11-11 에 정리했습니다.
 
 - 진행할 때마다 체크박스를 채우고, 끝난 일은 [CHANGELOG.md](CHANGELOG.md) `[Unreleased]` 에도 적습니다.
-- 개발 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)를 보세요.
+- 개발 방법은 [DEVELOPMENT.md](DEVELOPMENT.md)를 보세요. 모바일 외 할 일은 [TODO.md](TODO.md)에 있습니다.
 
 ## 전제
 
