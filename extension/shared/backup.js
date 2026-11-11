@@ -29,7 +29,7 @@ function parseBackup(obj) {
   return legacy ? { lists: legacy, badgeSettings: null } : null;
 }
 
-// 백업 파일의 리스트 객체 검증·정리. 형식이 잘못되면 null (listId, manual 표시는 보존)
+// 백업 파일의 리스트 객체 검증·정리. 형식이 잘못되면 null (listId, manual·customName 표시는 보존)
 function normalizeImportedLists(obj) {
   if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return null;
   const result = {};
@@ -43,6 +43,7 @@ function normalizeImportedLists(obj) {
     };
     if (val && typeof val.listId === 'string' && /^[A-Za-z0-9_-]+$/.test(val.listId)) entry.listId = val.listId;
     if (val && val.manual === true) entry.manual = true;
+    if (val && val.customName === true) entry.customName = true;
     const style = normalizeListStyle(val && val.style);
     if (style) entry.style = style;
     result[key] = entry;

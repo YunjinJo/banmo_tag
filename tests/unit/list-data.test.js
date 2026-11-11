@@ -284,3 +284,138 @@ describe('개별 멤버 삭제 (removeMemberFromLists 검증)', () => {
     assertEqual(unchanged, false);
   });
 });
+
+describe('X 에서 바뀐 리스트 이름 따라가기 (resolveListKey followRename, applyListSave, applyListReplace)', () => {
+  const stored = () => ({
+    '옛 이름': { color: '#ff0055', mode: 'highlight', listId: '555', members: ['@a'], style: { fontSize: 14 } }
+  });
+
+  it('followRename 을 넘기지 않으면 예전처럼 저장된 이름을 유지 (백업 가져오기·저장 데이터 정리)', () => {
+    const resolved = resolveListKey(stored(), '새 이름', '555');
+    assertEqual(resolved.key, '옛 이름');
+    assertEqual(resolved.renameFrom, null);
+  });
+
+  it('followRename 이면 같은 listId 의 리스트를 새 이름으로 옮김', () => {
+    const resolved = resolveListKey(stored(), '새 이름', '555', true);
+    assertEqual(resolved.key, '새 이름');
+    assertEqual(resolved.renameFrom, '옛 이름');
+  });
+
+  it('팝업에서 직접 지은 이름(customName)은 X 이름으로 바꾸지 않음', () => {
+    const lists = stored();
+    lists['옛 이름'].customName = true;
+    const resolved = resolveListKey(lists, '새 이름', '555', true);
+    assertEqual(resolved.key, '옛 이름');
+    assertEqual(resolved.renameFrom, null);
+  });
+
+  it('새 이름을 다른 리스트가 쓰고 있으면 옮기지 않음 (다른 리스트와 섞이지 않게)', () => {
+    const lists = stored();
+    lists['새 이름'] = { color: '#00aa00', mode: 'normal', listId: '777', members: ['@z'] };
+    assertEqual(resolveListKey(lists, '새 이름', '555', true).key, '옛 이름');
+
+    // 이름이 겹쳐 "친구 (8888)" 로 저장된 리스트는 다시 수집해도 그 이름을 유지
+    const friends = {
+      '친구': { color: '#1d9bf0', mode: 'normal', listId: '11112222', members: ['@a'] },
+      '친구 (8888)': { color: '#1d9bf0', mode: 'normal', listId: '99998888', members: ['@b'] }
+    };
+    const resolved = resolveListKey(friends, '친구', '99998888', true);
+    assertEqual(resolved.key, '친구 (8888)');
+    assertEqual(resolved.renameFrom, null);
+  });
+
+  it('임시 이름("리스트 (ID)")으로는 바꾸지 않음', () => {
+    assertEqual(resolveListKey(stored(), '리스트 (555)', '555', true).key, '옛 이름');
+  });
+
+  it('applyListSave: 이름만 바뀌고 색·표시 방식·글자 스타일·멤버는 그대로, 새 멤버는 더함', () => {
+    const result = applyListSave(stored(), '새 이름', ['@a', '@b'], '555', { followRename: true });
+    assertEqual(result.success, true);
+    assertEqual(result.listName, '새 이름');
+    assertEqual(result.noChange, false);
+    assertDeepEqual(Object.keys(result.lists), ['새 이름']);
+    assertDeepEqual(result.lists['새 이름'], {
+      color: '#ff0055', mode: 'highlight', listId: '555', members: ['@a', '@b'], style: { fontSize: 14 }
+    });
+  });
+
+  it('applyListSave: 새 멤버가 없어도 이름이 바뀌었으면 저장함 (noChange 아님)', () => {
+    const result = applyListSave(stored(), '새 이름', ['@a'], '555', { followRename: true });
+    assertEqual(result.noChange, false);
+    assertEqual(result.added, 0);
+    assertDeepEqual(Object.keys(result.lists), ['새 이름']);
+  });
+
+  it('applyListSave: 옵션이 없거나 followRename 이 false 면 이름을 바꾸지 않음 (이름을 확실히 읽지 못한 경우)', () => {
+    assertDeepEqual(Object.keys(applyListSave(stored(), '새 이름', ['@a', '@b'], '555').lists), ['옛 이름']);
+    assertDeepEqual(Object.keys(applyListSave(stored(), '새 이름', ['@a', '@b'], '555', { followRename: false }).lists), ['옛 이름']);
+  });
+
+  it('applyListReplace: 교체하면서 이름도 따라가고, 입력은 바꾸지 않음', () => {
+    const lists = stored();
+    const result = applyListReplace(lists, '새 이름', ['@b'], '555', { followRename: true });
+    assertEqual(result.listName, '새 이름');
+    assertDeepEqual(result.lists['새 이름'].members, ['@b']);
+    assertEqual(result.lists['새 이름'].color, '#ff0055');
+    assertDeepEqual(result.removed, ['@a']);
+    assertDeepEqual(Object.keys(lists), ['옛 이름']);
+  });
+});
+
+describe('팝업에서 리스트 이름 바꾸기 (renameList)', () => {
+  it('색·표시 방식·글자 스타일·멤버·listId 를 그대로 새 이름으로 옮기고 customName 을 붙임', () => {
+    const lists = {
+      '친구': { color: '#ff0055', mode: 'dim', listId: '555', members: ['@a', '@b'], style: { fontSize: 14 } },
+      '동료': { color: '#00aa00', mode: 'normal', members: ['@c'] }
+    };
+    const result = renameList(lists, '친구', '  단짝  ');
+    assertDeepEqual(result, { success: true, name: '단짝' });
+    assertDeepEqual(Object.keys(lists).sort(), ['단짝', '동료']);
+    assertDeepEqual(lists['단짝'], {
+      color: '#ff0055', mode: 'dim', listId: '555', members: ['@a', '@b'], style: { fontSize: 14 }, customName: true
+    });
+  });
+
+  it('빈 이름·50자 초과·같은 이름·이미 있는 이름·없는 리스트는 실패하고 아무것도 바꾸지 않음', () => {
+    const lists = {
+      '친구': { color: '#ff0055', mode: 'dim', members: ['@a'] },
+      '동료': { color: '#00aa00', mode: 'normal', members: ['@c'] }
+    };
+    const before = JSON.stringify(lists);
+    assertEqual(renameList(lists, '친구', '   ').success, false);
+    assertEqual(renameList(lists, '친구', 'a'.repeat(51)).success, false);
+    assertEqual(renameList(lists, '친구', '친구').success, false);
+    const taken = renameList(lists, '친구', '동료');
+    assertEqual(taken.success, false);
+    assert(taken.message.includes('이미 있습니다'), '이미 있는 이름이라고 알려야 함');
+    assertEqual(renameList(lists, '없는 리스트', '새 이름').success, false);
+    assertEqual(JSON.stringify(lists), before);
+  });
+
+  it('대소문자만 다른 이름으로는 바꿀 수 있음', () => {
+    const lists = { 'ai': { color: '#ff0055', mode: 'normal', members: ['@a'] } };
+    assertEqual(renameList(lists, 'ai', 'AI').success, true);
+    assertDeepEqual(Object.keys(lists), ['AI']);
+  });
+
+  it('직접 지은 이름은 "Home" 같은 시스템 단어여도 정리 과정에서 지워지지 않고, 다시 수집해도 유지', () => {
+    const lists = { '친구': { color: '#ff0055', mode: 'normal', listId: '555', members: ['@a'] } };
+    assertEqual(renameList(lists, '친구', 'Home').success, true);
+
+    const { newLists, modified } = sanitizeListsObject(lists);
+    assertEqual(modified, false);
+    assertDeepEqual(Object.keys(newLists), ['Home']);
+
+    const saved = applyListSave(lists, '친구', ['@a', '@b'], '555', { followRename: true });
+    assertDeepEqual(Object.keys(saved.lists), ['Home']);
+    assertDeepEqual(saved.lists['Home'].members, ['@a', '@b']);
+  });
+
+  it('customName 을 지우면 다음 수집 때 다시 X 이름을 따라감 ([X 이름 따르기])', () => {
+    const lists = { '단짝': { color: '#ff0055', mode: 'normal', listId: '555', members: ['@a'], customName: true } };
+    delete lists['단짝'].customName;
+    const saved = applyListSave(lists, '친구', ['@a'], '555', { followRename: true });
+    assertDeepEqual(Object.keys(saved.lists), ['친구']);
+  });
+});

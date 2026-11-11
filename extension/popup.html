@@ -153,7 +153,7 @@
           <li><strong>[현재 탭에서 가져오기]</strong>를 누르면 지금 보고 있는 멤버 화면에서 바로 가져옵니다.</li>
           <li>X 리스트에서 뺀 멤버를 정리하려면 멤버 화면을 끝까지 스크롤한 뒤 <strong>[뺀 멤버 정리]</strong>를 누르세요.</li>
           <li><strong>[+ 추가]</strong>로 리스트와 핸들을 직접 입력할 수도 있습니다.</li>
-          <li>리스트 줄을 누르면 배지 색, 글자 크기·폰트, 타임라인 표시(배지만 / 강조 / 흐리게)를 바꾸고 멤버를 관리할 수 있습니다.</li>
+          <li>리스트 줄을 누르면 배지 색, 글자 크기·폰트, 타임라인 표시(배지만 / 강조 / 흐리게)를 바꾸고 멤버를 관리할 수 있습니다. 리스트 이름은 그 창의 <strong>[이름 바꾸기]</strong>로 바꿉니다.</li>
           <li>타임라인에서 배지가 많으면 몇 개만 보이고 나머지는 <strong>+N</strong>으로 묶입니다. 마우스를 올리면 모든 리스트 이름이 보입니다.</li>
           <li>오른쪽 위 <strong>⋯ 메뉴</strong>에서 백업 파일로 내보내기·가져오기를 할 수 있습니다.</li>
         </ul>
@@ -170,9 +170,12 @@
         <span id="sheet-title" class="badge-chip"></span>
         <span id="sheet-count" class="muted"></span>
       </div>
-      <button id="sheet-close-btn" type="button" class="icon-btn round" aria-label="닫기" title="닫기">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
-      </button>
+      <div class="sheet-head-actions">
+        <button id="sheet-rename-toggle-btn" type="button" class="btn small" aria-expanded="false" aria-controls="sheet-name-input">이름 바꾸기</button>
+        <button id="sheet-close-btn" type="button" class="icon-btn round" aria-label="닫기" title="닫기">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
     </div>
     <div id="sheet-body" class="sheet-body"></div>
   </section>

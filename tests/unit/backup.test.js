@@ -59,6 +59,15 @@ describe('백업 병합 시 listId 기준 매칭 (mergeImportedLists)', () => {
     assertDeepEqual(lists['친구 (8888)'].members, ['@b']);
   });
 
+  it('팝업에서 직접 지은 이름 표시(customName)를 보존', () => {
+    const lists = normalizeImportedLists({
+      'Home': { color: '#ff0000', mode: 'normal', listId: '42', members: ['@a'], customName: true },
+      '테크': { color: '#ff0000', mode: 'normal', members: ['@b'], customName: 'yes' }
+    });
+    assertEqual(lists['Home'].customName, true);
+    assertEqual(lists['테크'].customName, undefined, 'true 가 아닌 값은 버림');
+  });
+
   it('같은 listId 는 이름이 달라도 기존 리스트에 합치고 기존 색상/모드를 유지', () => {
     const lists = { '새 이름': { color: '#ff0000', mode: 'dim', listId: '42', members: ['@a'] } };
     mergeImportedLists(lists, { '옛 이름': { color: '#1d9bf0', mode: 'normal', listId: '42', members: ['@b', '@A'] } });

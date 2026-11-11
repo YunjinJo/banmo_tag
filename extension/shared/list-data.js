@@ -1,9 +1,10 @@
 // shared/list-data.js — 저장된 리스트 데이터 다루기 (정리 · 저장 · 교체 · 직접 추가 · 멤버 삭제)
 //
 // 저장 형식 (chrome.storage.local 의 lists):
-//   { [리스트 이름]: { color, mode, members, listId?, manual?, style? } }
+//   { [리스트 이름]: { color, mode, members, listId?, manual?, customName?, style? } }
 //   - color: 배지 배경색, mode: normal | highlight | dim, members: ["@handle", …]
 //   - listId: X 리스트 ID (자동 수집한 리스트), manual: 팝업에서 직접 만든 리스트면 true
+//   - customName: 팝업에서 이름을 직접 바꾼 리스트면 true (X 에서 리스트 이름이 바뀌어도 이 이름을 유지)
 //   - style: 이 리스트만의 배지 글자 스타일 { textColor?, fontSize?, fontFamily? } (없는 항목은 공통 설정 사용)
 // ⚠️ shared/ 파일의 최상위에는 function 선언과 var 만 씁니다 (이유는 shared/base.js 머리말).
 
@@ -14,7 +15,7 @@
 // 저장된 리스트를 정리: 태그 붙은 이름 정제, 같은 리스트 병합, 시스템 단어 리스트 삭제.
 // - 정제 후 이름이 같아도 listId 가 다르면 별개 리스트이므로 resolveListKey 규칙(접미사)으로 분리
 // - 이미 깨끗한 키를 먼저 처리해, 원래 그 이름을 쓰던 리스트가 이름을 유지하도록 함
-// - 사용자가 직접 추가한 리스트(manual: true)는 "X", "Home" 같은 이름도 유지
+// - 사용자가 직접 추가했거나(manual: true) 이름을 직접 바꾼(customName: true) 리스트는 "X", "Home" 같은 이름도 유지
 // 반환: { newLists, modified } (입력은 바꾸지 않음)
 function sanitizeListsObject(lists) {
   const src = lists || {};
@@ -27,14 +28,15 @@ function sanitizeListsObject(lists) {
 
   cleanKeysFirst.forEach((key) => {
     const val = src[key];
-    const isManual = !!(val && val.manual === true);
+    // 사용자가 직접 정한 이름인지 (직접 추가한 리스트, 또는 팝업에서 이름을 바꾼 리스트)
+    const userNamed = !!(val && (val.manual === true || val.customName === true));
     let cleanKey = cleanListName(key);
 
-    if (!isManual && (isSystemListName(key) || isSystemListName(cleanKey))) {
+    if (!userNamed && (isSystemListName(key) || isSystemListName(cleanKey))) {
       modified = true; // 시스템 단어 리스트 삭제
       return;
     }
-    if (isManual && (!cleanKey || cleanKey === 'Unknown List')) cleanKey = key;
+    if (userNamed && (!cleanKey || cleanKey === 'Unknown List')) cleanKey = key;
 
     const listId = val && val.listId;
     const targetKey = newLists[cleanKey] ? resolveListKey(newLists, cleanKey, listId).key : cleanKey;
@@ -55,8 +57,11 @@ function sanitizeListsObject(lists) {
 // 새로 저장할 리스트(listName, listId)를 어느 키에 저장할지 결정.
 // - 같은 listId 가 다른 이름으로 저장돼 있으면 그 키를 사용 (중복 생성 방지)
 //   · 기존이 임시 이름("리스트 (ID)")이고 새 이름이 실제 이름이면 { key: 새 이름, renameFrom: 기존 키 }
+//   · followRename 이 true 면 X 에서 리스트 이름이 바뀐 것으로 보고 새 이름으로 옮김 { key: 새 이름, renameFrom: 기존 키 }.
+//     단, 팝업에서 직접 지은 이름(customName)이거나 새 이름을 다른 리스트가 쓰고 있으면 기존 키를 유지.
+//     (멤버 수집에서만 true. 백업 가져오기·저장 데이터 정리는 지금 이름을 유지해야 하므로 넘기지 않음)
 // - 같은 이름인데 다른 listId 를 가진 별개 리스트가 있으면 "이름 (ID 끝 4자리)" 로 구분
-function resolveListKey(lists, listName, listId) {
+function resolveListKey(lists, listName, listId, followRename) {
   if (!listId) return { key: listName, renameFrom: null };
   const map = lists || {};
 
@@ -65,6 +70,7 @@ function resolveListKey(lists, listName, listId) {
     if (key === listName) return { key: listName, renameFrom: null };
     if (isFallbackListName(listName)) return { key, renameFrom: null };
     if (isFallbackListName(key)) return { key: listName, renameFrom: key };
+    if (followRename && map[key].customName !== true && !map[listName]) return { key: listName, renameFrom: key };
     return { key, renameFrom: null };
   }
 
@@ -105,8 +111,9 @@ function prepareIncomingMembers(rawListName, incomingMembers, emptyMessage) {
 }
 
 // 저장할 리스트 키를 정하고(이름 변경 포함) 항목이 없으면 기본값으로 만듦. listId 는 호출한 쪽에서 설정
-function prepareListEntry(lists, cleanedName, listId) {
-  const resolved = resolveListKey(lists, cleanedName, listId);
+// followRename: X 에서 바뀐 리스트 이름을 따라갈지 (resolveListKey 참고)
+function prepareListEntry(lists, cleanedName, listId, followRename) {
+  const resolved = resolveListKey(lists, cleanedName, listId, followRename);
   const renamed = moveRenamedList(lists, resolved.renameFrom, resolved.key);
   if (!lists[resolved.key]) {
     lists[resolved.key] = { color: AG_DEFAULT_LIST_COLOR, mode: 'normal', members: [] };
@@ -119,14 +126,17 @@ function prepareListEntry(lists, cleanedName, listId) {
 // ==========================================
 
 // 자동 수집 결과 저장: 기존 멤버에 새 멤버를 더함 (background.js 에서 사용)
+// options.followRename: 같은 listId 가 다른 이름으로 저장돼 있으면 이번 이름으로 바꿈 (X 에서 리스트 이름이 바뀐 경우.
+//   이름을 믿을 만한 곳에서 읽었을 때만 넘김. 색·표시 방식·글자 스타일·멤버는 그대로)
 // 반환: { success, lists, listName, count, added, noChange } 또는 { success: false, message }
-function applyListSave(rawLists, rawListName, incomingMembers, listId) {
+function applyListSave(rawLists, rawListName, incomingMembers, listId, options) {
   const incoming = prepareIncomingMembers(rawListName, incomingMembers, '저장할 멤버가 없습니다.');
   if (incoming.error) return { success: false, message: incoming.error };
 
+  const followRename = !!(options && options.followRename);
   const sanitized = sanitizeListsObject(rawLists || {});
   const lists = sanitized.newLists;
-  const { listName, renamed } = prepareListEntry(lists, incoming.cleanedName, listId);
+  const { listName, renamed } = prepareListEntry(lists, incoming.cleanedName, listId, followRename);
 
   const idChanged = !!listId && lists[listName].listId !== listId;
   if (listId) lists[listName].listId = listId;
@@ -147,13 +157,14 @@ function applyListSave(rawLists, rawListName, incomingMembers, listId) {
 // - 확인된 기존 멤버는 기존 표기 유지, 확인되지 않은 멤버는 삭제, 새로 확인된 멤버는 추가
 // - 색상/모드/listId 는 유지. 임시 이름("리스트 (ID)")이면 실제 이름으로 승격
 // - 입력을 바꾸지 않고 새 lists 를 반환하므로 미리보기에도 그대로 사용 가능
-function applyListReplace(rawLists, rawListName, seenMembers, listId) {
+// - options.followRename: applyListSave 와 같음
+function applyListReplace(rawLists, rawListName, seenMembers, listId, options) {
   const incoming = prepareIncomingMembers(rawListName, seenMembers,
     '확인한 멤버가 없습니다. 리스트의 멤버 화면을 열어 끝까지 스크롤해주세요.');
   if (incoming.error) return { success: false, message: incoming.error };
 
   const lists = sanitizeListsObject(JSON.parse(JSON.stringify(rawLists || {}))).newLists;
-  const { listName } = prepareListEntry(lists, incoming.cleanedName, listId);
+  const { listName } = prepareListEntry(lists, incoming.cleanedName, listId, !!(options && options.followRename));
   if (listId) lists[listName].listId = listId;
 
   const seen = new Set(incoming.members.map(m => m.toLowerCase()));
@@ -190,6 +201,26 @@ function applyManualAdd(lists, listName, handles, color, mode) {
     manual: true
   };
   return { created: true, total: lists[listName].members.length };
+}
+
+// 팝업에서 리스트 이름 바꾸기: 색·표시 방식·글자 스타일·멤버·listId 는 그대로 새 이름으로 옮김.
+// customName: true 를 붙여, 이후 X 에서 읽은 이름으로 덮어쓰지 않고 "X"·"Home" 같은 이름도 정리 과정에서 지워지지 않게 함.
+// 반환: { success: true, name } 또는 { success: false, message } (실패하면 lists 를 바꾸지 않음)
+function renameList(lists, fromName, rawNewName) {
+  const entry = lists && lists[fromName];
+  if (!entry) return { success: false, message: '리스트를 찾을 수 없습니다.' };
+
+  const trimmed = String(rawNewName || '').trim();
+  const name = trimmed ? cleanListName(trimmed) : '';
+  const nameError = getManualListNameError(name);
+  if (nameError) return { success: false, message: nameError };
+  if (name === fromName) return { success: false, message: '지금 이름과 같습니다.' };
+  if (lists[name]) return { success: false, message: `'${name}' 리스트가 이미 있습니다. 다른 이름을 입력해주세요.` };
+
+  delete lists[fromName];
+  lists[name] = entry;
+  entry.customName = true;
+  return { success: true, name };
 }
 
 // 리스트에서 멤버 한 명 제거 (대소문자 무시). 실제로 지웠으면 true

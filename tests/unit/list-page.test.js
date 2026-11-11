@@ -152,6 +152,26 @@ describe('화면에서 리스트 이름 읽기 (getMemberListDialog, firstValidC
     assertEqual(getListNameFromPage(page, mainUrl, null, cache), '테크 뉴스');
     assertDeepEqual(cache.store, {});
   });
+
+  it('info.reliable: 본문 제목·캐시에서 읽은 실제 이름만 true (임시 이름·상단 바 글자는 false)', () => {
+    const fromHeading = {};
+    getListNameFromPage(makePage('X', '<main><h2>테크 뉴스</h2></main>'), mainUrl, null, null, fromHeading);
+    assertEqual(fromHeading.reliable, true);
+
+    const modal = makePage('내 홈 타임라인', '<main><h2>내 홈 타임라인</h2></main><div role="dialog"><h2>리스트 멤버</h2></div>');
+    const fromCache = {};
+    getListNameFromPage(modal, membersUrl, getMemberListDialog(modal), makeCache({ ag_list_name_123: '테크 뉴스' }), fromCache);
+    assertEqual(fromCache.reliable, true);
+
+    const fallback = {};
+    assertEqual(getListNameFromPage(modal, membersUrl, getMemberListDialog(modal), makeCache(), fallback), '리스트 (123)');
+    assertEqual(fallback.reliable, false);
+
+    const fromTopBar = {};
+    const topBar = makePage('', '<header role="banner"><span>뒤로</span><span>테크 뉴스</span></header>');
+    assertEqual(getListNameFromPage(topBar, mainUrl, null, null, fromTopBar), '테크 뉴스');
+    assertEqual(fromTopBar.reliable, false);
+  });
 });
 
 describe('팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell)', () => {

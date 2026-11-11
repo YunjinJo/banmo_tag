@@ -14,7 +14,7 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       ],
       'list-data.js': [
         sanitizeListsObject, resolveListKey, moveRenamedList, prepareIncomingMembers, prepareListEntry,
-        applyListSave, applyListReplace, applyManualAdd, removeMemberFromLists
+        applyListSave, applyListReplace, applyManualAdd, renameList, removeMemberFromLists
       ],
       'list-page.js': [
         parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError, getMemberListDialog,

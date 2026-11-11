@@ -16,6 +16,10 @@ let renderedLists = {};
 // 설정 시트에 열려 있는 리스트 이름 (없으면 null)과 그 시트의 멤버 목록 펼침 여부
 let openSheetName = null;
 let sheetMembersOpen = false;
+// 그 시트의 [이름 바꾸기] 입력란 펼침 여부
+let sheetRenameOpen = false;
+// 방금 팝업에서 바꾼 이름 { from, to }. 저장 후 화면을 다시 그릴 때 열린 시트가 새 이름을 따라가게 함 (lists.js renderLists)
+let pendingSheetRename = null;
 // 파일에서 읽어 [병합]/[덮어쓰기] 선택을 기다리는 데이터 ({ lists, badgeSettings })
 let pendingImport = null;
 let statusTimer = null;

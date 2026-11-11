@@ -46,6 +46,38 @@ test.describe('리스트 멤버 자동 수집', () => {
     expect((await getLists(serviceWorker))['Core Members'].listId).toBe('123');
   });
 
+  test('X 에서 리스트 이름이 바뀌면 저장된 이름도 따라 바뀌고(색·표시 방식 유지), 팝업에서 직접 지은 이름은 그대로 둠', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123', 'synthetic/list-main.html');
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    await setStorage(serviceWorker, {
+      lists: { '옛 이름': { color: '#ff0055', mode: 'dim', listId: '123', members: ['@alice'] } }
+    });
+    const membersOf = async name => ((await getLists(serviceWorker))[name] || {}).members || null;
+    const page = await context.newPage();
+
+    // 이름을 읽지 못한 화면(임시 이름 "리스트 (123)")에서는 멤버만 더하고 저장된 이름은 그대로
+    await page.goto(MEMBERS_URL);
+    await expect.poll(() => membersOf('옛 이름')).toEqual(['@alice', '@bob', '@dave_dev']);
+    expect(Object.keys(await getLists(serviceWorker))).toEqual(['옛 이름']);
+
+    // 리스트 메인 화면에서 실제 이름("Core Members")을 읽은 뒤 멤버 화면에 가면 그 이름으로 바뀜
+    await page.goto('https://x.com/i/lists/123');
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem('ag_list_name_123'))).toBe('Core Members');
+    await page.goto(MEMBERS_URL);
+    await expect.poll(async () => Object.keys(await getLists(serviceWorker))).toEqual(['Core Members']);
+    expect((await getLists(serviceWorker))['Core Members']).toEqual({
+      color: '#ff0055', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev']
+    });
+
+    // 팝업에서 직접 지은 이름(customName)은 다시 수집해도 X 이름으로 바뀌지 않고, 멤버만 더해짐
+    await setStorage(serviceWorker, {
+      lists: { '내가 지은 이름': { color: '#ff0055', mode: 'dim', listId: '123', members: ['@alice'], customName: true } }
+    });
+    await page.reload();
+    await expect.poll(() => membersOf('내가 지은 이름')).toEqual(['@alice', '@bob', '@dave_dev']);
+    expect(Object.keys(await getLists(serviceWorker))).toEqual(['내가 지은 이름']);
+  });
+
   test('멤버 화면 주소로 바로 들어가 홈 타임라인 위에 멤버 창이 떠도, 배경 제목("내 홈 타임라인")을 이름으로 쓰지 않음', async ({ context, serviceWorker }) => {
     await mockXPage(context, '/i/lists/123/members', 'synthetic/members-modal-over-home.html');
     const page = await context.newPage();

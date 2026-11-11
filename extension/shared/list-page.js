@@ -185,7 +185,9 @@ var AG_LIST_NAME_SOURCES = [
 // 화면(root = document)에서 순수한 리스트 이름 읽기. 못 찾으면 "리스트 (ID)" 임시 이름.
 // cache: 리스트 메인 화면에서 읽은 이름을 멤버 화면에서 다시 쓰려고 적어 두는 곳 { get(key), set(key, value) }
 //        (content.js 는 sessionStorage 를 넘김. 생략하면 기억하지 않음)
-function getListNameFromPage(root, urlInfo, dialog, cache) {
+// info: 객체를 넘기면 info.reliable 에 "믿을 만한 곳에서 읽은 실제 이름인지"를 적어 줌
+//       (임시 이름이나 상단 바의 짧은 글자면 false. 저장된 리스트 이름을 이 이름으로 바꿔도 되는지 판단할 때 씀)
+function getListNameFromPage(root, urlInfo, dialog, cache, info) {
   const cacheKey = urlInfo && urlInfo.listId ? 'ag_list_name_' + urlInfo.listId : null;
   const context = { root, urlInfo, dialog, cacheKey, cache };
 
@@ -205,9 +207,9 @@ function getListNameFromPage(root, urlInfo, dialog, cache) {
   if (isSystemListName(finalName)) finalName = idFallback;
 
   // 믿을 만한 곳에서 찾은 실제 이름만 캐시 (임시 이름은 캐시하지 않음)
-  if (cache && cacheKey && reliable && finalName !== 'Unknown List' && !isFallbackListName(finalName)) {
-    cache.set(cacheKey, finalName);
-  }
+  const isRealName = reliable && finalName !== 'Unknown List' && !isFallbackListName(finalName);
+  if (cache && cacheKey && isRealName) cache.set(cacheKey, finalName);
+  if (info) info.reliable = isRealName;
   return finalName;
 }
 

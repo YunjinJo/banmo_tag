@@ -1,15 +1,28 @@
-// popup/sheet.js — 리스트 설정 창(시트): 배지 색 · 글자 스타일 · 타임라인 표시 · 미리보기 · 멤버 · 삭제
+// popup/sheet.js — 리스트 설정 창(시트): 이름 바꾸기 · 배지 색 · 글자 스타일 · 타임라인 표시 · 미리보기 · 멤버 · 삭제
 // 팝업 코드는 화면 단위 파일로 나뉘어 있고 최상위 함수·변수를 서로 공유합니다 (파일 목록과 읽는 순서는 popup.js 머리말).
 
 function setupSheet() {
   byId('sheet-close-btn')?.addEventListener('click', closeSheet);
   byId('sheet-backdrop')?.addEventListener('click', closeSheet);
+  // [이름 바꾸기]: 시트 맨 위에 이름 입력란을 펼치거나 접음
+  byId('sheet-rename-toggle-btn')?.addEventListener('click', () => {
+    if (!openSheetName) return;
+    sheetRenameOpen = !sheetRenameOpen;
+    renderSheet();
+    if (!sheetRenameOpen) return;
+    byId('list-sheet').scrollTop = 0;
+    const input = byId('sheet-name-input');
+    input?.focus();
+    input?.select();
+  });
 }
 
 function openSheet(name) {
   if (!renderedLists[name]) return;
   openSheetName = name;
   sheetMembersOpen = false;
+  sheetRenameOpen = false;
+  pendingSheetRename = null;
   document.body.classList.add('sheet-open');
   byId('sheet-backdrop').hidden = false;
   byId('list-sheet').hidden = false;
@@ -25,6 +38,8 @@ function closeSheet() {
   const name = openSheetName;
   openSheetName = null;
   sheetMembersOpen = false;
+  sheetRenameOpen = false;
+  pendingSheetRename = null;
   document.body.classList.remove('sheet-open');
   byId('sheet-backdrop').hidden = true;
   byId('list-sheet').hidden = true;
@@ -46,16 +61,24 @@ function renderSheet() {
   const active = document.activeElement;
   const focusedId = active && sheet.contains(active) ? active.id : '';
   const scrollTop = sheet.scrollTop;
+  // 이름을 고치는 중에 다시 그려져도(다른 탭의 멤버 저장 등) 입력하던 글자를 유지
+  const nameDraft = sheetRenameOpen ? byId('sheet-name-input')?.value : undefined;
   const effective = getEffectiveBadgeSettings(badgeSettings, list.style);
 
   const title = byId('sheet-title');
   title.textContent = name;
   applyBadgeStyle(title, list.color, effective, true);
   byId('sheet-count').textContent = `${list.members.length}명`;
+  const renameToggle = byId('sheet-rename-toggle-btn');
+  if (renameToggle) {
+    renameToggle.textContent = sheetRenameOpen ? '닫기' : '이름 바꾸기';
+    renameToggle.setAttribute('aria-expanded', String(sheetRenameOpen));
+  }
 
   // 미리보기는 저장 전에도(색 고르는 중) 바로 바뀌어야 하므로 먼저 만들고 갱신 함수를 넘김
   const preview = createSheetPreview(name, list, effective);
   body.textContent = '';
+  if (sheetRenameOpen) body.appendChild(createNameField(name, list, nameDraft));
   body.append(
     createColorField(name, list, preview.update),
     createTextStyleFields(name, list, effective, preview.update),
@@ -73,6 +96,90 @@ function createField(labelText, control) {
   const field = makeElement('div', 'field');
   field.append(makeElement('span', 'field-label', labelText), control);
   return field;
+}
+
+// 리스트 이름 바꾸기: [입력란] [저장]. X 에서 가져온 리스트면 이름이 어떻게 정해지는지 안내를 덧붙임
+// draft: 다시 그리기 전에 입력란에 있던 글자 (없으면 지금 이름)
+function createNameField(name, list, draft) {
+  const input = makeElement('input', 'input', undefined, 'text');
+  input.id = 'sheet-name-input';
+  input.value = draft === undefined ? name : draft;
+  input.maxLength = 50;
+  input.autocomplete = 'off';
+  input.setAttribute('aria-label', `'${name}' 리스트의 새 이름`);
+
+  const saveBtn = makeElement('button', 'btn primary', '저장', 'button');
+  saveBtn.id = 'sheet-rename-btn';
+  const updateSaveBtn = () => {
+    const value = input.value.trim();
+    saveBtn.disabled = !value || value === name;
+  };
+  input.addEventListener('input', updateSaveBtn);
+  input.addEventListener('keydown', (e) => {
+    // 한글을 조합하는 중의 Enter 는 글자를 확정하는 키이므로 저장하지 않음
+    if (e.key !== 'Enter' || e.isComposing) return;
+    e.preventDefault();
+    if (!saveBtn.disabled) renameSheetList(name, input.value);
+  });
+  saveBtn.addEventListener('click', () => renameSheetList(name, input.value));
+  updateSaveBtn();
+
+  const row = makeElement('div', 'name-row');
+  row.append(input, saveBtn);
+  const field = createField('리스트 이름', row);
+  if (list.listId) field.appendChild(createNameNote(name, list));
+  return field;
+}
+
+// X 에서 가져온 리스트의 이름 안내: 직접 지은 이름이면 [X 이름 따르기], 아니면 X 이름을 따라간다는 설명
+function createNameNote(name, list) {
+  const note = makeElement('div', 'name-note');
+  if (list.customName !== true) {
+    note.appendChild(makeElement('p', 'hint-line',
+      'X 에서 리스트 이름을 바꾸면 다음에 멤버를 가져올 때 이 이름도 바뀝니다. 여기서 직접 바꾼 이름은 그대로 둡니다.'));
+    return note;
+  }
+
+  const followBtn = makeElement('button', 'btn small', 'X 이름 따르기', 'button');
+  followBtn.id = 'sheet-name-follow-btn';
+  followBtn.title = '다음에 이 리스트의 멤버를 가져올 때 X 의 리스트 이름으로 바뀝니다.';
+  followBtn.addEventListener('click', async () => {
+    const saved = await updateLists((l) => {
+      if (!l[name] || l[name].customName !== true) return false;
+      delete l[name].customName;
+    });
+    if (!saved) return;
+    showSyncStatus('다음에 이 리스트의 멤버를 가져올 때 X 의 리스트 이름으로 바뀝니다.', false);
+    byId('sheet-name-input')?.focus();
+  });
+  note.append(makeElement('p', 'hint-line', '직접 지은 이름이라 X 에서 리스트 이름이 바뀌어도 그대로 둡니다.'), followBtn);
+  return note;
+}
+
+// 이름 바꾸기 저장. 색·표시 방식·글자 스타일·멤버는 그대로 새 이름으로 옮겨지고, 시트는 열린 채 새 이름을 보여 줌
+async function renameSheetList(name, rawValue) {
+  let outcome = null;
+  const saved = await updateLists((l) => {
+    outcome = renameList(l, name, rawValue);
+    if (!outcome.success) return false;
+    // 저장이 끝나 화면을 다시 그릴 때 시트가 닫히지 않고 새 이름을 따라가도록 (lists.js renderLists)
+    pendingSheetRename = { from: name, to: outcome.name };
+  });
+  if (!outcome) return; // 저장소를 읽지 못함 (updateLists 가 이미 알림)
+  if (!outcome.success) {
+    showSyncStatus(outcome.message, true);
+    byId('sheet-name-input')?.focus();
+    return;
+  }
+  if (!saved) {
+    pendingSheetRename = null;
+    return;
+  }
+
+  sheetRenameOpen = false;
+  renderSheet();
+  showSyncStatus(`리스트 이름을 '${outcome.name}'(으)로 바꿨습니다.`, false);
+  byId('sheet-rename-toggle-btn')?.focus();
 }
 
 // 배지 색: 빠른 선택 색 + [다른 색] (색상 선택 창)
