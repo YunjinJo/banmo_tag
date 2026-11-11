@@ -18,6 +18,19 @@ test.describe('리스트 멤버 자동 수집', () => {
     }).toEqual(['@alice', '@bob', '@dave_dev']);
   });
 
+  test('새 멤버를 저장하면 아이콘에 ✔ 를 띄우고 3초 뒤 지움 (서비스 워커가 먼저 멈출 때를 대비한 30초 알람도 예약)', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+
+    const badgeText = () => serviceWorker.evaluate(() => chrome.action.getBadgeText({}));
+    await expect.poll(badgeText).toBe('✔');
+    const alarm = await serviceWorker.evaluate(() => chrome.alarms.get('banmo_tag-clear-saved-badge'));
+    expect(alarm, '예비 알람이 예약되어야 함').toBeTruthy();
+    expect(alarm.scheduledTime - Date.now()).toBeGreaterThan(20 * 1000);
+    await expect.poll(badgeText, { timeout: 6000 }).toBe('');
+  });
+
   test('리스트 메인 화면에서 읽은 이름을 멤버 화면에서 사용 (임시 이름 "리스트 (ID)" 아님)', async ({ context, serviceWorker }) => {
     await mockXPage(context, '/i/lists/123', 'synthetic/list-main.html');
     await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');

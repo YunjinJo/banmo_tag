@@ -100,11 +100,20 @@ check('버전 일치 (manifest ↔ CHANGELOG)', () => {
 });
 
 // 4. popup.html: 참조 스크립트 존재 + MV3 CSP 위반(인라인 스크립트/이벤트 핸들러) 금지
-check('popup.html 스크립트 / CSP', () => {
+check('popup.html 스크립트·스타일 / CSP', () => {
   const html = read('extension/popup.html');
-  for (const m of html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)) {
-    if (!fs.existsSync(path.join(extDir, m[1]))) errors.push(`popup.html 이 참조하는 스크립트가 없음: ${m[1]}`);
+  const scriptSrcs = [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(m => m[1]);
+  scriptSrcs.forEach((src) => {
+    if (!fs.existsSync(path.join(extDir, src))) errors.push(`popup.html 이 참조하는 스크립트가 없음: ${src}`);
+  });
+  for (const m of html.matchAll(/<link\b[^>]*\bhref="([^"]+)"/g)) {
+    if (!fs.existsSync(path.join(extDir, m[1]))) errors.push(`popup.html 이 참조하는 파일이 없음: ${m[1]}`);
   }
+  // 팝업 코드(popup/*.js)를 추가했는데 popup.html 에 넣지 않으면 그 기능이 동작하지 않음
+  fs.readdirSync(path.join(extDir, 'popup')).filter(f => f.endsWith('.js')).forEach((f) => {
+    if (!scriptSrcs.includes('popup/' + f)) errors.push(`extension/popup/${f} 가 popup.html 에서 로드되지 않습니다.`);
+  });
+  if (/<style\b/i.test(html)) errors.push('popup.html 에 <style> 이 있습니다. 화면 모양은 popup/popup.css 에 적으세요.');
   if (/<script\b(?![^>]*\bsrc=)[^>]*>/.test(html)) errors.push('popup.html 에 인라인 <script> 가 있습니다 (MV3 CSP 에서 차단됨).');
   const handler = html.match(/<[^>]+\son[a-z]+\s*=/i);
   if (handler) errors.push(`popup.html 에 인라인 이벤트 핸들러가 있습니다 (MV3 CSP 에서 차단됨): ${handler[0].slice(0, 60)}`);
@@ -144,7 +153,8 @@ check('background.js importScripts', () => {
 
 // 6. 확장 프로그램 JS 문법 검사 + 원격 코드/동적 코드 실행 금지 (웹 스토어 정책)
 check('JS 문법 / 금지 패턴', () => {
-  const jsFiles = fs.readdirSync(extDir).filter(f => f.endsWith('.js'));
+  // extension/ 과 하위 폴더(popup/ 등)의 모든 .js
+  const jsFiles = fs.readdirSync(extDir, { recursive: true }).map(f => String(f).split(path.sep).join('/')).filter(f => f.endsWith('.js'));
   for (const f of jsFiles) {
     const full = path.join(extDir, f);
     try {
