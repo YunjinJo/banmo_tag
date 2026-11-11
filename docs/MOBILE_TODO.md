@@ -34,7 +34,7 @@ banmo_tag 를 휴대폰에서도 쓰기 위한 할 일 목록입니다. 2026-11-
 - [ ] 모바일 x.com(좁은 화면)의 HTML 을 스냅샷으로 남기기 (안드로이드 Firefox 원격 디버깅 또는 데스크톱 브라우저의 모바일 화면 모드)
   - 확인할 것: 트윗(`data-testid="tweet"`), 이름 영역(`User-Name`), 멤버 화면의 사용자 칸(`UserCell`), 리스트 메인·멤버 창 구조
 - [ ] 스냅샷을 `tests/fixtures/real/` 에 넣고 `real-snapshots.spec.js` 로 수집·배지가 되는지 확인
-- [ ] 다르면 선택자 수정 (`shared.js` 의 `getBadgeAnchor`, `isExcludedUserCell`, `AG_DIM_TARGET_SELECTOR` 등)
+- [ ] 다르면 선택자 수정 (`shared/badges.js` 의 `getBadgeAnchor`·`AG_DIM_TARGET_SELECTOR`, `shared/list-page.js` 의 `isExcludedUserCell` 등)
 - [ ] 모바일 합성 페이지(`tests/fixtures/synthetic/`)와 E2E 테스트 추가 (Playwright 의 모바일 기기 흉내 사용)
 
 ### 1-2. 타임라인 배지

@@ -1,6 +1,16 @@
 {
   "background": {
-    "scripts": ["shared.js", "background.js"]
+    "scripts": [
+      "shared/base.js",
+      "shared/list-names.js",
+      "shared/list-data.js",
+      "shared/list-page.js",
+      "shared/badges.js",
+      "shared/backup.js",
+      "shared/health.js",
+      "shared/ui.js",
+      "background.js"
+    ]
   },
   "browser_specific_settings": {
     "gecko": {

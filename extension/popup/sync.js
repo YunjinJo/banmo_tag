@@ -1,9 +1,46 @@
-// popup/sync.js — X 탭 연동([현재 탭에서 가져오기], [뺀 멤버 정리]) · X 화면 구조 경고
-// 팝업 화면은 여러 파일로 나뉘어 있고, popup.html 이 shared.js → popup/*.js → popup.js 순서로 읽습니다.
-// 파일들은 일반 스크립트라 최상위 함수·변수를 서로 공유합니다(목차는 popup.js 참고).
+// popup/sync.js — X 탭 연동: x.com 접근 권한 · [현재 탭에서 가져오기] · [뺀 멤버 정리] · X 화면 구조 경고
+// 팝업 코드는 화면 단위 파일로 나뉘어 있고 최상위 함수·변수를 서로 공유합니다 (파일 목록과 읽는 순서는 popup.js 머리말).
 
 // ==========================================
-// 4. X 탭 연동 ([현재 탭에서 가져오기], [뺀 멤버 정리])
+// x.com 접근 권한
+// ==========================================
+
+// x.com 접근 권한 확인. 꺼져 있으면(파이어폭스에서 사용자가 거부한 경우 등) 안내와 [허용] 버튼 표시
+async function setupPermissionCheck() {
+  const banner = byId('permission-warning');
+  if (!banner || !chrome.permissions) return;
+  const origins = chrome.runtime.getManifest().host_permissions || [];
+
+  const refresh = async () => {
+    let granted;
+    try {
+      granted = await chrome.permissions.contains({ origins });
+    } catch {
+      granted = true; // 확인할 수 없으면 경고하지 않음
+    }
+    banner.style.display = granted ? 'none' : 'block';
+  };
+
+  byId('grant-permission-btn')?.addEventListener('click', async () => {
+    let granted = false;
+    try {
+      granted = await chrome.permissions.request({ origins }); // 사용자 클릭 직후에 바로 요청해야 함
+    } catch (err) {
+      console.error('[banmo_tag] 권한 요청 실패:', err);
+    }
+    showSyncStatus(granted
+      ? 'x.com 접근을 허용했습니다. 열려 있는 X 탭을 새로고침(F5)해주세요.'
+      : 'x.com 접근이 허용되지 않았습니다.', !granted);
+    refresh();
+  });
+
+  chrome.permissions.onAdded?.addListener(refresh);
+  chrome.permissions.onRemoved?.addListener(refresh);
+  await refresh();
+}
+
+// ==========================================
+// X 탭에 요청 보내기
 // ==========================================
 
 const TAB_CONNECTION_ERROR = '페이지에 연결할 수 없습니다. 트위터 탭을 새로고침(F5) 해주세요.';
@@ -29,10 +66,12 @@ function sendTabMessage(tabId, message, timeoutMs = 8000) {
   });
 }
 
-// 확장 프로그램 설치/새로고침 전에 열려 있던 탭에는 content script 가 없으므로 직접 넣음
+// 확장 프로그램 설치/새로고침 전에 열려 있던 탭에는 content script 가 없으므로 직접 넣음.
+// 넣을 파일은 manifest.json 의 content_scripts 에 적힌 것 그대로 (shared/*.js → content.js, styles.css)
 async function injectContentScript(tabId) {
-  await chrome.scripting.insertCSS({ target: { tabId }, files: ['styles.css'] });
-  await chrome.scripting.executeScript({ target: { tabId }, files: ['shared.js', 'content.js'] });
+  const [contentScript] = chrome.runtime.getManifest().content_scripts;
+  await chrome.scripting.insertCSS({ target: { tabId }, files: contentScript.css });
+  await chrome.scripting.executeScript({ target: { tabId }, files: contentScript.js });
 }
 
 // 요청을 보낼 탭: 팝업이면 지금 보고 있는 탭, 새 탭 화면이면 열 때 보고 있던 탭
@@ -71,6 +110,10 @@ async function requestFromActiveTab(message) {
   if (!response || response.connectionError) return { error: TAB_CONNECTION_ERROR };
   return response;
 }
+
+// ==========================================
+// [현재 탭에서 가져오기] · [뺀 멤버 정리]
+// ==========================================
 
 function setupSyncButtons() {
   const syncBtn = byId('sync-current-tab-btn');
@@ -129,7 +172,7 @@ function buildReplaceConfirmText(preview) {
 }
 
 // ==========================================
-// 5. X 화면 구조 경고
+// X 화면 구조 경고
 // ==========================================
 
 function renderHealthWarning(health) {

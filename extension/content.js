@@ -2,35 +2,37 @@
 //   1) 리스트 멤버 화면에서 멤버를 읽어 저장 (background.js 로 전송)
 //   2) 타임라인 트윗 작성자 옆에 리스트 배지를 붙이고 강조/흐리게 표시
 //   3) X 화면 구조가 바뀌었는지 점검해 팝업 경고용으로 기록
-// 공통 로직은 manifest 에서 먼저 로드되는 shared.js 에 있습니다.
+//
+// 이 파일은 "언제 · 무엇을" 을 맡습니다: 저장 데이터와 화면 변화를 지켜보다가 필요한 일을 시킵니다.
+// "어떻게"(화면에서 이름·멤버 읽기, 트윗에 배지 그리기, 구조 진단)는 manifest 에서 먼저 로드되는 shared/ 에 있습니다.
+//   shared/list-page.js  parseListUrl, getMemberListDialog, getListNameFromPage, extractMembersFromContainer …
+//   shared/badges.js     buildHandleMap, renderTweet, resetTweetStyle …
+//   shared/health.js     diagnoseStructure
 // 전체를 즉시 실행 함수로 감싸, 팝업이 다시 주입(chrome.scripting)해도 두 번 실행되지 않게 합니다.
 //
 // 목차
 //   0. 시작 조건 / 상수 / 상태
 //   1. 확장 프로그램 연결 · 타이머
 //   2. 저장 데이터 불러오기 · 변경 반영
-//   3. 리스트 이름 읽기
-//   4. 멤버 수집 · 교체 동기화
-//   5. 팝업 메시지 처리
-//   6. 타임라인 배지
-//   7. 화면 구조 점검
-//   8. 화면 변화 감지 · 시작
+//   3. 멤버 수집 · 교체 동기화
+//   4. 팝업 메시지 처리
+//   5. 타임라인 배지
+//   6. 화면 구조 점검
+//   7. 화면 변화 감지 · 시작
 (() => {
   // ==========================================
   // 0. 시작 조건 / 상수 / 상태
   // ==========================================
 
   if (window.__agContentLoaded) return;
-  // shared.js 가 없으면 어떤 기능도 동작할 수 없으므로, 원인을 분명히 남기고 중단
+  // shared/ 파일이 없으면 어떤 기능도 동작할 수 없으므로, 원인을 분명히 남기고 중단
   if (typeof sanitizeListsObject !== 'function') {
-    console.error('[banmo_tag] shared.js 가 로드되지 않았습니다. 확장 프로그램을 새로고침해주세요.');
+    console.error('[banmo_tag] shared/ 파일이 로드되지 않았습니다. 확장 프로그램을 새로고침해주세요.');
     return;
   }
   window.__agContentLoaded = true;
 
   const DEFAULT_BADGE_SETTINGS = AG_DEFAULT_BADGE_SETTINGS;
-  const TWEET_SELECTOR = 'article[data-testid="tweet"]';
-  const USER_NAME_SELECTOR = '[data-testid="User-Name"]';
   // 한 번에 모아 둘 "변경된 트윗" 최대 수. 넘으면 전체를 다시 훑는 편이 빠름
   const MAX_PENDING_TWEETS = 300;
   // 화면 구조 점검: 같은 결과가 이 시간 이상 유지될 때만 기록 (로딩 중 일시적인 상태 무시)
@@ -92,13 +94,15 @@
     pendingTimers.add(id);
   }
 
-  function safeSessionGet(key) {
-    try { return sessionStorage.getItem(key); } catch { return null; }
-  }
-
-  function safeSessionSet(key, value) {
-    try { sessionStorage.setItem(key, value); } catch { /* 용량 초과 등은 무시 */ }
-  }
+  // 읽은 리스트 이름을 이 탭 안에서 기억해 두는 곳 (getListNameFromPage 가 씀). sessionStorage 를 쓸 수 없으면 조용히 넘어감
+  const listNameCache = {
+    get(key) {
+      try { return sessionStorage.getItem(key); } catch { return null; }
+    },
+    set(key, value) {
+      try { sessionStorage.setItem(key, value); } catch { /* 용량 초과 등은 무시 */ }
+    }
+  };
 
   // ==========================================
   // 2. 저장 데이터 불러오기 · 변경 반영
@@ -150,123 +154,7 @@
   });
 
   // ==========================================
-  // 3. 리스트 이름 읽기
-  // ==========================================
-
-  // 화면에 떠 있는 리스트 멤버 창(모달)
-  function getMemberListDialog() {
-    for (const dialog of document.querySelectorAll('div[role="dialog"]')) {
-      const heading = dialog.querySelector('h2, h1, [role="heading"]');
-      const headingText = heading ? heading.textContent : '';
-      const looksLikeMemberDialog =
-        headingText.includes('멤버') ||
-        headingText.includes('구성원') ||
-        headingText.includes('Member') ||
-        dialog.querySelector('[data-testid="UserCell"]') !== null;
-      if (looksLikeMemberDialog) return dialog;
-    }
-    return null;
-  }
-
-  // 요소들의 글자를 정제해 처음으로 나오는 올바른 리스트 이름
-  function firstValidCleanName(elements, skipRaw) {
-    for (const el of elements) {
-      const raw = el.textContent.trim();
-      if (skipRaw && skipRaw(raw)) continue;
-      const name = cleanListName(raw);
-      if (isValidListName(name)) return name;
-    }
-    return '';
-  }
-
-  const isRecommendationTitle = text => text.includes('팔로우 추천') || text.includes('Who to follow');
-
-  // 리스트 이름을 찾는 곳 (위에서부터 차례로 시도).
-  // reliable: false 인 곳(표시 이름 등 엉뚱한 글자일 수 있음)에서 찾은 이름은 세션 캐시에 저장하지 않음
-  // behindDialog: true 인 곳은 멤버 창 뒤의 배경 화면을 읽으므로, 멤버 창이 떠 있으면 건너뜀.
-  //   멤버 화면 주소로 바로 들어가면 X 는 홈 타임라인 등 다른 화면을 배경으로 깔고 그 위에 멤버 창을 띄워서,
-  //   배경의 "내 홈 타임라인" 같은 제목을 리스트 이름으로 잘못 읽게 됨
-  const LIST_NAME_SOURCES = [
-    {
-      // 1. 멤버 창의 제목
-      reliable: true,
-      find: ({ dialog }) => (dialog ? firstValidCleanName(dialog.querySelectorAll('h2, h1, [role="heading"]')) : '')
-    },
-    {
-      // 2. 본문 제목 (멤버 창이 없을 때 가장 믿을 만함)
-      reliable: true,
-      behindDialog: true,
-      find: () => firstValidCleanName(
-        document.querySelectorAll('[data-testid="primaryColumn"] h2, main h2, h1[role="heading"]'),
-        isRecommendationTitle
-      )
-    },
-    {
-      // 3. 리스트 메인 화면에서 저장해 둔 이름 (멤버 화면 등 하위 화면에서만)
-      reliable: true,
-      find: ({ urlInfo, cacheKey }) => {
-        if (!cacheKey || urlInfo.isMain) return '';
-        const cached = safeSessionGet(cacheKey);
-        return cached && isValidListName(cached) ? cached : '';
-      }
-    },
-    {
-      // 4. 브라우저 탭 제목 (" - " 로 자르지 않고 시스템 문구만 지워 "AI - 연구자" 같은 이름 보존)
-      reliable: true,
-      behindDialog: true,
-      find: () => {
-        const name = cleanListName(document.title || '');
-        return isValidListName(name) ? name : '';
-      }
-    },
-    {
-      // 5. 상단 바의 짧은 글자
-      reliable: false,
-      behindDialog: true,
-      find: () => {
-        const topNavBar = document.querySelector('[data-testid="TopNavBar"], header[role="banner"]');
-        if (!topNavBar) return '';
-        for (const el of topNavBar.querySelectorAll('span, div[dir="auto"]')) {
-          const text = el.textContent.trim();
-          const usable = text && text.length < 50 && isValidListName(text) &&
-            !text.includes('팔로우 추천') && !text.includes('뒤로') &&
-            !text.includes('Back') && !text.startsWith('@');
-          if (usable) return text;
-        }
-        return '';
-      }
-    }
-  ];
-
-  // 화면에서 순수한 리스트 이름 읽기. 못 찾으면 "리스트 (ID)" 임시 이름
-  function getListNameFromPage(urlInfo, dialog) {
-    const cacheKey = urlInfo && urlInfo.listId ? 'ag_list_name_' + urlInfo.listId : null;
-    const context = { urlInfo, dialog, cacheKey };
-
-    let candidate = '';
-    let reliable = true;
-    for (const source of LIST_NAME_SOURCES) {
-      if (dialog && source.behindDialog) continue;
-      candidate = source.find(context);
-      if (candidate) {
-        reliable = source.reliable;
-        break;
-      }
-    }
-
-    const idFallback = urlInfo && urlInfo.listId ? '리스트 (' + urlInfo.listId + ')' : 'Unknown List';
-    let finalName = cleanListName(candidate || idFallback);
-    if (isSystemListName(finalName)) finalName = idFallback;
-
-    // 믿을 만한 곳에서 찾은 실제 이름만 캐시 (임시 이름은 캐시하지 않음)
-    if (cacheKey && reliable && finalName !== 'Unknown List' && !isFallbackListName(finalName)) {
-      safeSessionSet(cacheKey, finalName);
-    }
-    return finalName;
-  }
-
-  // ==========================================
-  // 4. 멤버 수집 · 교체 동기화
+  // 3. 멤버 수집 · 교체 동기화
   // ==========================================
 
   // 화면의 멤버 핸들 (멤버 창이 열려 있으면 창 안만, 아니면 본문만)
@@ -297,18 +185,18 @@
     if (!urlInfo) {
       return { success: false, message: '리스트 페이지가 아닙니다. 리스트의 멤버 화면에서 시도해주세요.' };
     }
-    const dialog = getMemberListDialog();
+    const dialog = getMemberListDialog(document);
 
     // 리스트 메인 화면은 자동 수집 대상이 아니라 아래에서 막히지만, 이름이 가장 확실히 보이는 화면이므로
     // 막기 전에 이름을 한 번 읽어 세션 캐시를 채워 둠 (이후 멤버 화면에서 사용)
     if (urlInfo.isMain && !dialog && !isManual) {
-      getListNameFromPage(urlInfo, null);
+      getListNameFromPage(document, urlInfo, null, listNameCache);
     }
 
     const blockReason = getScrapeBlockReason(urlInfo, dialog || document, dialog, isManual);
     if (blockReason) return { success: false, message: blockReason };
 
-    const listName = getListNameFromPage(urlInfo, dialog);
+    const listName = getListNameFromPage(document, urlInfo, dialog, listNameCache);
     if (isSystemListName(listName)) {
       return { success: false, message: '리스트 이름을 확인할 수 없습니다. 리스트 페이지에서 다시 시도해주세요.' };
     }
@@ -397,7 +285,7 @@
   }
 
   // ==========================================
-  // 5. 팝업 메시지 처리
+  // 4. 팝업 메시지 처리
   // ==========================================
 
   // 각 처리 함수는 응답을 나중에 보내면(비동기) true 를 반환
@@ -463,38 +351,19 @@
   });
 
   // ==========================================
-  // 6. 타임라인 배지
+  // 5. 타임라인 배지 (그리는 방법은 shared/badges.js 의 renderTweet)
   // ==========================================
 
-  // 트윗 작성자 이름 영역에서 "@handle"(소문자)
-  function getHandleFromUserInfo(userInfoDiv) {
-    const handleSpan = Array.from(userInfoDiv.querySelectorAll('span'))
-      .find(span => span.textContent.trim().startsWith('@'));
-    if (handleSpan) return handleSpan.textContent.trim().toLowerCase();
-
-    const link = userInfoDiv.querySelector('a[href^="/"]');
-    const handle = link && getHandleFromProfileHref(link.getAttribute('href'));
-    return handle ? '@' + handle.toLowerCase() : null;
-  }
-
-  // 트윗에 붙인 배지·테두리·투명도를 지움 (X 가 트윗 DOM 을 다른 트윗에 재사용할 때 대비)
-  function resetTweetStyle(tweet) {
-    delete tweet.dataset.agProcessed;
-    delete tweet.dataset.agDim;
-    tweet.style.borderLeft = '';
-    tweet.style.opacity = ''; // 이전 버전이 트윗 전체에 넣던 투명도
-    tweet.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
-  }
-
+  // 모든 트윗에서 배지·강조·흐리게 표시를 지움
   function clearProcessedStyles() {
-    document.querySelectorAll(TWEET_SELECTOR).forEach(resetTweetStyle);
+    document.querySelectorAll(AG_TWEET_SELECTOR).forEach(resetTweetStyle);
   }
 
   // 바뀐 핸들이 들어 있는 트윗만 초기화 후 다시 처리
   function refreshTweetsByHandles(changedHandles) {
     const changed = new Set(changedHandles);
     const affected = [];
-    document.querySelectorAll(TWEET_SELECTOR).forEach((tweet) => {
+    document.querySelectorAll(AG_TWEET_SELECTOR).forEach((tweet) => {
       if (isTweetAffected(tweet.dataset.agProcessed, changed)) {
         resetTweetStyle(tweet);
         affected.push(tweet);
@@ -503,96 +372,16 @@
     if (affected.length > 0) processTimeline(affected);
   }
 
-  // 이름 영역 옆에 리스트 배지들을 붙임 (이미 있는 배지는 건너뜀)
-  function addBadges(userInfoDiv, lists, isMainAuthor) {
-    const anchor = getBadgeAnchor(userInfoDiv);
-    if (!anchor) return;
-
-    let wrapper = anchor.querySelector('.ag-badges-wrapper');
-    if (!wrapper) {
-      wrapper = document.createElement('span');
-      wrapper.className = 'ag-badges-wrapper';
-      anchor.appendChild(wrapper);
-    }
-    wrapper.textContent = '';
-
-    // 배지가 많으면 이름 줄이 여러 줄로 밀리므로, 몇 개만 보이고 나머지는 "+N" 으로 묶음
-    const { visible, hidden } = splitTimelineBadges(lists, AG_TIMELINE_MAX_BADGES);
-    visible.forEach((list) => {
-      const badge = document.createElement('span');
-      // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
-      badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
-      badge.textContent = list.name;
-      // 긴 이름은 말줄임(…)으로 잘리므로 전체 이름은 툴팁으로
-      badge.title = list.name;
-      // 글자 스타일: 공통 설정 위에 이 리스트만의 설정(list.style)을 덮어씀
-      applyBadgeStyle(badge, list.color, getEffectiveBadgeSettings(badgeSettings, list.style), isMainAuthor);
-      wrapper.appendChild(badge);
-    });
-
-    if (hidden.length > 0) {
-      const all = visible.concat(hidden).map(l => l.name);
-      const more = document.createElement('span');
-      more.className = isMainAuthor ? 'ag-badge-more' : 'ag-badge-more mini-badge';
-      more.textContent = `+${hidden.length}`;
-      more.title = `banmo_tag 리스트 ${all.length}개: ${all.join(', ')}`;
-      more.setAttribute('aria-label', more.title);
-      wrapper.appendChild(more);
-    }
-  }
-
-  // 트윗 하나 처리: 작성자(와 인용된 작성자)마다 배지, 원 작성자의 리스트 모드로 강조/흐리게
-  function renderTweet(tweet) {
-    const userInfoDivs = tweet.querySelectorAll(USER_NAME_SELECTOR);
-    if (userInfoDivs.length === 0) return;
-
-    // X 가 가상 스크롤로 트윗 DOM 을 다른 작성자 트윗에 재사용해도, 작성자 핸들 서명이 다르면 초기화 후 다시 그림
-    const handles = Array.from(userInfoDivs, getHandleFromUserInfo);
-    const handlesKey = handles.map(h => h || '').join(',') || 'none';
-    if (tweet.dataset.agProcessed === handlesKey) return;
-    if (tweet.dataset.agProcessed) resetTweetStyle(tweet);
-
-    let highlightColor = '';
-    let shouldDim = false;
-
-    userInfoDivs.forEach((userInfoDiv, index) => {
-      const handle = handles[index];
-      const lists = handle && handleToListsMap[handle];
-      if (!lists) return;
-
-      const isMainAuthor = index === 0;
-      if (isMainAuthor) {
-        lists.forEach((list) => {
-          // 여러 강조 리스트에 속하면 첫 번째 리스트 색상 사용
-          if (list.mode === 'highlight' && !highlightColor) highlightColor = list.color;
-          else if (list.mode === 'dim') shouldDim = true;
-        });
-      }
-      addBadges(userInfoDiv, lists, isMainAuthor);
-    });
-
-    // 강조가 흐리게보다 우선
-    if (highlightColor) {
-      tweet.style.borderLeft = `4px solid ${highlightColor}`;
-    } else if (shouldDim) {
-      // 본문·사진·버튼만 흐리게 하고 이름과 배지는 또렷하게 (styles.css).
-      // 흐리게 할 부분을 찾지 못하면(X 화면 구조 변경 등) 예전처럼 트윗 전체를 흐리게
-      tweet.dataset.agDim = tweet.querySelector(AG_DIM_TARGET_SELECTOR) ? 'body' : 'all';
-    }
-
-    tweet.dataset.agProcessed = handlesKey;
-  }
-
   // tweets 를 넘기면 그 트윗만, 생략하면 화면의 모든 트윗을 처리
   function processTimeline(tweets) {
     if (isShutDown) return;
     // 저장된 리스트가 없으면 DOM 을 훑을 필요가 없음
     if (Object.keys(handleToListsMap).length === 0) return;
-    (tweets || document.querySelectorAll(TWEET_SELECTOR)).forEach(renderTweet);
+    (tweets || document.querySelectorAll(AG_TWEET_SELECTOR)).forEach(tweet => renderTweet(tweet, handleToListsMap, badgeSettings));
   }
 
   // ==========================================
-  // 7. 화면 구조 점검 (팝업 경고용)
+  // 6. 화면 구조 점검 (팝업 경고용)
   // ==========================================
 
   function saveHealth(area, ok, message, at) {
@@ -608,7 +397,7 @@
   function checkStructureHealth() {
     if (isShutDown) return;
     const urlInfo = parseListUrl(location.pathname);
-    const result = diagnoseStructure(document, urlInfo, urlInfo ? getMemberListDialog() : null);
+    const result = diagnoseStructure(document, urlInfo, urlInfo ? getMemberListDialog(document) : null);
     if (!result) return; // 판단할 수 없는 화면
 
     const now = Date.now();
@@ -634,15 +423,15 @@
   }
 
   // ==========================================
-  // 8. 화면 변화 감지 · 시작
+  // 7. 화면 변화 감지 · 시작
   // ==========================================
 
   // 추가된 노드에 속한 트윗을 다시 처리할 목록에 모음
   function collectTweets(node) {
     if (needsFullScan || node.nodeType !== 1) return;
-    const own = node.closest(TWEET_SELECTOR);
+    const own = node.closest(AG_TWEET_SELECTOR);
     if (own) pendingTweets.add(own);
-    node.querySelectorAll(TWEET_SELECTOR).forEach(t => pendingTweets.add(t));
+    node.querySelectorAll(AG_TWEET_SELECTOR).forEach(t => pendingTweets.add(t));
     if (pendingTweets.size > MAX_PENDING_TWEETS) {
       needsFullScan = true;
       pendingTweets.clear();

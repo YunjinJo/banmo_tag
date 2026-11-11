@@ -8,9 +8,9 @@ banmo_tag 가 무엇을 어떻게 테스트하는지 정리한 문서입니다.
 | 종류 | 무엇을 확인하나 | 명령 | CI |
 |---|---|---|:-:|
 | 정적 검사 | manifest, 파일 참조, 금지 코드, 문서 링크 | `npm run validate` | ✅ |
-| ESLint | 문법, 정의 안 된 함수(`shared.js` 이름 변경) | `npm run lint` | ✅ |
+| ESLint | 문법, 정의 안 된 함수(`shared/` 의 함수 이름 변경) | `npm run lint` | ✅ |
 | Firefox 호환성 | Mozilla 부가 기능 사이트(AMO)와 같은 검사 | `npm run lint:firefox` | ✅ |
-| 단위 테스트 | `shared.js` 의 순수 로직 | `npm test` 에 포함, `tests\run-tests.ps1` | ✅ |
+| 단위 테스트 | `extension/shared/` 의 순수 로직 (`tests/unit/`) | `npm test` 에 포함, `tests\run-tests.ps1` | ✅ |
 | E2E | 실제 확장 프로그램을 Chromium 에 넣고 팝업·X 화면 동작 | `npm test` | ✅ |
 | 실제 Firefox | 실제 Firefox 에 임시 설치해 주요 동작 | `npm run test:firefox` | ✅ |
 | 수동 확인 | 로그인한 실제 X 화면에서만 볼 수 있는 동작 | 아래 [수동 확인 시나리오](#수동-확인-시나리오) | — |
@@ -55,64 +55,72 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 
 <!-- AUTO-CATALOG:START (npm run test:report -- --catalog 로 다시 만듦. 직접 고치지 마세요) -->
 
-### 정적 검사 (`npm run validate`, 11항목)
+### 정적 검사 (`npm run validate`, 13항목)
 
 | 번호 | 항목 |
 |:-:|---|
 | S-01 | manifest.json 형식 |
 | S-02 | manifest 참조 파일 존재 |
 | S-03 | 크롬 manifest · 파이어폭스 manifest |
-| S-04 | 버전 일치 (manifest ↔ CHANGELOG) |
-| S-05 | popup.html 스크립트·스타일 / CSP |
-| S-06 | popup.html 테마 스크립트 (&lt;head&gt;) |
-| S-07 | 흐리게 모드 선택자 일치 (shared.js ↔ styles.css) |
-| S-08 | background.js importScripts |
-| S-09 | JS 문법 / 금지 패턴 |
-| S-10 | 테스트 러너 shared.js 경로 |
-| S-11 | 문서 링크 (로컬 절대 경로 금지) |
+| S-04 | 공통 코드(shared/) 로드 목록 일치 |
+| S-05 | 버전 일치 (manifest ↔ CHANGELOG) |
+| S-06 | popup.html 스크립트·스타일 / CSP |
+| S-07 | popup.html 테마 스크립트 (&lt;head&gt;) |
+| S-08 | 흐리게 모드 선택자 일치 (shared/badges.js ↔ styles.css) |
+| S-09 | background.js importScripts |
+| S-10 | JS 문법 / 금지 패턴 |
+| S-11 | content script 최상위 선언 (function · var 만) |
+| S-12 | 단위 테스트 파일 (test-runner.html ↔ tests/unit/) |
+| S-13 | 문서 링크 (로컬 절대 경로 금지) |
 
 이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.
 
-### 단위 테스트 (`tests/test-runner.html`, 28개 묶음 · 105건)
+### 단위 테스트 (`tests/unit/`, 34개 묶음 · 125건)
 
-`shared.js` 를 그대로 불러와 검사합니다. E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.
+`tests/test-runner.html` 이 `extension/shared/*.js` 를 그대로 불러와 검사합니다 (테스트 파일은 `shared/` 의 파일마다 하나씩). E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.
 
-| 번호 | 묶음 | 건수 |
-|:-:|---|:-:|
-| U-01 | 1. 리스트 이름 태그 제거 (cleanListName) | 10 |
-| U-02 | 1-B. 시스템 단어 리스트 이름 차단 (isValidListName) | 5 |
-| U-03 | 2. 기존 저장 데이터 자동 마이그레이션 (sanitizeListsObject) | 5 |
-| U-04 | 3. 팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell) | 5 |
-| U-05 | 4. 순수 멤버 유저 추출 (extractMembersFromContainer) | 2 |
-| U-06 | 5. 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
-| U-07 | 6. 개별 멤버 삭제 (removeMemberFromLists 검증) | 1 |
-| U-08 | 7. 리스트 URL 파싱 및 수집 차단 정책 (parseListUrl & getScrapeBlockReason) | 5 |
-| U-09 | 8. 폴백 리스트명 자동 승격 및 listId 기반 병합 (resolveListKey) | 4 |
-| U-10 | 9. 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
-| U-11 | 10. 수동 핸들 파싱 및 백업 JSON 검증 (parseHandles & normalizeImportedLists) | 3 |
-| U-12 | 11. 공통 모듈(shared.js) 심볼 무결성 검증 | 1 |
-| U-13 | 12. 리스트 저장 통합 파이프라인 및 하이픈 보존 (applyListSave & mergeHandles) | 3 |
-| U-14 | 13. 실제 리스트 이름 보존 (cleanListName 과잉 정제 방지) | 5 |
-| U-15 | 14. 정제 중 동명 이질 리스트 분리 (sanitizeListsObject) | 4 |
-| U-16 | 15. 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 3 |
-| U-17 | 16. 직접 리스트 추가 (applyManualAdd) | 2 |
-| U-18 | 17. 팝업 [가져오기] 대상 탭 검사 (getSyncTabError) | 3 |
-| U-19 | 18. 추천 계정 필터 범위 축소 (isExcludedUserCell) | 4 |
-| U-20 | 19. 배지 부착 위치 (getBadgeAnchor) | 2 |
-| U-21 | 20. 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
-| U-22 | 21. 멤버 목록 교체 동기화 (applyListReplace) | 4 |
-| U-23 | 22. 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
-| U-24 | 23. X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
-| U-25 | 24. 직접 추가한 리스트는 "X"·"Home" 같은 이름도 허용 (manual) | 4 |
-| U-26 | 25. 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
-| U-27 | 26. 브라우저 구분 (getBrowserKind) | 1 |
-| U-28 | 27. 팝업 화면 설정 · 리스트 카드 · 타임라인 배지 묶기 | 7 |
+| 번호 | 파일 | 묶음 | 건수 |
+|:-:|---|---|:-:|
+| U-01 | `base.test.js` | 핸들 · 색 · 모드 확인 (mergeHandles, isHexColor, isValidMode, getHandleFromProfileHref) | 4 |
+| U-02 | `base.test.js` | 직접 입력한 핸들 읽기 (parseHandles) | 1 |
+| U-03 | `base.test.js` | 브라우저 구분 (getBrowserKind) | 1 |
+| U-04 | `list-names.test.js` | 리스트 이름 태그 제거 (cleanListName) | 10 |
+| U-05 | `list-names.test.js` | 실제 리스트 이름 보존 (cleanListName 과잉 정제 방지) | 5 |
+| U-06 | `list-names.test.js` | 시스템 단어 리스트 이름 차단 (isValidListName) | 5 |
+| U-07 | `list-data.test.js` | 기존 저장 데이터 자동 마이그레이션 (sanitizeListsObject) | 5 |
+| U-08 | `list-data.test.js` | 정제 중 동명 이질 리스트 분리 (sanitizeListsObject) | 4 |
+| U-09 | `list-data.test.js` | 폴백 리스트명 자동 승격 및 listId 기반 병합 (resolveListKey) | 4 |
+| U-10 | `list-data.test.js` | 리스트 저장 통합 파이프라인 및 하이픈 보존 (applyListSave & mergeHandles) | 3 |
+| U-11 | `list-data.test.js` | 멤버 목록 교체 동기화 (applyListReplace) | 4 |
+| U-12 | `list-data.test.js` | 직접 리스트 추가 (applyManualAdd) | 2 |
+| U-13 | `list-data.test.js` | 직접 추가한 리스트는 "X"·"Home" 같은 이름도 허용 (manual) | 4 |
+| U-14 | `list-data.test.js` | 개별 멤버 삭제 (removeMemberFromLists 검증) | 1 |
+| U-15 | `list-page.test.js` | 리스트 URL 파싱 및 수집 차단 정책 (parseListUrl & getScrapeBlockReason) | 5 |
+| U-16 | `list-page.test.js` | 팝업 [가져오기] 대상 탭 검사 (getSyncTabError) | 3 |
+| U-17 | `list-page.test.js` | 화면에서 리스트 이름 읽기 (getMemberListDialog, firstValidCleanName, getListNameFromPage) | 8 |
+| U-18 | `list-page.test.js` | 팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell) | 5 |
+| U-19 | `list-page.test.js` | 추천 계정 필터 범위 축소 (isExcludedUserCell) | 4 |
+| U-20 | `list-page.test.js` | 순수 멤버 유저 추출 (extractMembersFromContainer) | 2 |
+| U-21 | `list-page.test.js` | 수집 결과 서명 (buildScrapeSignature) | 1 |
+| U-22 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
+| U-23 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
+| U-24 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
+| U-25 | `badges.test.js` | 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
+| U-26 | `badges.test.js` | 배지 부착 위치 (getBadgeAnchor) | 2 |
+| U-27 | `badges.test.js` | 타임라인 배지 묶기 (splitTimelineBadges, "+N") | 3 |
+| U-28 | `badges.test.js` | 트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTweet, resetTweetStyle) | 8 |
+| U-29 | `backup.test.js` | 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
+| U-30 | `backup.test.js` | 가져온 백업 정리 (normalizeImportedLists) | 1 |
+| U-31 | `backup.test.js` | 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 3 |
+| U-32 | `health.test.js` | X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
+| U-33 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
+| U-34 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
 
-### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 50건)
+### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 51건)
 
 x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
 
-#### X 화면 (content script · background) (`content.spec.js`, 18건)
+#### X 화면 (content script · background) (`content.spec.js`, 19건)
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
@@ -129,11 +137,12 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | C-11 | 타임라인 배지 | 리스트별 글자 스타일이 그 리스트 배지에만 적용되고, 인용 미니 배지는 2px 작게 |
 | C-12 | 타임라인 배지 | 한 리스트의 글자 스타일을 바꾸면 그 리스트 멤버의 트윗만 다시 그림 |
 | C-13 | 타임라인 배지 | X 가 트윗 DOM 을 다른 작성자 트윗에 재사용하면 이전 배지를 지우고 새 작성자 기준으로 다시 그림 |
-| C-14 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
-| C-15 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 멤버 화면이 아니면 교체하지 않음 |
-| C-16 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
-| C-17 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
-| C-18 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
+| C-14 | 타임라인 배지 | content script 파일을 같은 탭에 다시 넣어도 배지가 한 번만 붙고 계속 동작 |
+| C-15 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
+| C-16 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 멤버 화면이 아니면 교체하지 않음 |
+| C-17 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
+| C-18 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
+| C-19 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
 
 #### 팝업 (`popup.spec.js`, 31건)
 
@@ -175,7 +184,7 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
-| UR-01 | - | shared.js 단위 테스트 전체 통과 (test-runner.html) |
+| UR-01 | - | 공통 코드(shared/) 단위 테스트 전체 통과 (test-runner.html) |
 
 #### 실제 X 화면 스냅샷 (`real-snapshots.spec.js`)
 
@@ -188,7 +197,7 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | 번호 | 항목 |
 |:-:|---|
 | F-01 | 파이어폭스에 임시 설치 |
-| F-02 | 팝업 열림 (shared.js 로드, 빈 목록 안내) |
+| F-02 | 팝업 열림 (shared/ 로드, 빈 목록 안내) |
 | F-03 | 브라우저 구분 = firefox |
 | F-04 | 파이어폭스 안내 문구 표시 |
 | F-05 | 화면 테마 다크 적용·저장 |

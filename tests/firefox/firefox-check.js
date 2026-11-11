@@ -140,7 +140,7 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
       firefoxNote: getComputedStyle(document.getElementById('firefox-note')).display,
       permissionBanner: getComputedStyle(document.getElementById('permission-warning')).display
     }));
-    record('팝업 열림 (shared.js 로드, 빈 목록 안내)', popupState.empty.includes('저장된 리스트가 없습니다'));
+    record('팝업 열림 (shared/ 로드, 빈 목록 안내)', popupState.empty.includes('저장된 리스트가 없습니다'));
     record('브라우저 구분 = firefox', popupState.kind === 'firefox');
     record('파이어폭스 안내 문구 표시', popupState.firefoxNote === 'block');
 
@@ -190,7 +190,7 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     record('리스트별 글자 크기 16px, 인용 미니 배지 14px', !!badge && badge.size === '16px' && badge.mini === '14px');
     record('강조 모드 왼쪽 테두리', !!badge && badge.border === '4px');
 
-    // 4. 멤버 자동 수집 → background(이벤트 페이지, shared.js 를 scripts 로 로드) 저장
+    // 4. 멤버 자동 수집 → background(이벤트 페이지, shared/*.js 를 scripts 로 로드) 저장
     const members = await browser.newPage();
     watch(members, 'x.com/members');
     await members.goto(`${X}/i/lists/123/members`);

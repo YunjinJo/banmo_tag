@@ -1,0 +1,294 @@
+// shared/badges.js — 타임라인 배지 (누가 어느 리스트인지 · 글자 스타일 · 트윗에 그리기)
+// 팝업의 미리보기도 같은 함수(applyBadgeStyle)를 써서 실제 타임라인과 같은 모양을 보여 줍니다.
+// ⚠️ shared/ 파일의 최상위에는 function 선언과 var 만 씁니다 (이유는 shared/base.js 머리말).
+
+// ==========================================
+// 규칙 (폰트 · 트윗 선택자 · 배지 수 · 흐리게 할 부분)
+// ==========================================
+
+// 배지 글자 스타일: 고를 수 있는 폰트와 화면 표시 이름, 리스트별로 덮어쓸 수 있는 항목
+var AG_FONT_FAMILIES = ['system', "'Arial', sans-serif", "'Roboto', sans-serif", "'Noto Sans KR', sans-serif",
+  "'Pretendard', sans-serif", 'monospace', "'Georgia', serif"];
+var AG_FONT_LABELS = {
+  'system': '시스템 기본',
+  "'Arial', sans-serif": 'Arial',
+  "'Roboto', sans-serif": 'Roboto',
+  "'Noto Sans KR', sans-serif": 'Noto Sans KR',
+  "'Pretendard', sans-serif": 'Pretendard',
+  'monospace': 'Monospace',
+  "'Georgia', serif": 'Georgia'
+};
+var AG_LIST_STYLE_KEYS = ['textColor', 'fontSize', 'fontFamily'];
+
+// 트윗과 그 안의 작성자 이름 영역 (X 화면 구조에 의존. 바꾸면 tests/fixtures/ 와 shared/health.js 도 함께 봄)
+var AG_TWEET_SELECTOR = 'article[data-testid="tweet"]';
+var AG_USER_NAME_SELECTOR = '[data-testid="User-Name"]';
+
+// 타임라인 이름 줄에 보여 줄 배지 수. 넘치면 (이 수 - 1)개 + "+N" 묶음 배지
+var AG_TIMELINE_MAX_BADGES = 3;
+
+// 흐리게 모드에서 흐리게 할 트윗 부분 (프로필 사진·본문·미디어·버튼). 이름과 배지 줄은 또렷하게 둠.
+// styles.css 의 [data-ag-dim="body"] 규칙과 같은 목록이어야 합니다.
+var AG_DIM_TARGET_SELECTOR = [
+  '[data-testid="Tweet-User-Avatar"]', '[data-testid="tweetText"]', '[data-testid="tweetPhoto"]',
+  '[data-testid="card.wrapper"]', '[data-testid="videoPlayer"]', '[data-testid="videoComponent"]', '[role="group"]'
+].join(', ');
+
+// ==========================================
+// 핸들 → 소속 리스트
+// ==========================================
+
+// 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color, mode }])
+function buildHandleMap(listData) {
+  const map = {};
+  Object.keys(listData || {}).forEach((listName) => {
+    const info = listData[listName];
+    if (!info || !Array.isArray(info.members)) return;
+    const style = normalizeListStyle(info.style);
+    info.members.forEach((handle) => {
+      const lower = String(handle).toLowerCase();
+      if (!map[lower]) map[lower] = [];
+      const entry = { name: listName, color: info.color || AG_DEFAULT_LIST_COLOR, mode: info.mode || 'normal' };
+      if (style) entry.style = style;
+      map[lower].push(entry);
+    });
+  });
+  return map;
+}
+
+// 두 핸들 맵을 비교해 배지 표시가 달라지는 핸들 목록.
+// 리스트가 바뀔 때 화면 전체가 아니라 이 핸들이 쓴 트윗만 다시 그리기 위해 사용.
+function diffHandleMaps(oldMap, newMap) {
+  const a = oldMap || {};
+  const b = newMap || {};
+  const allHandles = new Set(Object.keys(a).concat(Object.keys(b)));
+  const changed = [];
+  allHandles.forEach((handle) => {
+    if (JSON.stringify(a[handle] || null) !== JSON.stringify(b[handle] || null)) changed.push(handle);
+  });
+  return changed;
+}
+
+// 트윗 처리 서명(dataset.agProcessed = "@a,@b")에 바뀐 핸들이 하나라도 있으면 true
+function isTweetAffected(handlesKey, changedHandles) {
+  if (!handlesKey) return false;
+  const changed = changedHandles instanceof Set ? changedHandles : new Set(changedHandles || []);
+  if (changed.size === 0) return false;
+  return String(handlesKey).split(',').some(h => h && changed.has(h));
+}
+
+// ==========================================
+// 글자 스타일 (공통 설정 · 리스트별 설정)
+// ==========================================
+
+// 배지에 사용자 스타일 적용 (X 의 CSS 에 덮이지 않도록 CSS 변수 + 인라인 !important)
+function applyBadgeStyle(badge, bgColor, settings, isMainAuthor) {
+  const s = Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, settings || {});
+  const size = (isMainAuthor ? s.fontSize : Math.max(8, s.fontSize - 2)) + 'px';
+  const background = bgColor || AG_DEFAULT_LIST_COLOR;
+  const style = badge.style;
+
+  style.setProperty('--ag-badge-bg', background);
+  style.setProperty('--ag-badge-fg', s.textColor);
+  style.setProperty('--ag-badge-fs', size);
+  style.setProperty('background-color', background, 'important');
+  style.setProperty('color', s.textColor, 'important');
+  style.setProperty('font-size', size, 'important');
+
+  if (s.fontFamily && s.fontFamily !== 'system') {
+    style.setProperty('--ag-badge-ff', s.fontFamily);
+    style.setProperty('font-family', s.fontFamily, 'important');
+  } else {
+    style.removeProperty('--ag-badge-ff');
+    style.removeProperty('font-family');
+  }
+}
+
+// 리스트별 글자 스타일 검증: 올바른 항목만 남기고, 남는 게 없으면 null
+function normalizeListStyle(style) {
+  if (!style || typeof style !== 'object') return null;
+  const out = {};
+  if (isHexColor(style.textColor)) out.textColor = style.textColor;
+  const size = parseInt(style.fontSize, 10);
+  if (size >= 8 && size <= 20) out.fontSize = size;
+  if (AG_FONT_FAMILIES.indexOf(style.fontFamily) !== -1) out.fontFamily = style.fontFamily;
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+// 실제로 배지에 쓸 글자 스타일 = 기본값 ← 공통 설정 ← 리스트별 설정 (뒤가 앞을 덮어씀)
+function getEffectiveBadgeSettings(globalSettings, listStyle) {
+  return Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, globalSettings || {}, normalizeListStyle(listStyle) || {});
+}
+
+// 공통 배지 설정 검증 (잘못된 값은 기본값으로)
+function normalizeBadgeSettings(settings) {
+  return Object.assign({}, AG_DEFAULT_BADGE_SETTINGS, normalizeListStyle(settings) || {});
+}
+
+// 리스트의 글자 스타일 일부를 바꿈. 값이 null/undefined 인 항목은 지워서 공통 설정을 따르게 함.
+// 남는 항목이 없으면 style 자체를 지움. 리스트가 없으면 false
+function setListStyle(lists, listName, patch) {
+  const list = lists && lists[listName];
+  if (!list) return false;
+  const next = Object.assign({}, list.style || {});
+  Object.keys(patch || {}).forEach((key) => {
+    if (AG_LIST_STYLE_KEYS.indexOf(key) === -1) return;
+    if (patch[key] === null || patch[key] === undefined) delete next[key];
+    else next[key] = patch[key];
+  });
+  const normalized = normalizeListStyle(next);
+  if (normalized) list.style = normalized;
+  else delete list.style;
+  return true;
+}
+
+// 모든 리스트의 개별 글자 스타일을 지움 (모두 공통 설정을 따르게). 지운 리스트 수 반환
+function clearAllListStyles(lists) {
+  let cleared = 0;
+  Object.keys(lists || {}).forEach((name) => {
+    if (lists[name] && lists[name].style) {
+      delete lists[name].style;
+      cleared++;
+    }
+  });
+  return cleared;
+}
+
+// 개별 글자 스타일을 가진 리스트 수
+function countListsWithStyle(lists) {
+  return Object.keys(lists || {}).filter(name => lists[name] && normalizeListStyle(lists[name].style)).length;
+}
+
+// ==========================================
+// 트윗에 배지 그리기
+// ==========================================
+
+// 배지를 붙일 위치: 이름 링크(<a>)의 부모, 링크가 없으면(인용 트윗 등) 이름 영역의 첫 요소
+function getBadgeAnchor(userInfoDiv) {
+  if (!userInfoDiv) return null;
+  const link = userInfoDiv.querySelector('a');
+  if (link && link.parentNode) return link.parentNode;
+  return userInfoDiv.firstElementChild || userInfoDiv;
+}
+
+// 타임라인 배지 묶기: max 개 이하면 모두 보이고, 넘으면 (max - 1)개만 보이고 나머지는 "+N" 으로.
+// (+1 묶음은 배지 하나와 자리가 같아 의미가 없으므로 max 개까지는 그대로 보여 줌)
+function splitTimelineBadges(lists, max) {
+  const limit = Math.max(2, max || AG_TIMELINE_MAX_BADGES);
+  const seen = {};
+  const unique = (lists || []).filter((l) => {
+    if (!l || seen[l.name]) return false;
+    seen[l.name] = true;
+    return true;
+  });
+  if (unique.length <= limit) return { visible: unique, hidden: [] };
+  return { visible: unique.slice(0, limit - 1), hidden: unique.slice(limit - 1) };
+}
+
+// 트윗 작성자 이름 영역에서 "@handle"(소문자)
+function getHandleFromUserInfo(userInfoDiv) {
+  const handleSpan = Array.from(userInfoDiv.querySelectorAll('span'))
+    .find(span => span.textContent.trim().startsWith('@'));
+  if (handleSpan) return handleSpan.textContent.trim().toLowerCase();
+
+  const link = userInfoDiv.querySelector('a[href^="/"]');
+  const handle = link && getHandleFromProfileHref(link.getAttribute('href'));
+  return handle ? '@' + handle.toLowerCase() : null;
+}
+
+// 이름 영역 옆에 리스트 배지들을 붙임 (이미 붙인 배지는 지우고 새로 그림). badgeSettings 는 공통 글자 스타일
+function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings) {
+  const anchor = getBadgeAnchor(userInfoDiv);
+  if (!anchor) return;
+
+  let wrapper = anchor.querySelector('.ag-badges-wrapper');
+  if (!wrapper) {
+    wrapper = document.createElement('span');
+    wrapper.className = 'ag-badges-wrapper';
+    anchor.appendChild(wrapper);
+  }
+  wrapper.textContent = '';
+
+  // 배지가 많으면 이름 줄이 여러 줄로 밀리므로, 몇 개만 보이고 나머지는 "+N" 으로 묶음
+  const { visible, hidden } = splitTimelineBadges(lists, AG_TIMELINE_MAX_BADGES);
+  visible.forEach((list) => {
+    const badge = document.createElement('span');
+    // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
+    badge.className = isMainAuthor ? 'ag-list-badge' : 'ag-list-badge mini-badge';
+    badge.textContent = list.name;
+    // 긴 이름은 말줄임(…)으로 잘리므로 전체 이름은 툴팁으로
+    badge.title = list.name;
+    // 글자 스타일: 공통 설정 위에 이 리스트만의 설정(list.style)을 덮어씀
+    applyBadgeStyle(badge, list.color, getEffectiveBadgeSettings(badgeSettings, list.style), isMainAuthor);
+    wrapper.appendChild(badge);
+  });
+
+  if (hidden.length > 0) {
+    const all = visible.concat(hidden).map(l => l.name);
+    const more = document.createElement('span');
+    more.className = isMainAuthor ? 'ag-badge-more' : 'ag-badge-more mini-badge';
+    more.textContent = `+${hidden.length}`;
+    more.title = `banmo_tag 리스트 ${all.length}개: ${all.join(', ')}`;
+    more.setAttribute('aria-label', more.title);
+    wrapper.appendChild(more);
+  }
+}
+
+// 트윗에 붙인 배지·테두리·투명도를 지움 (X 가 트윗 DOM 을 다른 트윗에 재사용할 때 대비)
+function resetTweetStyle(tweet) {
+  delete tweet.dataset.agProcessed;
+  delete tweet.dataset.agDim;
+  tweet.style.borderLeft = '';
+  tweet.style.opacity = ''; // 이전 버전이 트윗 전체에 넣던 투명도
+  tweet.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
+}
+
+// 트윗 하나 처리: 작성자(와 인용된 작성자)마다 배지, 원 작성자의 리스트 모드로 강조/흐리게.
+// handleMap 은 buildHandleMap 의 결과, badgeSettings 는 공통 글자 스타일
+function renderTweet(tweet, handleMap, badgeSettings) {
+  const userInfoDivs = tweet.querySelectorAll(AG_USER_NAME_SELECTOR);
+  if (userInfoDivs.length === 0) return;
+
+  // X 가 가상 스크롤로 트윗 DOM 을 다른 작성자 트윗에 재사용해도, 작성자 핸들 서명이 다르면 초기화 후 다시 그림
+  const handles = Array.from(userInfoDivs, getHandleFromUserInfo);
+  const handlesKey = handles.map(h => h || '').join(',') || 'none';
+  if (tweet.dataset.agProcessed === handlesKey) return;
+  if (tweet.dataset.agProcessed) resetTweetStyle(tweet);
+
+  let highlightColor = '';
+  let shouldDim = false;
+
+  userInfoDivs.forEach((userInfoDiv, index) => {
+    const handle = handles[index];
+    const lists = handle && handleMap[handle];
+    if (!lists) return;
+
+    const isMainAuthor = index === 0;
+    if (isMainAuthor) {
+      lists.forEach((list) => {
+        // 여러 강조 리스트에 속하면 첫 번째 리스트 색상 사용
+        if (list.mode === 'highlight' && !highlightColor) highlightColor = list.color;
+        else if (list.mode === 'dim') shouldDim = true;
+      });
+    }
+    addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings);
+  });
+
+  // 강조가 흐리게보다 우선
+  if (highlightColor) {
+    tweet.style.borderLeft = `4px solid ${highlightColor}`;
+  } else if (shouldDim) {
+    // 본문·사진·버튼만 흐리게 하고 이름과 배지는 또렷하게 (styles.css).
+    // 흐리게 할 부분을 찾지 못하면(X 화면 구조 변경 등) 예전처럼 트윗 전체를 흐리게
+    tweet.dataset.agDim = tweet.querySelector(AG_DIM_TARGET_SELECTOR) ? 'body' : 'all';
+  }
+
+  tweet.dataset.agProcessed = handlesKey;
+}
+
+// 확장 프로그램이 직접 넣은 배지 노드인지 (MutationObserver 가 자기 변경에 반응하지 않도록)
+function isOwnInjectedNode(node) {
+  if (!node || node.nodeType !== 1) return false;
+  const cls = node.classList;
+  return !!cls && (cls.contains('ag-badges-wrapper') || cls.contains('ag-list-badge') || cls.contains('ag-badge-more'));
+}

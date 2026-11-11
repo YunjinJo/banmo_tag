@@ -62,7 +62,7 @@ jobs:
         run: npx playwright install --with-deps chromium
 
       # 확장 프로그램을 Chromium 에 로드하고, x.com 요청에는 tests/fixtures 의 HTML 로 응답
-      - name: E2E + shared.js 단위 테스트
+      - name: E2E + 공통 코드(shared/) 단위 테스트
         run: npx playwright test
 
       - name: 실패 시 보고서 업로드
@@ -122,7 +122,7 @@ jobs:
         run: |
           $v = (Get-Content extension/manifest.json -Raw | ConvertFrom-Json).version
           Add-Type -AssemblyName System.IO.Compression.FileSystem
-          $required = 'manifest.json', 'shared.js', 'content.js', 'background.js', 'popup.html', 'popup.js', 'theme.js', 'styles.css',
+          $required = 'manifest.json', 'content.js', 'background.js', 'popup.html', 'popup.js', 'theme.js', 'styles.css',
             'icons/icon16.png', 'icons/icon32.png', 'icons/icon48.png', 'icons/icon128.png'
           $summary = "### 패키징 확인`n`n- 버전: v$v (zip 은 업로드하지 않음)"
           foreach ($browser in 'chrome', 'firefox') {
@@ -140,7 +140,9 @@ jobs:
             $popupRefs = [regex]::Matches($popupHtml, '(?:src|href)="([^"#]+\.(?:js|css))"') | ForEach-Object { $_.Groups[1].Value }
             $archive.Dispose()
             Write-Host "[$browser]"; $entries | ForEach-Object { Write-Host "  $_" }
-            $missing = @($required) + @($popupRefs) | Where-Object { $entries -notcontains $_ }
+            # manifest 가 읽는 파일(shared/*.js, content.js, styles.css, background)도 모두 zip 에 있어야 함
+            $manifestRefs = @($manifest.content_scripts | ForEach-Object { $_.js; $_.css }) + @($manifest.background.service_worker) + @($manifest.background.scripts) | Where-Object { $_ }
+            $missing = @($required) + @($popupRefs) + @($manifestRefs) | Where-Object { $entries -notcontains $_ }
             if ($missing) { Write-Error "$browser zip 에 없는 파일: $($missing -join ', ')"; exit 1 }
             # zip 표준은 경로 구분자로 / 를 씀 (\ 가 있으면 폴더로 인식되지 않을 수 있음)
             $backslash = $entries | Where-Object { $_ -like '*\*' }

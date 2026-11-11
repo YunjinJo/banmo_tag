@@ -68,7 +68,7 @@
 
 ## 🔴 2. 가져오기(Import)할 때 `listId`가 사라짐
 
-**위치**: [`normalizeImportedLists`](../extension/shared.js#L310-L323)
+**위치**: [`normalizeImportedLists`](../extension/shared/backup.js)
 
 ```js
 result[key] = {
@@ -81,7 +81,7 @@ result[key] = {
 
 **문제**
 - 내보내기(Export)는 `listId`까지 저장하지만, 가져오면 `listId`가 버려집니다.
-- 그 결과 [`resolveListKey`](../extension/shared.js#L155-L166)가 같은 리스트를 알아보지 못합니다. 복원한 뒤 다시 수집하면 `리스트 (12345)` 같은 중복 리스트가 생기거나, 이름이 바뀐 리스트가 따로 만들어집니다.
+- 그 결과 [`resolveListKey`](../extension/shared/list-data.js)가 같은 리스트를 알아보지 못합니다. 복원한 뒤 다시 수집하면 `리스트 (12345)` 같은 중복 리스트가 생기거나, 이름이 바뀐 리스트가 따로 만들어집니다.
 
 **개선안**
 ```js
@@ -120,7 +120,7 @@ tweet.dataset.agProcessed = key;
 
 ## 🔴 4. 이름이 같은 서로 다른 리스트가 하나로 합쳐짐
 
-**위치**: [`background.js` `saveListMembers`](../extension/background.js#L28-L77), [`resolveListKey`](../extension/shared.js#L155-L166)
+**위치**: [`background.js` `saveListMembers`](../extension/background.js#L28-L77), [`resolveListKey`](../extension/shared/list-data.js)
 
 **문제**
 - 저장 키가 **리스트 이름**입니다. 서로 다른 사용자가 만든 `"친구"` 리스트 두 개(서로 다른 `listId`)를 수집하면 같은 키에 멤버가 섞입니다.
@@ -247,7 +247,7 @@ function withTimeout(promise, ms = 8000) {
 
 **위치**: [`styles.css`](../extension/styles.css)
 
-- `.ag-list-badge`의 `font-size: 11px !important`, `color: white !important`와 `.mini-badge`의 `font-size: 9px !important`는 [`applyBadgeStyle`](../extension/shared.js#L268-L279)이 인라인 `!important`로 항상 덮어쓰므로 적용되지 않습니다.
+- `.ag-list-badge`의 `font-size: 11px !important`, `color: white !important`와 `.mini-badge`의 `font-size: 9px !important`는 [`applyBadgeStyle`](../extension/shared/badges.js)이 인라인 `!important`로 항상 덮어쓰므로 적용되지 않습니다.
 - `margin-left`가 `.ag-badges-wrapper`(6px)와 `.mini-badge`(4px)에 겹쳐 있습니다.
 
 **개선안**: CSS 변수로 바꾸면 인라인 `!important` 경쟁이 사라집니다.
@@ -280,7 +280,7 @@ badge.style.setProperty('--ag-fg', s.textColor);
 
 ## 🟢 15. 기타
 
-- **시스템 단어 과차단**: [`isSystemListName`](../extension/shared.js#L15-L32)에 `X`, `Post`, `Home` 등이 있어서 실제 리스트 이름이 `X`인 경우 등록할 수 없습니다. 자동 수집에서만 막고 수동 추가에서는 허용하는 방안을 검토합니다.
+- **시스템 단어 과차단**: [`isSystemListName`](../extension/shared/list-names.js)에 `X`, `Post`, `Home` 등이 있어서 실제 리스트 이름이 `X`인 경우 등록할 수 없습니다. 자동 수집에서만 막고 수동 추가에서는 허용하는 방안을 검토합니다.
 - **서비스 워커 `setTimeout`**: [`showSavedBadge`](../extension/background.js#L16-L26)의 3초 뒤 지우기는 서비스 워커가 먼저 종료되면 실행되지 않습니다. `chrome.alarms`를 쓰거나 팝업을 열 때 지우는 현재 방식에만 의존합니다.
 - **i18n**: 문구가 모두 한국어로 하드코딩돼 있습니다. 필요하면 `_locales/ko`, `_locales/en`과 `chrome.i18n.getMessage`로 분리합니다.
 - **버전 관리**: `manifest.json`의 `version`과 `CHANGELOG.md` 최신 버전을 `build.ps1`에서 비교해 다르면 빌드를 실패시킵니다.

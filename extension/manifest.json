@@ -27,7 +27,17 @@
   "content_scripts": [
     {
       "matches": ["*://*.x.com/*", "*://*.twitter.com/*"],
-      "js": ["shared.js", "content.js"],
+      "js": [
+        "shared/base.js",
+        "shared/list-names.js",
+        "shared/list-data.js",
+        "shared/list-page.js",
+        "shared/badges.js",
+        "shared/backup.js",
+        "shared/health.js",
+        "shared/ui.js",
+        "content.js"
+      ],
       "css": ["styles.css"],
       "run_at": "document_idle"
     }

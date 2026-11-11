@@ -221,6 +221,38 @@ test.describe('타임라인 배지', () => {
     await expect(reused.locator('.ag-list-badge')).toHaveText('동료');
     await expect(reused).toHaveCSS('border-left-width', '0px');
   });
+
+  // 팝업은 content script 가 응답하지 않으면 manifest 에 적힌 파일을 그 탭에 다시 넣음 (popup/sync.js injectContentScript).
+  // 이미 들어 있는 탭에 또 넣어도 배지가 두 번 붙거나 동작이 멈추면 안 됨 (content.js 의 __agContentLoaded 확인).
+  // 최상위 const/let 의 "이미 선언됨" 오류는 executeScript 결과로 돌아오지 않아 여기서는 잡지 못함
+  // → 정적 검사(scripts/validate.js "content script 최상위 선언")가 확인
+  test('content script 파일을 같은 탭에 다시 넣어도 배지가 한 번만 붙고 계속 동작', async ({ context, serviceWorker }) => {
+    const page = await openTimeline(context, serviceWorker);
+    const tabId = await findXTabId(serviceWorker);
+
+    const results = await serviceWorker.evaluate(async (id) => {
+      const [contentScript] = chrome.runtime.getManifest().content_scripts;
+      const out = [];
+      // 한 파일씩 넣어 어느 파일에서 오류가 났는지 알 수 있게
+      for (const file of contentScript.js) {
+        try {
+          const [result] = await chrome.scripting.executeScript({ target: { tabId: id }, files: [file] });
+          out.push(result && result.error ? `${file}: ${result.error.message || result.error}` : 'ok');
+        } catch (error) {
+          out.push(`${file}: ${error.message}`);
+        }
+      }
+      return out;
+    }, tabId);
+    expect(results.filter(r => r !== 'ok')).toEqual([]);
+    expect(results.length).toBeGreaterThan(1);
+
+    // 배지가 두 번 붙지 않고, 저장 데이터가 바뀌면 여전히 반영됨
+    await expect(page.locator('[data-fixture-id="t-alice"] .ag-list-badge')).toHaveCount(1);
+    await setStorage(serviceWorker, { lists: { ...LISTS, '친구': { ...LISTS['친구'], members: [] } } });
+    await expect(page.locator('[data-fixture-id="t-alice"] .ag-list-badge')).toHaveCount(0);
+    await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveCount(1);
+  });
 });
 
 test.describe('멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리)', () => {
