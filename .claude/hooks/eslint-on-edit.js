@@ -1,6 +1,6 @@
 // .claude/hooks/eslint-on-edit.js — PostToolUse 훅 (Edit / Write)
 // 저장소 안의 .js 파일을 고치면 그 파일만 바로 ESLint 로 검사합니다.
-// 특히 shared.js 의 함수 이름을 바꾸거나 지웠는데 다른 파일이 아직 쓰고 있는 경우(no-undef)를 즉시 알려 줍니다.
+// 특히 extension/shared/ 의 함수 이름을 바꾸거나 지웠는데 다른 파일이 아직 쓰고 있는 경우(no-undef)를 즉시 알려 줍니다.
 //
 // 입력: stdin 의 훅 JSON ({ tool_input: { file_path }, cwd })
 // 출력: 문제가 있으면 exit 2 + stderr 에 ESLint 결과 (Claude 에게 전달됨), 그 밖에는 exit 0

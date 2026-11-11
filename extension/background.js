@@ -1,9 +1,21 @@
 // background.js — 백그라운드 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 //   content script 가 보낸 멤버 저장·교체 요청을 순서대로 처리하고, 설치/업데이트 때 저장 데이터를 정리합니다.
-// 공통 로직(applyListSave, applyListReplace, sanitizeListsObject 등)은 shared.js 에 있습니다.
-// - 크롬: manifest 의 background.service_worker 로 이 파일만 실행되므로 importScripts 로 shared.js 를 불러옴
-// - 파이어폭스: background.scripts 로 shared.js 가 먼저 실행되고, 이벤트 페이지에는 importScripts 가 없음
-if (typeof importScripts === 'function') importScripts('shared.js');
+// 공통 로직(applyListSave, applyListReplace, sanitizeListsObject 등)은 shared/ 에 있습니다.
+// - 크롬: manifest 의 background.service_worker 로 이 파일만 실행되므로 importScripts 로 shared/ 파일을 불러옴
+// - 파이어폭스: background.scripts(manifest.firefox.json)로 shared/ 파일이 먼저 실행되고, 이벤트 페이지에는 importScripts 가 없음
+// 아래 목록은 manifest.json 의 content_scripts 와 같은 순서로 둡니다 (`node scripts/validate.js` 가 확인).
+if (typeof importScripts === 'function') {
+  importScripts(
+    'shared/base.js',
+    'shared/list-names.js',
+    'shared/list-data.js',
+    'shared/list-page.js',
+    'shared/badges.js',
+    'shared/backup.js',
+    'shared/health.js',
+    'shared/ui.js'
+  );
+}
 
 // ==========================================
 // 저장 작업 큐

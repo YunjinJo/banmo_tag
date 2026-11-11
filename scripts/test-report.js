@@ -48,13 +48,16 @@ function listStaticChecks() {
   return [...read('scripts/validate.js').matchAll(/^check\('([^']+)'/gm)].map(m => m[1]);
 }
 
-// tests/test-runner.html 의 describe(...) 별 it(...) 개수
+// 단위 테스트 묶음: tests/test-runner.html 이 불러오는 tests/unit/*.test.js 의 describe(...) 별 it(...) 개수
 function listUnitSuites() {
+  const files = [...read('tests/test-runner.html').matchAll(/<script\b[^>]*\bsrc="(unit\/[^"]+)"/g)].map(m => m[1]);
   const suites = [];
-  read('tests/test-runner.html').split('\n').forEach((line) => {
-    const d = line.match(/^\s*describe\('(.+)',\s*\(\)\s*=>/);
-    if (d) suites.push({ name: d[1], count: 0 });
-    else if (/^\s*it\('/.test(line) && suites.length) suites[suites.length - 1].count++;
+  files.forEach((file) => {
+    read('tests/' + file).split('\n').forEach((line) => {
+      const d = line.match(/^\s*describe\('(.+)',\s*\(\)\s*=>/);
+      if (d) suites.push({ file: path.basename(file), name: d[1], count: 0 });
+      else if (/^\s*it\('/.test(line) && suites.length) suites[suites.length - 1].count++;
+    });
   });
   return suites;
 }
@@ -103,10 +106,10 @@ function buildCatalog() {
 
   const suites = listUnitSuites();
   const unitTotal = suites.reduce((a, s) => a + s.count, 0);
-  lines.push(`### 단위 테스트 (\`tests/test-runner.html\`, ${suites.length}개 묶음 · ${unitTotal}건)`, '');
-  lines.push('`shared.js` 를 그대로 불러와 검사합니다. E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.', '');
-  lines.push('| 번호 | 묶음 | 건수 |', '|:-:|---|:-:|');
-  suites.forEach((s, i) => lines.push(`| U-${pad(i + 1)} | ${escapeCell(s.name)} | ${s.count} |`));
+  lines.push(`### 단위 테스트 (\`tests/unit/\`, ${suites.length}개 묶음 · ${unitTotal}건)`, '');
+  lines.push('`tests/test-runner.html` 이 `extension/shared/*.js` 를 그대로 불러와 검사합니다 (테스트 파일은 `shared/` 의 파일마다 하나씩). E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.', '');
+  lines.push('| 번호 | 파일 | 묶음 | 건수 |', '|:-:|---|---|:-:|');
+  suites.forEach((s, i) => lines.push(`| U-${pad(i + 1)} | \`${s.file}\` | ${escapeCell(s.name)} | ${s.count} |`));
   lines.push('');
 
   const specs = listE2E();
@@ -218,7 +221,7 @@ function runE2E() {
       const errText = inFile.flatMap(s => s.tests.flatMap(t => t.results.flatMap(res => (res.errors || []).map(e => e.message || '')))).join('\n');
       const unitFailures = errText.split('\n').filter(l => /›/.test(l) && !/^\s*[-+]/.test(l)).slice(0, 20);
       unit = {
-        name: '단위 테스트 (`tests/test-runner.html`)',
+        name: '단위 테스트 (`tests/unit/`)',
         pass: failed.length === 0,
         detail: m ? `${m[1]}/${m[2]}` : (failed.length ? '실패' : '통과'),
         failures: failed.length ? (unitFailures.length ? unitFailures : ['test-runner.html 에서 실패한 테스트를 확인하세요']) : []

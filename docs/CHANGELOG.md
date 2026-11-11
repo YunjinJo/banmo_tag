@@ -10,8 +10,16 @@
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
 ### 🛠️ Changed (변경 및 개선)
+- **코드를 관리하기 쉽게 다시 나눔 (동작은 그대로)**: 파일 이름만 보고 고칠 곳을 찾을 수 있게 주제별로 나눴습니다. 화면과 동작, 저장 데이터는 바뀌지 않습니다. 구조 설명은 [DEVELOPMENT.md 의 "코드 구조"](DEVELOPMENT.md#코드-구조).
+  - **공통 코드 `shared.js`(924줄) → `extension/shared/` 8개 파일**: `base`(기본값·핸들), `list-names`(이름 정리), `list-data`(저장 데이터), `list-page`(X 리스트 화면 읽기), `badges`(배지), `backup`, `health`(화면 구조 점검), `ui`(팝업 화면 설정).
+  - **`content.js` 730줄 → 519줄**: 화면에서 리스트 이름을 읽는 코드와 트윗에 배지를 그리는 코드를 `shared/list-page.js`, `shared/badges.js` 로 옮겼습니다. `content.js` 에는 "언제 수집하고 언제 다시 그릴지"만 남았고, 옮긴 코드는 단위 테스트로 검사합니다.
+  - **팝업 파일 추가 분할**: `nav.js` 에서 `tab-view.js`(새 탭 화면·파이어폭스 우회)와 `ui-settings.js`(테마·정렬)를, `lists.js`(441줄)에서 `sheet.js`(리스트 설정 창)와 `manual-add.js`(직접 추가)를 나눴습니다.
+  - **단위 테스트를 파일로 분리**: `tests/test-runner.html` 한 파일(1,391줄)에 있던 테스트를 `tests/unit/<대상 파일>.test.js` 9개로 나눴습니다(`shared/` 의 파일마다 하나). 새로 옮긴 코드의 테스트 20건을 더해 105건 → 125건입니다. 설명은 [tests/unit/README.md](../tests/unit/README.md).
+  - **공통 파일 목록의 기준을 한 곳으로**: 기준은 `manifest.json` 의 `content_scripts` 입니다. 팝업이 content script 를 다시 넣을 때 이 목록을 그대로 읽습니다. 정적 검사가 `manifest.firefox.json`, `background.js`, `popup.html`, `tests/test-runner.html` 의 목록·순서가 기준과 같은지 확인합니다.
+  - **정적 검사 추가 (11 → 13항목)**: 위의 로드 목록 확인, content script 파일(`shared/*.js`, `content.js`)의 최상위에 `const`/`let`/`class` 가 없는지(다시 주입될 때 오류가 나는 것을 미리 막음), `popup.js` 가 마지막 스크립트인지, `tests/unit/` 의 테스트 파일이 모두 실행되는지, `shared/` 의 모든 함수가 심볼 목록(`tests/unit/symbols.test.js`)에 있는지. CI 는 manifest 가 읽는 파일이 배포 zip 에 모두 있는지 확인합니다.
+  - **E2E 테스트 1건 추가**: content script 파일을 같은 탭에 다시 넣어도 배지가 한 번만 붙고 계속 동작하는지 확인합니다.
 - **팝업 코드를 기능별 파일로 분할 (`popup.js` → `popup/`)**: 1,272줄이던 `popup.js` 를 나눴습니다. 화면과 동작은 그대로입니다(README 스크린샷을 다시 찍어도 같음).
-  - `popup/core.js`(상태·공통 UI·저장 큐), `nav.js`(새 탭 화면·탭·메뉴·테마), `sync.js`(X 탭 연동·구조 경고), `backup.js`, `lists.js`(리스트 표·설정 창), `badge.js`(기본 스타일), `popup.js`(시작점)
+  - `popup/core.js`(상태·공통 UI·저장 큐), `nav.js`(탭·메뉴), `sync.js`(X 탭 연동·구조 경고), `backup.js`, `lists.js`(리스트 표), `badge.js`(기본 스타일), `popup.js`(시작점). 이후 위 항목에서 더 나눴습니다.
   - `popup.html` 안의 CSS 는 `popup/popup.css` 로 옮겼습니다. `popup.html` 은 880줄에서 214줄이 됐습니다.
   - 일반 스크립트라 파일끼리 함수를 공유합니다. ESLint 가 팝업 파일마다 다른 팝업 파일의 최상위 이름을 알고 있어서, 이름을 바꾸거나 지우면 바로 오류가 납니다.
   - 정적 검사: `popup.html` 이 읽는 스타일 파일이 있는지, `popup/*.js` 가 모두 `popup.html` 에서 로드되는지, `popup.html` 에 `<style>` 이 없는지 확인합니다. 하위 폴더의 JS 도 문법·금지 패턴을 검사합니다. 배포 zip 에 `popup/` 폴더를 넣고, CI 는 `popup.html` 이 읽는 파일이 zip 에 모두 있는지 확인합니다.
@@ -197,7 +205,7 @@
 ## [v1.3.0] - 2026-10-18
 
 ### 🚀 Added (새로운 기능)
-- **단일 공통 모듈(`shared.js`) 아키텍처 도입**: `content.js`, `popup.js`, `background.js`, `test-runner.html` 4곳에 복제되어 있던 핵심 로직을 [`shared.js`](../extension/shared.js) 하나로 통합하여 코드 드리프트를 원천 차단하고 실제 런타임 코드와 테스트 코드의 100% 일치를 보장.
+- **단일 공통 모듈(`shared.js`) 아키텍처 도입**: `content.js`, `popup.js`, `background.js`, `test-runner.html` 4곳에 복제되어 있던 핵심 로직을 `shared.js` (지금은 [`shared/`](../extension/shared/) 폴더) 하나로 통합하여 코드 드리프트를 원천 차단하고 실제 런타임 코드와 테스트 코드의 100% 일치를 보장.
 - **백업 JSON 가져오기 시 병합(Merge) / 덮어쓰기(Replace) / 취소 선택 UI**: 기존 리스트를 예고 없이 덮어쓰던 문제를 해결하고, 기존 데이터와 합치거나(병합) 전체 교체(덮어쓰기)할 수 있는 선택 UI(`#import-choice`) 추가.
 - **배지 스타일 기본값 복원 버튼(`#badge-reset-btn`)**: 글자 색상, 크기, 폰트를 원클릭으로 초기 상태(`#ffffff`, `11px`, `system`)로 되돌리는 복원 기능 추가.
 - **이미 열려있는 트위터 탭 자동 스크립트 주입 복구**: 확장 프로그램 설치/업데이트 직후 새로고침하지 않은 트위터 탭에서 `[⚡ 현재 열린 트위터 리스트 가져오기]` 클릭 시 `chrome.scripting`으로 `styles.css`, `shared.js`, `content.js`를 즉시 주입하고 재시도하도록 개선.

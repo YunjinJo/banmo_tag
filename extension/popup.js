@@ -1,26 +1,29 @@
 // popup.js — 확장 프로그램 팝업 화면의 시작점
-// 공통 로직(cleanListName, sanitizeListsObject, parseHandles 등)은 popup.html 에서 먼저 로드되는 shared.js 에 있습니다.
-// 첫 화면 전에 테마를 적용하는 부분은 theme.js, 화면 모양은 popup/popup.css 에 있습니다.
+// 화면이 준비되면 각 기능을 연결하고(setup…), 저장 데이터가 바뀌면 화면을 다시 그립니다.
 //
-// 팝업 코드는 기능별 파일로 나뉘어 있습니다. popup.html 이 아래 순서로 읽고, 모두 일반 스크립트라
-// 최상위 함수·변수를 서로 공유합니다. 이 파일은 마지막에 읽혀 화면이 준비되면 각 기능을 연결합니다.
+// 팝업 코드는 화면 단위 파일로 나뉘어 있습니다. popup.html 이 아래 순서로 읽고, 모두 일반 스크립트(ES module 아님)라
+// 최상위 함수·변수를 서로 공유합니다. 새 파일을 만들면 popup.html 에 추가합니다 (`node scripts/validate.js` 가 확인).
 //
-//   popup/core.js     0. 상태 · 2. 공통 UI(상태 메시지, 확인 상자, 뒤 화면 잠그기) · 3. 리스트 저장 큐
-//   popup/nav.js      2-1. 새 탭 화면 · 파이어폭스 팝업 우회 · x.com 접근 권한 / 2-2. 탭 · ⋯ 메뉴 / 2-3. 화면 설정
-//   popup/sync.js     4. X 탭 연동([현재 탭에서 가져오기], [뺀 멤버 정리]) · 5. X 화면 구조 경고
-//   popup/backup.js   7. 백업 · 복원 · 초기화
-//   popup/lists.js    6. 직접 리스트 추가 · 8. 리스트 표 · 8-1. 리스트 설정 창
-//   popup/badge.js    9. 배지 기본 스타일 (모든 리스트 공통)
-//   popup.js          1. 시작 (이 파일)
-
-// ==========================================
-// 1. 시작
-// ==========================================
+//   theme.js               첫 화면 전에 테마 적용 (<head> 에서 가장 먼저)
+//   shared/*.js            공통 로직 (cleanListName, sanitizeListsObject, applyBadgeStyle … 목록은 shared/base.js 머리말)
+//   popup/core.js          상태 · 작은 도우미(byId, makeElement) · 공통 UI(상태 메시지, 확인 상자) · 리스트 저장 큐(updateLists)
+//   popup/tab-view.js      새 탭에서 열기 · 파이어폭스 팝업 우회
+//   popup/nav.js           탭 · ⋯ 메뉴
+//   popup/ui-settings.js   화면 설정 (테마 · 리스트 정렬)
+//   popup/sync.js          X 탭 연동: x.com 접근 권한 · [현재 탭에서 가져오기] · [뺀 멤버 정리] · X 화면 구조 경고
+//   popup/backup.js        백업 · 복원 · 초기화
+//   popup/manual-add.js    직접 리스트 추가
+//   popup/lists.js         리스트 표
+//   popup/sheet.js         리스트 설정 창(시트)
+//   popup/badge.js         배지 기본 스타일 (모든 리스트 공통)
+//   popup.js               시작 (이 파일. 마지막에 읽힘)
+//
+// 화면 모양은 popup/popup.css 에 있습니다.
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!SHARED_LOADED) {
-    document.body.textContent = 'shared.js 를 불러오지 못했습니다. chrome://extensions 에서 banmo_tag 를 새로고침해주세요.';
-    console.error('[banmo_tag] shared.js not loaded');
+    document.body.textContent = '공통 코드(shared/)를 불러오지 못했습니다. chrome://extensions 에서 banmo_tag 를 새로고침해주세요.';
+    console.error('[banmo_tag] shared/*.js not loaded');
     return;
   }
 

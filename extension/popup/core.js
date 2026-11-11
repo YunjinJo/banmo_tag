@@ -1,12 +1,11 @@
-// popup/core.js — 팝업 공통: 상태 · 공통 UI(상태 메시지, 확인 상자, 뒤 화면 잠그기) · 리스트 저장 큐
-// 팝업 화면은 여러 파일로 나뉘어 있고, popup.html 이 shared.js → popup/*.js → popup.js 순서로 읽습니다.
-// 파일들은 일반 스크립트라 최상위 함수·변수를 서로 공유합니다(목차는 popup.js 참고).
+// popup/core.js — 팝업 공통: 상태 · 작은 도우미 · 공통 UI(상태 메시지, 확인 상자, 뒤 화면 잠그기) · 리스트 저장 큐
+// 팝업 코드는 화면 단위 파일로 나뉘어 있고 최상위 함수·변수를 서로 공유합니다 (파일 목록과 읽는 순서는 popup.js 머리말).
 
 // ==========================================
-// 0. 상태
+// 상태 · 상수
 // ==========================================
 
-// shared.js 가 없으면 아무 기능도 동작하지 않으므로, 증상을 숨기는 폴백 대신 시작 시 원인을 알림
+// shared/ 파일이 없으면 아무 기능도 동작하지 않으므로, 증상을 숨기는 폴백 대신 시작 시 원인을 알림
 const SHARED_LOADED = typeof sanitizeListsObject === 'function';
 
 let badgeSettings = SHARED_LOADED ? { ...AG_DEFAULT_BADGE_SETTINGS } : {};
@@ -24,8 +23,6 @@ let statusTimer = null;
 let resolveConfirm = null;
 let confirmReturnFocus = null;
 
-const byId = id => document.getElementById(id);
-
 // 팝업 화면을 일반 탭에서 연 경우: popup.html?view=tab&targetTab=<열 때 보던 탭 id>[&list=<열어 둘 리스트>]
 const PAGE_PARAMS = new URLSearchParams(location.search);
 const IS_TAB_VIEW = PAGE_PARAMS.get('view') === 'tab';
@@ -38,10 +35,34 @@ const OPEN_IN_TAB_ON_FIREFOX = '#import-btn, #export-btn, input[type="color"]';
 const THEME_CACHE_KEY = 'banmo_tag.theme';
 
 const TAB_KEYS = ['lists', 'style', 'help'];
-const FONT_SIZES = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
 // ==========================================
-// 2. 공통 UI (상태 메시지, 확인 상자, 뒤 화면 잠그기)
+// 작은 도우미
+// ==========================================
+
+const byId = id => document.getElementById(id);
+
+// 작은 DOM 생성 도우미. type 이 있으면(버튼·입력란) 가장 먼저 지정
+function makeElement(tag, className, text, type) {
+  const el = document.createElement(tag);
+  if (type) el.type = type;
+  if (className) el.className = className;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+// 버튼을 잠그고 작업을 실행한 뒤 다시 풀어 줌 (연타 방지)
+async function withButtonDisabled(button, task) {
+  button.disabled = true;
+  try {
+    await task();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// ==========================================
+// 공통 UI (상태 메시지, 확인 상자, 뒤 화면 잠그기)
 // ==========================================
 
 // 화면 위에 뜨는 상태 메시지 (5초 뒤 사라짐, 누르면 바로 닫힘)
@@ -105,7 +126,7 @@ function updateInert() {
 }
 
 // ==========================================
-// 3. 리스트 저장 (순서대로 처리)
+// 리스트 저장 (순서대로 처리)
 // ==========================================
 
 // 모든 리스트 변경은 이 함수를 거칩니다.

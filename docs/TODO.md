@@ -41,6 +41,7 @@
   - CSS 를 `popup.css` 로 분리
   - `popup.js` 를 기능별로 분리 (예: 저장·탭 연동 / 리스트 표·설정 창 / 백업 / 배지 설정). 팝업은 ES Module(`<script type="module">`)을 쓸 수 있음
   - 배포 zip 파일 목록(`scripts/build.ps1`), CI 패키징 확인, 정적 검사(`validate.js`)도 함께 고치기
+- [x] 🤖 **코드를 주제별 파일로 정리** (Unreleased, 동작은 그대로): `shared.js` → `shared/` 8개 파일, `content.js` 의 읽기·그리기 코드를 `shared/` 로, 팝업 파일 추가 분할(`tab-view`, `ui-settings`, `manual-add`, `sheet`), 단위 테스트를 `tests/unit/` 으로. 구조는 [DEVELOPMENT.md](DEVELOPMENT.md#코드-구조).
 - [x] 🤖 **✔ 알림 지우기를 `chrome.alarms` 로** (Unreleased: 3초 타이머 + 30초 예비 알람): `background.js` 가 `setTimeout` 으로 3초 뒤 아이콘 표시를 지우는데, 서비스 워커가 먼저 종료되면 실행되지 않습니다. 지금은 팝업을 열면 지워져서 영향은 작습니다. `alarms` 권한이 추가되므로 [PRIVACY.md](PRIVACY.md) 권한 표도 고칩니다.
 - [ ] 🤖 **다국어(i18n)** (필요할 때): 문구가 모두 한국어로 코드에 들어 있습니다. 영어 사용자도 대상이면 `_locales/ko`, `_locales/en` 과 `chrome.i18n.getMessage` 로 분리합니다.
 - [x] 🤖 **CODE_IMPROVEMENTS.md 상태표 갱신** (2026-11-11): 상태표가 v1.4.1 기준(2026-11-04)입니다. 이후 버전 내용과 이 목록을 반영합니다.

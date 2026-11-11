@@ -66,7 +66,7 @@ Write-Host "[3/3] Packaging runtime extension files..." -ForegroundColor Cyan
 #   Firefox: dist/firefox/ built by scripts/build-firefox.js (extension/manifest.json + extension/manifest.firefox.json)
 $runtimeItems = @(
     "manifest.json",
-    "shared.js",
+    "shared",
     "content.js",
     "background.js",
     "popup.html",
