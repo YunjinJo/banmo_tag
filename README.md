@@ -202,4 +202,5 @@ X 리스트 없이도 핸들을 직접 입력해 리스트를 만들 수 있습�
 | [docs/TEST_CASES.md](docs/TEST_CASES.md) | 자동 테스트 목록과 수동 확인 시나리오 |
 | [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md) | 버전별 테스트 결과 |
 | [docs/CODE_IMPROVEMENTS.md](docs/CODE_IMPROVEMENTS.md) | 코드 개선 과제와 진행 상태 |
+| [docs/MOBILE_TODO.md](docs/MOBILE_TODO.md) | 모바일(안드로이드·아이폰) 지원 할 일 목록 |
 | [docs/PRIVACY.md](docs/PRIVACY.md) | 개인정보 처리방침 |
