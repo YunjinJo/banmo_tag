@@ -28,7 +28,8 @@ X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라�
 extension/        확장 프로그램 (Chrome 에 로드 / Firefox 임시 로드 / 배포 zip 내용)
   shared.js       순수 로직 (content·popup·background·테스트 공용)
   content.js      X 페이지: 멤버 수집, 배지, 화면 구조 점검
-  popup.html/js   팝업 (탭 화면 ?view=tab 도 같은 파일)
+  popup.html/js   팝업 (탭 화면 ?view=tab 도 같은 파일). popup.js 는 시작점(마지막에 로드)
+  popup/          팝업 기능별 코드(core, nav, sync, backup, lists, badge .js)와 화면 모양(popup.css)
   background.js   저장 큐 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 tests/            test-runner.html(단위), e2e/(Playwright), firefox/(실제 Firefox), fixtures/(X 화면)
 scripts/          build.ps1, validate.js, bump-version.js
@@ -41,8 +42,9 @@ docs/             DEVELOPMENT(개발 가이드), TODO(남은 할 일), MOBILE_TO
 - **`shared.js` 최상위에는 `function` 과 `var` 만**: 팝업이 content script 를 다시 주입할 때 같은 공간에서 재실행되므로 최상위 `const`/`let` 은 "이미 선언됨" 오류가 납니다. 함수 안에서는 `const`/`let`/화살표 함수를 씁니다. 새 함수는 `tests/test-runner.html` 에 단위 테스트를 추가하고, 마지막 "심볼 무결성" 목록에도 넣습니다.
 - **화면에 글자를 넣을 때 `textContent` 만** (`innerHTML` 금지 — X 의 데이터와 사용자 입력이 섞임).
 - **X 화면 구조에 의존하는 선택자**(`data-testid="UserCell"`, `article[data-testid="tweet"]`, `User-Name` 등)를 바꾸면 `tests/fixtures/` 와 `diagnoseStructure` 도 함께 봅니다. 실제 X 화면 스냅샷은 `/x-snapshot` 스킬로 `tests/fixtures/real/` 에 추가합니다.
+- **팝업 코드 구조**: `popup/*.js` 는 ES module 이 아닌 일반 스크립트라 최상위 함수·변수를 서로 공유합니다(`popup.html` 이 shared.js → popup/*.js → popup.js 순서로 로드). 새 파일을 만들면 `popup.html` 에 넣어야 하고(정적 검사가 확인), 최상위 이름이 다른 팝업 파일과 겹치면 안 됩니다(ESLint `no-redeclare`). 스타일은 `popup/popup.css` 에만 씁니다(`popup.html` 에 `<style>` 금지).
 - **팝업 동작을 바꾸면 `tests/e2e/popup.spec.js`**, X 페이지 동작이면 `tests/e2e/content.spec.js` 에 테스트를 추가합니다. `chrome.storage` 는 리스트를 **이름순**으로 돌려주므로, 테스트에서는 순서가 아니라 이름으로 줄을 찾습니다.
-- **파이어폭스**: `extension/manifest.json` 에는 크롬용 키만 둡니다(`background.scripts` 를 넣으면 크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류). 파이어폭스 전용 키는 `extension/manifest.firefox.json` 에 적고, 그 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
+- **파이어폭스**: `extension/manifest.json` 에는 크롬용 키만 둡니다(`background.scripts` 를 넣으면 크롬에서 "'background.scripts' requires manifest version of 2 or lower." 오류). 파이어폭스 전용 키는 `extension/manifest.firefox.json` 에 적고, 그 `background.scripts` 는 `["shared.js", "background.js"]` 순서 유지. 파이어폭스 팝업에서 파일·색상 선택 창이나 다운로드를 여는 새 조작을 만들면 `popup/core.js` 의 `OPEN_IN_TAB_ON_FIREFOX` 선택자에 추가합니다(팝업이 닫히는 Firefox 버그 1292701).
 - **배포 zip** 경로는 `/` 로 (build.ps1 가 처리, CI 가 검사).
 - 문서: 사용자에게 보이는 변경은 CHANGELOG `[Unreleased]`, 저장하는 데이터가 바뀌면 `docs/PRIVACY.md`, 테스트를 추가·변경하면 `npm run test:report -- --catalog` 로 `docs/TEST_CASES.md` 목록을 다시 만듭니다(수동 시나리오는 직접 수정). 릴리스 때는 `npm run test:report -- --firefox --write` 로 `docs/TEST_RESULTS.md` 에 결과를 기록합니다. 팝업 화면을 바꾸면 `npm run docs:screenshots` 로 README 스크린샷(`docs/images/`)을 다시 찍습니다.
 

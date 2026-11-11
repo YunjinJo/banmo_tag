@@ -17,6 +17,7 @@ banmo_tag 를 고치거나 테스트·빌드·릴리스하는 사람을 위한 �
 
 ```
 extension/        확장 프로그램 파일 (manifest.json 은 크롬용, manifest.firefox.json 은 파이어폭스 전용 항목)
+extension/popup/  팝업 기능별 코드(core, nav, sync, backup, lists, badge)와 popup.css. 시작점은 extension/popup.js
 tests/            shared.js 단위 테스트 (test-runner.html, run-tests.ps1, run-tests.bat)
 tests/e2e/        Playwright E2E 테스트 (실제 확장 프로그램을 Chromium 에 로드)
 tests/fixtures/   E2E 용 X 화면 (synthetic: 합성, real: 실제 화면 스냅샷)

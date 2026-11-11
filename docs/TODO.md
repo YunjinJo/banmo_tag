@@ -9,7 +9,7 @@
 ## 추천 순서
 
 1. [실제 화면 확인](#1-실제-화면-확인) 👤
-2. [코드 개선](#3-코드-개선) 🤖: 팝업 파일 분할, ✔ 알림 지우기를 `chrome.alarms` 로
+2. ~~[코드 개선](#3-코드-개선) 🤖: 팝업 파일 분할, ✔ 알림 지우기를 `chrome.alarms` 로~~ 완료
 3. [실제 X 스냅샷과 README 이미지](#1-실제-화면-확인) 🔗
 4. [배포](#2-배포): AMO 서명, 스토어 등록
 5. 필요할 때: 다국어, [모바일](MOBILE_TODO.md)
@@ -23,7 +23,7 @@
 - [ ] 👤 **수동 확인 표 채우기**: [TEST_RESULTS.md](TEST_RESULTS.md) 의 v1.7.2 수동 확인 M-01~M-15 를 실제 X 에서 확인하고 결과를 적기. 시나리오는 [TEST_CASES.md](TEST_CASES.md#수동-확인-시나리오)에 있습니다.
   - 특히 **M-08 흐리게 모드**: 흐리게 할 부분(프로필 사진·본문·사진)을 실제 X 화면에서 제대로 찾는지 아직 한 번도 확인하지 못했습니다.
   - v1.7.1 표도 비어 있습니다. 같은 코드가 v1.7.2 에 들어 있으니 v1.7.2 만 채우고 v1.7.1 은 ➖(해당 없음)로 둬도 됩니다.
-- [ ] 👤 **크롬 오류 해결 확인**: v1.7.2 에서 고친 `'background.scripts' requires manifest version of 2 or lower.` 오류가, 오류를 봤던 브라우저에서 사라졌는지 확인. 테스트 환경(Chromium 156)에서는 원래 오류가 재현되지 않았습니다.
+- [x] 👤 **크롬 오류 해결 확인** (2026-11-11 확인 완료): v1.7.2 에서 고친 `'background.scripts' requires manifest version of 2 or lower.` 오류가, 오류를 봤던 브라우저에서 사라졌는지 확인. 테스트 환경(Chromium 156)에서는 원래 오류가 재현되지 않았습니다.
 - [ ] 🔗 **실제 X 화면 스냅샷 추가**: `tests/fixtures/real/` 이 비어 있음. Claude in Chrome 을 연결하고 `/x-snapshot` 으로 홈 타임라인, 리스트 메인, 리스트 멤버 화면을 저장하면 `real-snapshots.spec.js` 가 자동으로 검사합니다. X 가 화면 구조를 바꿨는지 빨리 알 수 있습니다.
 - [ ] 🔗 **README 타임라인 이미지 교체**: 지금 `docs/images/timeline.png` 는 예시 페이지에 실제 확장 프로그램을 적용한 화면입니다. 실제 X 화면으로 바꾸려면 크롬 연결이 필요합니다(또는 직접 찍은 이미지로 교체).
 
@@ -37,13 +37,13 @@
 
 [CODE_IMPROVEMENTS.md](CODE_IMPROVEMENTS.md) 15번 "기타" 중 남은 항목입니다.
 
-- [ ] 🤖 **팝업 파일 분할**: `popup.js` 1,272줄, `popup.html` 880줄(CSS 포함)로 커졌습니다(문서를 쓸 때는 560줄).
+- [x] 🤖 **팝업 파일 분할** (Unreleased: `popup/` 6개 파일 + `popup/popup.css`, 화면은 그대로): `popup.js` 1,272줄, `popup.html` 880줄(CSS 포함)로 커졌습니다(문서를 쓸 때는 560줄).
   - CSS 를 `popup.css` 로 분리
   - `popup.js` 를 기능별로 분리 (예: 저장·탭 연동 / 리스트 표·설정 창 / 백업 / 배지 설정). 팝업은 ES Module(`<script type="module">`)을 쓸 수 있음
   - 배포 zip 파일 목록(`scripts/build.ps1`), CI 패키징 확인, 정적 검사(`validate.js`)도 함께 고치기
-- [ ] 🤖 **✔ 알림 지우기를 `chrome.alarms` 로**: `background.js` 가 `setTimeout` 으로 3초 뒤 아이콘 표시를 지우는데, 서비스 워커가 먼저 종료되면 실행되지 않습니다. 지금은 팝업을 열면 지워져서 영향은 작습니다. `alarms` 권한이 추가되므로 [PRIVACY.md](PRIVACY.md) 권한 표도 고칩니다.
+- [x] 🤖 **✔ 알림 지우기를 `chrome.alarms` 로** (Unreleased: 3초 타이머 + 30초 예비 알람): `background.js` 가 `setTimeout` 으로 3초 뒤 아이콘 표시를 지우는데, 서비스 워커가 먼저 종료되면 실행되지 않습니다. 지금은 팝업을 열면 지워져서 영향은 작습니다. `alarms` 권한이 추가되므로 [PRIVACY.md](PRIVACY.md) 권한 표도 고칩니다.
 - [ ] 🤖 **다국어(i18n)** (필요할 때): 문구가 모두 한국어로 코드에 들어 있습니다. 영어 사용자도 대상이면 `_locales/ko`, `_locales/en` 과 `chrome.i18n.getMessage` 로 분리합니다.
-- [ ] 🤖 **CODE_IMPROVEMENTS.md 상태표 갱신**: 상태표가 v1.4.1 기준(2026-11-04)입니다. 이후 버전 내용과 이 목록을 반영합니다.
+- [x] 🤖 **CODE_IMPROVEMENTS.md 상태표 갱신** (2026-11-11): 상태표가 v1.4.1 기준(2026-11-04)입니다. 이후 버전 내용과 이 목록을 반영합니다.
 
 ## 4. 정리
 

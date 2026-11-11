@@ -18,18 +18,30 @@ function enqueue(task) {
   return run;
 }
 
-// 새 멤버가 저장되면 확장 프로그램 아이콘에 3초간 ✔ 표시
+// 새 멤버가 저장되면 확장 프로그램 아이콘에 3초간 ✔ 표시 (팝업을 열어도 지워짐)
+// 3초 타이머는 크롬 서비스 워커가 그 전에 종료되면 실행되지 않으므로, chrome.alarms 로 한 번 더 지움.
+// 알람은 크롬에서 30초보다 짧게 정할 수 없어 30초 뒤 예비로만 씁니다.
+const CLEAR_SAVED_BADGE_ALARM = 'banmo_tag-clear-saved-badge';
+const SAVED_BADGE_MS = 3000;
+
+function clearSavedBadge() {
+  chrome.action.setBadgeText({ text: '' }).catch(() => {});
+}
+
 function showSavedBadge() {
   try {
     chrome.action.setBadgeText({ text: '✔' });
     chrome.action.setBadgeBackgroundColor({ color: '#1d9bf0' });
-    setTimeout(() => {
-      chrome.action.setBadgeText({ text: '' }).catch(() => {});
-    }, 3000);
+    setTimeout(clearSavedBadge, SAVED_BADGE_MS);
+    chrome.alarms?.create(CLEAR_SAVED_BADGE_ALARM, { delayInMinutes: 0.5 });
   } catch (e) {
     console.warn('Badge API error:', e);
   }
 }
+
+chrome.alarms?.onAlarm.addListener((alarm) => {
+  if (alarm.name === CLEAR_SAVED_BADGE_ALARM) clearSavedBadge();
+});
 
 // ==========================================
 // 저장 · 교체

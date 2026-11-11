@@ -19,6 +19,27 @@ for (const m of sharedSource.matchAll(/^(?:function\s+([A-Za-z_$][\w$]*)|var\s+(
 // 최상위 선언은 다른 파일에서 쓰는 전역이므로 미사용 검사는 지역 변수에만 적용
 const unusedLocalOnly = ['error', { vars: 'local', args: 'none', caughtErrors: 'none' }];
 
+// 팝업 파일들(popup/*.js, popup.js)은 일반 스크립트라 최상위 함수·변수를 서로 공유합니다.
+// 파일마다 "다른 팝업 파일의 최상위 선언"을 전역으로 등록합니다(자기 선언까지 넣으면 no-redeclare 오류).
+// 다른 파일의 let 을 바꾸는 경우가 있어 writable 로 둡니다.
+const POPUP_FILES = ['extension/popup.js', ...fs.readdirSync(path.join(__dirname, 'extension', 'popup'))
+  .filter(f => f.endsWith('.js')).map(f => 'extension/popup/' + f)];
+const popupDecls = {};
+for (const file of POPUP_FILES) {
+  const src = fs.readFileSync(path.join(__dirname, file), 'utf8');
+  popupDecls[file] = [...src.matchAll(/^(?:async\s+)?(?:function\s+([A-Za-z_$][\w$]*)|(?:const|let|var)\s+([A-Za-z_$][\w$]*))/gm)].map(m => m[1] || m[2]);
+}
+const popupConfigs = POPUP_FILES.map((file) => {
+  const others = {};
+  POPUP_FILES.filter(f => f !== file).forEach(f => popupDecls[f].forEach((name) => { others[name] = 'writable'; }));
+  return {
+    files: [file],
+    languageOptions: { sourceType: 'script', globals: { ...globals.browser, ...globals.webextensions, ...sharedGlobals, ...others } },
+    rules: { 'no-unused-vars': unusedLocalOnly }
+  };
+});
+
+
 module.exports = [
   {
     ignores: ['dist/**', 'node_modules/**', 'antigravity-extension/**', 'playwright-report/**', 'test-results/**']
@@ -34,13 +55,14 @@ module.exports = [
     rules: { 'no-unused-vars': unusedLocalOnly }
   },
   {
-    files: ['extension/content.js', 'extension/popup.js', 'extension/theme.js'],
+    files: ['extension/content.js', 'extension/theme.js'],
     languageOptions: {
       sourceType: 'script',
       globals: { ...globals.browser, ...globals.webextensions, ...sharedGlobals }
     },
     rules: { 'no-unused-vars': unusedLocalOnly }
   },
+  ...popupConfigs,
   {
     files: ['extension/background.js'],
     languageOptions: {
