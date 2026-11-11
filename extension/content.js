@@ -164,13 +164,14 @@
   }
 
   // 멤버 화면에서 본 멤버를 이번 방문 누적 목록에 더함
-  function rememberSeenMembers(listId, listName, members) {
+  function rememberSeenMembers(listId, listName, nameReliable, members) {
     let seen = seenByList.get(listId);
     if (!seen) {
-      seen = { listName, handles: new Map() };
+      seen = { listName, nameReliable, handles: new Map() };
       seenByList.set(listId, seen);
     }
     seen.listName = listName;
+    seen.nameReliable = nameReliable;
     members.forEach((member) => {
       const lower = member.toLowerCase();
       if (!seen.handles.has(lower)) seen.handles.set(lower, member);
@@ -178,7 +179,8 @@
   }
 
   // 지금 화면에서 수집할 수 있는 멤버를 읽고 이번 방문 누적 목록에 더함.
-  // 성공: { success: true, urlInfo, listName, members }, 실패: { success: false, message }
+  // 성공: { success: true, urlInfo, listName, nameReliable, members }, 실패: { success: false, message }
+  // nameReliable: 이름을 믿을 만한 곳에서 읽었는지. true 일 때만 저장된 리스트 이름을 이 이름으로 바꿈 (X 에서 이름이 바뀐 경우)
   function collectVisibleMembers(isManual) {
     const urlInfo = parseListUrl(location.pathname);
     // 리스트가 아닌 화면에서는 DOM 을 살펴보기 전에 바로 종료
@@ -196,7 +198,9 @@
     const blockReason = getScrapeBlockReason(urlInfo, dialog || document, dialog, isManual);
     if (blockReason) return { success: false, message: blockReason };
 
-    const listName = getListNameFromPage(document, urlInfo, dialog, listNameCache);
+    const nameInfo = {};
+    const listName = getListNameFromPage(document, urlInfo, dialog, listNameCache, nameInfo);
+    const nameReliable = nameInfo.reliable === true;
     if (isSystemListName(listName)) {
       return { success: false, message: '리스트 이름을 확인할 수 없습니다. 리스트 페이지에서 다시 시도해주세요.' };
     }
@@ -207,9 +211,9 @@
     }
 
     // 교체 동기화용 누적은 멤버 화면(또는 멤버 창)에서 본 멤버만
-    if (urlInfo.isMembers || dialog) rememberSeenMembers(urlInfo.listId, listName, members);
+    if (urlInfo.isMembers || dialog) rememberSeenMembers(urlInfo.listId, listName, nameReliable, members);
 
-    return { success: true, urlInfo, listName, members };
+    return { success: true, urlInfo, listName, nameReliable, members };
   }
 
   // 멤버를 읽어 background 에 저장 요청
@@ -218,7 +222,7 @@
   function scrapeListMembers(isManual = false, onSaved = null) {
     const collected = collectVisibleMembers(isManual);
     if (!collected.success) return collected;
-    const { urlInfo, listName, members } = collected;
+    const { urlInfo, listName, nameReliable, members } = collected;
 
     // 같은 데이터는 다시 보내지 않음 (스크롤/DOM 변경마다 background 를 오가지 않게)
     const signature = buildScrapeSignature(listName, members);
@@ -237,7 +241,7 @@
     };
 
     try {
-      const message = { action: 'saveListMembers', data: { listName, listId: urlInfo.listId, members } };
+      const message = { action: 'saveListMembers', data: { listName, listId: urlInfo.listId, members, nameReliable } };
       chrome.runtime.sendMessage(message, (response) => {
         if (chrome.runtime.lastError || !response || !response.success) {
           reportFailure(response);
@@ -269,12 +273,13 @@
     }
 
     const handles = Array.from(seen.handles.values());
-    const plan = applyListReplace(listData, seen.listName, handles, urlInfo.listId);
+    const plan = applyListReplace(listData, seen.listName, handles, urlInfo.listId, { followRename: seen.nameReliable });
     if (!plan.success) return plan;
     return {
       success: true,
       listId: urlInfo.listId,
       rawListName: seen.listName,
+      nameReliable: seen.nameReliable,
       listName: plan.listName,
       handles,
       seenCount: handles.length,
@@ -326,7 +331,7 @@
       try {
         const message = {
           action: 'replaceListMembers',
-          data: { listName: plan.rawListName, listId: plan.listId, members: plan.handles }
+          data: { listName: plan.rawListName, listId: plan.listId, members: plan.handles, nameReliable: plan.nameReliable }
         };
         chrome.runtime.sendMessage(message, (response) => {
           if (chrome.runtime.lastError || !response) {

@@ -60,9 +60,10 @@ chrome.alarms?.onAlarm.addListener((alarm) => {
 // ==========================================
 
 // 자동 수집/[가져오기]: 기존 멤버에 새 멤버를 더함
-async function saveListMembers(rawListName, incomingMembers, listId) {
+// followRename: 이름을 믿을 만한 곳에서 읽었으면 true → X 에서 바뀐 리스트 이름을 따라감 (shared/list-data.js resolveListKey)
+async function saveListMembers(rawListName, incomingMembers, listId, followRename) {
   const result = await chrome.storage.local.get(['lists']);
-  const outcome = applyListSave(result.lists || {}, rawListName, incomingMembers, listId);
+  const outcome = applyListSave(result.lists || {}, rawListName, incomingMembers, listId, { followRename });
   if (!outcome.success) {
     return { success: false, message: outcome.message };
   }
@@ -76,9 +77,9 @@ async function saveListMembers(rawListName, incomingMembers, listId) {
 }
 
 // 교체 동기화: 이번에 확인한 멤버로 목록을 바꿈 (X 리스트에서 뺀 멤버 정리)
-async function replaceListMembers(rawListName, seenMembers, listId) {
+async function replaceListMembers(rawListName, seenMembers, listId, followRename) {
   const result = await chrome.storage.local.get(['lists']);
-  const outcome = applyListReplace(result.lists || {}, rawListName, seenMembers, listId);
+  const outcome = applyListReplace(result.lists || {}, rawListName, seenMembers, listId, { followRename });
   if (!outcome.success) {
     return { success: false, message: outcome.message };
   }
@@ -107,10 +108,10 @@ chrome.runtime.onInstalled.addListener(() => {
   }).catch(err => console.error('Storage migration failed:', err));
 });
 
-// content script 요청: action → 처리 함수 (data: { listName, members, listId })
+// content script 요청: action → 처리 함수 (data: { listName, members, listId, nameReliable })
 const messageHandlers = {
-  saveListMembers: data => saveListMembers(data.listName, data.members, data.listId),
-  replaceListMembers: data => replaceListMembers(data.listName, data.members, data.listId)
+  saveListMembers: data => saveListMembers(data.listName, data.members, data.listId, data.nameReliable === true),
+  replaceListMembers: data => replaceListMembers(data.listName, data.members, data.listId, data.nameReliable === true)
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

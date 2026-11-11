@@ -15,6 +15,13 @@ function renderLists(lists) {
   renderedLists = lists;
   updateCustomStyleCount();
 
+  // 팝업에서 이름을 바꾼 직후면, 열려 있는 시트가 새 이름을 따라감 (sheet.js renameSheetList)
+  if (openSheetName && !lists[openSheetName] && pendingSheetRename &&
+      pendingSheetRename.from === openSheetName && lists[pendingSheetRename.to]) {
+    openSheetName = pendingSheetRename.to;
+    pendingSheetRename = null;
+  }
+
   const names = sortListNames(lists, uiSettings.listSort);
   const countEl = byId('list-count');
   if (countEl) countEl.textContent = String(names.length);

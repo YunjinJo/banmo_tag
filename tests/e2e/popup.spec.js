@@ -205,6 +205,83 @@ test.describe('리스트 설정 시트', () => {
     await expect(popup.locator('#list-sheet')).toBeHidden();
   });
 
+  test('[이름 바꾸기]: 색·표시 방식·글자 스타일·멤버는 그대로 새 이름으로 옮기고, 시트는 열린 채 새 이름을 보여 줌', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '친구': { color: '#ff0000', mode: 'highlight', listId: '123', members: ['@alice', '@bob'], style: { fontSize: 14 } },
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@carol'] }
+      }
+    });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    const toggle = popup.locator('#sheet-rename-toggle-btn');
+    const input = popup.locator('#sheet-name-input');
+    await expect(input).toHaveCount(0); // 처음에는 접혀 있음
+
+    await toggle.click();
+    await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    await expect(toggle).toHaveText('닫기');
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue('친구');
+    await expect(popup.locator('#sheet-rename-btn')).toBeDisabled(); // 지금 이름 그대로는 저장할 수 없음
+
+    // 이미 있는 이름이면 안내하고 아무것도 바꾸지 않음. 입력하던 글자는 그대로
+    await input.fill('동료');
+    await popup.click('#sheet-rename-btn');
+    await expect(popup.locator('#sync-status')).toContainText("'동료' 리스트가 이미 있습니다");
+    expect(Object.keys(await getLists(serviceWorker)).sort()).toEqual(['동료', '친구']);
+    await expect(input).toHaveValue('동료');
+
+    // 다른 설정을 바꿔 시트가 다시 그려져도 입력하던 글자가 남아 있음
+    await input.fill('  단짝 ');
+    await popup.locator('#sheet-mode-dim').check();
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].mode).toBe('dim');
+    await expect(input).toHaveValue('  단짝 ');
+
+    await input.press('Enter');
+    await expect.poll(async () => Object.keys(await getLists(serviceWorker)).sort()).toEqual(['단짝', '동료']);
+    expect((await getLists(serviceWorker))['단짝']).toEqual({
+      color: '#ff0000', mode: 'dim', listId: '123', members: ['@alice', '@bob'], style: { fontSize: 14 }, customName: true
+    });
+
+    // 시트는 닫히지 않고 새 이름을 보여 주며, 입력란은 접힘
+    await expect(popup.locator('#sheet-title')).toHaveText('단짝');
+    await expect(popup.locator('#list-sheet')).toBeVisible();
+    await expect(input).toHaveCount(0);
+    await expect(toggle).toHaveText('이름 바꾸기');
+    await expect(toggle).toBeFocused();
+    await expect(popup.locator('#sync-status')).toHaveText("리스트 이름을 '단짝'(으)로 바꿨습니다.");
+    await expect(listCard(popup, '단짝')).toHaveClass(/is-open/);
+    await expect(listCard(popup, '친구')).toHaveCount(0);
+  });
+
+  test('[이름 바꾸기]: 직접 지은 이름에는 [X 이름 따르기]가 보이고, 누르면 직접 지은 이름 표시를 지움', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '단짝': { color: '#ff0000', mode: 'normal', listId: '123', members: ['@alice'], customName: true },
+        '메모': { color: '#00aa00', mode: 'normal', members: ['@bob'], manual: true }
+      }
+    });
+    const popup = await openPopup(context, extensionId);
+
+    // X 에서 가져온 리스트가 아니면(리스트 ID 없음) X 이름 안내가 없음
+    await openSheet(popup, '메모');
+    await popup.click('#sheet-rename-toggle-btn');
+    await expect(popup.locator('#sheet-name-input')).toBeVisible();
+    await expect(popup.locator('.name-note')).toHaveCount(0);
+    await popup.click('#sheet-close-btn');
+
+    await openSheet(popup, '단짝');
+    await expect(popup.locator('#sheet-name-input')).toHaveCount(0); // 다른 리스트를 열면 다시 접힌 상태
+    await popup.click('#sheet-rename-toggle-btn');
+    await expect(popup.locator('.name-note')).toContainText('직접 지은 이름');
+    await popup.click('#sheet-name-follow-btn');
+    await expect.poll(async () => (await getLists(serviceWorker))['단짝'].customName).toBeUndefined();
+    await expect(popup.locator('#sheet-name-follow-btn')).toHaveCount(0);
+    await expect(popup.locator('.name-note')).toContainText('X 에서 리스트 이름을 바꾸면');
+    await expect(popup.locator('#list-sheet')).toBeVisible();
+  });
+
   test('배지 색(빠른 선택·직접 고르기)과 타임라인 표시(배지만/강조/흐리게)를 바꾸면 저장되고 미리보기에 반영', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '친구': { color: '#ff0000', mode: 'normal', members: ['@alice'] } } });
     const popup = await openPopup(context, extensionId);
