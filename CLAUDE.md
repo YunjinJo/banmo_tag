@@ -32,7 +32,7 @@ extension/        확장 프로그램 (Chrome 에 로드 / Firefox 임시 로드
   background.js   저장 큐 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 tests/            test-runner.html(단위), e2e/(Playwright), firefox/(실제 Firefox), fixtures/(X 화면)
 scripts/          build.ps1, validate.js, bump-version.js
-docs/             DEVELOPMENT(개발 가이드), MOBILE_TODO(모바일 지원 할 일), CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVACY
+docs/             DEVELOPMENT(개발 가이드), TODO(남은 할 일), MOBILE_TODO(모바일 지원 할 일), CHANGELOG, TEST_CASES, TEST_RESULTS, CODE_IMPROVEMENTS, PRIVACY
 .claude/          훅(hooks/), 스킬(skills/), 설정(settings.json)
 ```
 
