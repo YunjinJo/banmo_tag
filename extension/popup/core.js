@@ -69,18 +69,26 @@ async function withButtonDisabled(button, task) {
 // 공통 UI (상태 메시지, 확인 상자, 뒤 화면 잠그기)
 // ==========================================
 
-// 화면 위에 뜨는 상태 메시지 (5초 뒤 사라짐, 누르면 바로 닫힘)
+// 화면 위에 뜨는 상태 메시지 (5초 뒤 사라짐, 닫기 버튼이나 메시지를 누르면 바로 닫힘)
 function showSyncStatus(message, isError = false) {
   const statusEl = byId('sync-status');
-  if (!statusEl) return;
+  const textEl = byId('sync-status-text');
+  if (!statusEl || !textEl) return;
   statusEl.className = 'sync-status ' + (isError ? 'error' : 'success');
-  statusEl.textContent = message;
-  statusEl.style.display = 'block';
+  textEl.textContent = message;
+  statusEl.style.display = 'flex';
 
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(() => {
-    statusEl.style.display = 'none';
-  }, 5000);
+  statusTimer = setTimeout(hideSyncStatus, 5000);
+}
+
+function hideSyncStatus() {
+  clearTimeout(statusTimer);
+  const statusEl = byId('sync-status');
+  if (!statusEl) return;
+  // 닫기 버튼에 포커스가 있었다면 사라진 버튼에 남지 않게 풀어 줌
+  if (statusEl.contains(document.activeElement)) document.activeElement.blur();
+  statusEl.style.display = 'none';
 }
 
 // 팝업 안의 확인 상자 (브라우저 confirm() 대신). 확인하면 true, 취소하면 false
@@ -112,7 +120,8 @@ function askConfirm(message, okLabel = '확인') {
 function setupConfirmBox() {
   byId('confirm-ok-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(true));
   byId('confirm-cancel-btn')?.addEventListener('click', () => resolveConfirm && resolveConfirm(false));
-  byId('sync-status')?.addEventListener('click', (e) => { e.currentTarget.style.display = 'none'; });
+  // 닫기 버튼을 누른 것도 여기로 올라옴 (메시지 어디를 눌러도 닫힘)
+  byId('sync-status')?.addEventListener('click', hideSyncStatus);
 }
 
 // 아직 화면에 있고 누를 수 있는 요소면 포커스를 돌려줌
