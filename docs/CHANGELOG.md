@@ -19,6 +19,7 @@
   - 테스트: 단위 16건(125 → 141건), E2E 3건을 추가했습니다.
 
 ### 🛠️ Changed (변경 및 개선)
+- **MIT 라이선스 적용 (`LICENSE`)**: 저장소에 MIT 라이선스 파일을 추가하고, README 에 라이선스 항목과 만든 사람(닉네임, X 계정)을 넣었습니다. `package.json` 의 `license` 도 `UNLICENSED` 에서 `MIT` 로 바꿨습니다. 확장 프로그램의 동작은 그대로입니다.
 - **코드를 관리하기 쉽게 다시 나눔 (동작은 그대로)**: 파일 이름만 보고 고칠 곳을 찾을 수 있게 주제별로 나눴습니다. 화면과 동작, 저장 데이터는 바뀌지 않습니다. 구조 설명은 [DEVELOPMENT.md 의 "코드 구조"](DEVELOPMENT.md#코드-구조).
   - **공통 코드 `shared.js`(924줄) → `extension/shared/` 8개 파일**: `base`(기본값·핸들), `list-names`(이름 정리), `list-data`(저장 데이터), `list-page`(X 리스트 화면 읽기), `badges`(배지), `backup`, `health`(화면 구조 점검), `ui`(팝업 화면 설정).
   - **`content.js` 730줄 → 519줄**: 화면에서 리스트 이름을 읽는 코드와 트윗에 배지를 그리는 코드를 `shared/list-page.js`, `shared/badges.js` 로 옮겼습니다. `content.js` 에는 "언제 수집하고 언제 다시 그릴지"만 남았고, 옮긴 코드는 단위 테스트로 검사합니다.

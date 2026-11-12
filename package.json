@@ -3,7 +3,7 @@
   "version": "0.0.0-dev",
   "private": true,
   "description": "개발 도구 전용 (정적 검사, ESLint, Playwright E2E). 확장 프로그램 버전은 extension/manifest.json 이 기준입니다.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "scripts": {
     "validate": "node scripts/validate.js",
     "lint": "eslint .",
