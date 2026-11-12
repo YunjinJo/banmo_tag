@@ -296,6 +296,88 @@ function getHandleFromUserCell(cell) {
   return null;
 }
 
+// ==========================================
+// 멤버 목록을 처음부터 끝까지 봤는지 (자동으로 뺀 멤버를 정리해도 되는지 판단)
+// ==========================================
+
+// X 의 가상 스크롤 줄 위치: style 의 translateY(…px) 값. 읽을 수 없으면 null
+function getCellOffsetY(cell) {
+  const match = /translateY\((-?[\d.]+)px\)/.exec((cell && cell.style && cell.style.transform) || '');
+  return match ? parseFloat(match[1]) : null;
+}
+
+// el 이 화면에서 실제로 보일 수 있는 세로 범위 { top, bottom } (뷰포트와, 넘치는 부분을 가리는 부모들로 잘라낸 범위)
+function getVisibleBounds(el) {
+  const view = el.ownerDocument.defaultView;
+  let top = 0;
+  let bottom = view.innerHeight;
+  for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+    if (view.getComputedStyle(parent).overflowY === 'visible') continue;
+    const rect = parent.getBoundingClientRect();
+    top = Math.max(top, rect.top);
+    bottom = Math.min(bottom, rect.bottom);
+  }
+  return { top, bottom };
+}
+
+// 지금 화면에 그려진 멤버 목록 구간이 목록의 맨 위/맨 끝에 닿아 있는지 읽음. 반환: { atTop, atEnd }
+// X 는 화면 근처의 줄만 그리며(가상 스크롤), 각 줄을 translateY 로 배치하고 줄들의 부모에 불러온 목록 전체 높이(min-height)를 적어 둠.
+// - atTop: 그려진 첫 줄이 목록의 첫 줄 (translateY 0. translateY 를 쓰지 않는 구조면 첫 줄의 위쪽이 화면에 보일 때)
+// - atEnd: 그려진 마지막 줄이 목록의 마지막 줄 (마지막 줄의 아래쪽이 목록 전체 높이에 닿았거나 화면에 보임),
+//          더 불러오는 중이 아니고(progressbar 없음), 마지막 멤버 뒤에 [다시 시도] 같은 버튼이 없음(불러오기에 실패한 상태일 수 있음)
+// 판단할 수 없는 구조면 둘 다 false → 자동 정리를 하지 않음
+function readMemberListWindow(container, dialog) {
+  const none = { atTop: false, atEnd: false };
+  if (!container) return none;
+
+  // 멤버 줄들의 부모 (멤버가 여러 목록에 흩어져 있으면 판단하지 않음)
+  let wrapper = null;
+  let lastMemberRow = null;
+  for (const cell of container.querySelectorAll('[data-testid="UserCell"]')) {
+    if (isExcludedUserCell(cell, dialog || null)) continue;
+    const row = cell.closest('div[data-testid="cellInnerDiv"]') || cell;
+    if (!row.parentElement || (wrapper && row.parentElement !== wrapper)) return none;
+    wrapper = row.parentElement;
+    lastMemberRow = row;
+  }
+  if (!wrapper) return none;
+
+  const rows = Array.from(wrapper.children);
+  const firstRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+  const bounds = getVisibleBounds(firstRow);
+  const firstRect = firstRow.getBoundingClientRect();
+  const lastRect = lastRow.getBoundingClientRect();
+
+  const firstY = getCellOffsetY(firstRow);
+  const atTop = firstY !== null ? firstY === 0 : firstRect.top >= bounds.top - 1;
+
+  const lastY = getCellOffsetY(lastRow);
+  const totalHeight = parseFloat(wrapper.style.minHeight);
+  const reachedTotalHeight = lastY !== null && totalHeight > 0 && lastY + lastRect.height >= totalHeight - 2;
+  const lastRowVisible = lastRect.height > 0 && lastRect.bottom <= bounds.bottom + 1 && lastRect.bottom > bounds.top;
+  let atEnd = (reachedTotalHeight || lastRowVisible) && !wrapper.querySelector('[role="progressbar"]');
+  for (let row = lastMemberRow.nextElementSibling; atEnd && row; row = row.nextElementSibling) {
+    const strayButton = Array.from(row.querySelectorAll('button, [role="button"]'))
+      .some(btn => !btn.closest('[data-testid="UserCell"]'));
+    if (strayButton || row.matches('button, [role="button"]')) atEnd = false;
+  }
+  return { atTop, atEnd };
+}
+
+// 멤버 화면을 맨 위부터 이어서 봤는지 기록 (progress: 처음에는 빈 객체 {}, 이 함수가 fromTop · last 를 채움).
+// X 는 화면 근처의 멤버만 그리므로, 방금 본 구간과 이번 구간에 겹치는 멤버가 있어야 그 사이에 건너뛴 멤버가 없다고 볼 수 있음.
+// 겹치지 않으면(빠르게 건너뜀) 맨 위부터 다시 이어서 봐야 함.
+// 반환: 맨 위부터 지금 구간까지 빠짐없이 봤으면 true
+function trackMemberListProgress(progress, visibleMembers, atTop) {
+  const current = (Array.isArray(visibleMembers) ? visibleMembers : []).map(m => String(m).toLowerCase());
+  const overlaps = Array.isArray(progress.last) && current.some(m => progress.last.indexOf(m) !== -1);
+  if (atTop) progress.fromTop = true;
+  else if (!overlaps) progress.fromTop = false;
+  progress.last = current;
+  return progress.fromTop === true;
+}
+
 // 컨테이너 안 UserCell 들에서 멤버 핸들 목록 추출 (추천 계정 등은 제외, 중복 제거)
 function extractMembersFromContainer(container, dialog) {
   if (!container) return [];

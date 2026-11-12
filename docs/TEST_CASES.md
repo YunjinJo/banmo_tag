@@ -75,7 +75,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 
 이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.
 
-### 단위 테스트 (`tests/unit/`, 36개 묶음 · 141건)
+### 단위 테스트 (`tests/unit/`, 41개 묶음 · 163건)
 
 `tests/test-runner.html` 이 `extension/shared/*.js` 를 그대로 불러와 검사합니다 (테스트 파일은 `shared/` 의 파일마다 하나씩). E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.
 
@@ -97,32 +97,37 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 | U-14 | `list-data.test.js` | 개별 멤버 삭제 (removeMemberFromLists 검증) | 1 |
 | U-15 | `list-data.test.js` | X 에서 바뀐 리스트 이름 따라가기 (resolveListKey followRename, applyListSave, applyListReplace) | 9 |
 | U-16 | `list-data.test.js` | 팝업에서 리스트 이름 바꾸기 (renameList) | 5 |
-| U-17 | `list-page.test.js` | 리스트 URL 파싱 및 수집 차단 정책 (parseListUrl & getScrapeBlockReason) | 5 |
-| U-18 | `list-page.test.js` | 팝업 [가져오기] 대상 탭 검사 (getSyncTabError) | 3 |
-| U-19 | `list-page.test.js` | 화면에서 리스트 이름 읽기 (getMemberListDialog, firstValidCleanName, getListNameFromPage) | 9 |
-| U-20 | `list-page.test.js` | 팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell) | 5 |
-| U-21 | `list-page.test.js` | 추천 계정 필터 범위 축소 (isExcludedUserCell) | 4 |
-| U-22 | `list-page.test.js` | 순수 멤버 유저 추출 (extractMembersFromContainer) | 2 |
-| U-23 | `list-page.test.js` | 수집 결과 서명 (buildScrapeSignature) | 1 |
-| U-24 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
-| U-25 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
-| U-26 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
-| U-27 | `badges.test.js` | 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
-| U-28 | `badges.test.js` | 배지 부착 위치 (getBadgeAnchor) | 2 |
-| U-29 | `badges.test.js` | 타임라인 배지 묶기 (splitTimelineBadges, "+N") | 3 |
-| U-30 | `badges.test.js` | 트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTweet, resetTweetStyle) | 8 |
-| U-31 | `backup.test.js` | 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
-| U-32 | `backup.test.js` | 가져온 백업 정리 (normalizeImportedLists) | 1 |
-| U-33 | `backup.test.js` | 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 4 |
-| U-34 | `health.test.js` | X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
-| U-35 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
-| U-36 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
+| U-17 | `list-data.test.js` | 직접 추가한 멤버 표시 (manualMembers: applyManualAdd, applyListReplace, removeMemberFromLists) | 5 |
+| U-18 | `list-data.test.js` | 뺀 멤버를 자동으로 지워도 되는지 (canAutoRemoveMembers) | 4 |
+| U-19 | `list-page.test.js` | 리스트 URL 파싱 및 수집 차단 정책 (parseListUrl & getScrapeBlockReason) | 5 |
+| U-20 | `list-page.test.js` | 팝업 [가져오기] 대상 탭 검사 (getSyncTabError) | 3 |
+| U-21 | `list-page.test.js` | 화면에서 리스트 이름 읽기 (getMemberListDialog, firstValidCleanName, getListNameFromPage) | 9 |
+| U-22 | `list-page.test.js` | 팔로우 추천 차단 및 모달 창 격리 (isExcludedUserCell) | 5 |
+| U-23 | `list-page.test.js` | 추천 계정 필터 범위 축소 (isExcludedUserCell) | 4 |
+| U-24 | `list-page.test.js` | 순수 멤버 유저 추출 (extractMembersFromContainer) | 2 |
+| U-25 | `list-page.test.js` | 수집 결과 서명 (buildScrapeSignature) | 1 |
+| U-26 | `list-page.test.js` | 멤버 목록을 맨 위부터 이어서 봤는지 (trackMemberListProgress) | 3 |
+| U-27 | `list-page.test.js` | 그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMemberListWindow, getCellOffsetY, getVisibleBounds) | 8 |
+| U-28 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
+| U-29 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
+| U-30 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
+| U-31 | `badges.test.js` | 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
+| U-32 | `badges.test.js` | 배지 부착 위치 (getBadgeAnchor) | 2 |
+| U-33 | `badges.test.js` | 타임라인 배지 묶기 (splitTimelineBadges, "+N") | 3 |
+| U-34 | `badges.test.js` | 트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTweet, resetTweetStyle) | 8 |
+| U-35 | `backup.test.js` | 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
+| U-36 | `backup.test.js` | 가져온 백업 정리 (normalizeImportedLists) | 1 |
+| U-37 | `backup.test.js` | 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 4 |
+| U-38 | `backup.test.js` | 백업의 직접 추가한 멤버 표시 (manualMembers) | 2 |
+| U-39 | `health.test.js` | X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
+| U-40 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
+| U-41 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
 
-### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 55건)
+### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 59건)
 
 x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
 
-#### X 화면 (content script · background) (`content.spec.js`, 20건)
+#### X 화면 (content script · background) (`content.spec.js`, 24건)
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
@@ -141,11 +146,15 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | C-13 | 타임라인 배지 | 한 리스트의 글자 스타일을 바꾸면 그 리스트 멤버의 트윗만 다시 그림 |
 | C-14 | 타임라인 배지 | X 가 트윗 DOM 을 다른 작성자 트윗에 재사용하면 이전 배지를 지우고 새 작성자 기준으로 다시 그림 |
 | C-15 | 타임라인 배지 | content script 파일을 같은 탭에 다시 넣어도 배지가 한 번만 붙고 계속 동작 |
-| C-16 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
-| C-17 | 멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리) | 멤버 화면이 아니면 교체하지 않음 |
-| C-18 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
-| C-19 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
-| C-20 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
+| C-16 | X 리스트에서 뺀 멤버 자동 정리 | 멤버 목록 전체가 보이면 뺀 멤버를 지움 (색·표시 방식과 직접 추가한 멤버는 유지) |
+| C-17 | X 리스트에서 뺀 멤버 자동 정리 | 저장된 멤버의 절반 넘게 지워질 상황이면 자동으로는 지우지 않음 |
+| C-18 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 불러오는 중에는 지우지 않고, 맨 위부터 끝까지 이어서 본 뒤에 지움 |
+| C-19 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음) |
+| C-20 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
+| C-21 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 멤버 화면이 아니면 교체하지 않음 |
+| C-22 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
+| C-23 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
+| C-24 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
 
 #### 팝업 (`popup.spec.js`, 34건)
 
@@ -196,7 +205,7 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 
 `tests/fixtures/real/` 의 스냅샷마다 1건씩 실행합니다. 스냅샷이 없으면 건너뜁니다.
 
-### 실제 Firefox 확인 (`npm run test:firefox`, 20항목)
+### 실제 Firefox 확인 (`npm run test:firefox`, 21항목)
 
 실제 Firefox 에 확장 프로그램을 임시 설치하고, x.com 요청을 로컬 테스트 서버(합성 페이지)로 보내 확인합니다.
 
@@ -213,15 +222,16 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | F-09 | 리스트별 글자 크기 16px, 인용 미니 배지 14px |
 | F-10 | 강조 모드 왼쪽 테두리 |
 | F-11 | 멤버 자동 수집 → background 저장 |
-| F-12 | 확장 프로그램이 x.com 탭 주소를 볼 수 있음 |
-| F-13 | 새 탭 화면 [가져오기] → X 탭 content script 응답 |
-| F-14 | 교체 동기화 미리보기 메시지 |
-| F-15 | 새 탭 화면에서 백업 가져오기(병합) |
-| F-16 | X 화면 구조 변화 감지·기록 |
-| F-17 | 팝업에 구조 변화 경고가 바로 표시됨 |
-| F-18 | 팝업 [백업 파일 가져오기] → 파일 선택 창 대신 새 탭 화면이 열림 |
-| F-19 | 새 탭을 연 뒤 팝업은 닫힘 |
-| F-20 | 페이지 스크립트 오류 없음 |
+| F-12 | X 리스트에서 뺀 멤버 자동 정리 |
+| F-13 | 확장 프로그램이 x.com 탭 주소를 볼 수 있음 |
+| F-14 | 새 탭 화면 [가져오기] → X 탭 content script 응답 |
+| F-15 | 교체 동기화 미리보기 메시지 |
+| F-16 | 새 탭 화면에서 백업 가져오기(병합) |
+| F-17 | X 화면 구조 변화 감지·기록 |
+| F-18 | 팝업에 구조 변화 경고가 바로 표시됨 |
+| F-19 | 팝업 [백업 파일 가져오기] → 파일 선택 창 대신 새 탭 화면이 열림 |
+| F-20 | 새 탭을 연 뒤 팝업은 닫힘 |
+| F-21 | 페이지 스크립트 오류 없음 |
 
 <!-- AUTO-CATALOG:END -->
 
@@ -308,11 +318,16 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
   - 지운 리스트는 다시 가져오면 정상으로 다시 등록된다.
 
 ### [M-11] 뺀 멤버 정리
-- **절차**:
+- **절차 (자동)**:
   1. X 에서 리스트 멤버 한 명을 뺀다.
-  2. 멤버 화면을 끝까지 스크롤한다.
-  3. 팝업의 [뺀 멤버 정리]를 누른다.
-- **기대 결과**: 확인 상자에 삭제될 멤버가 보이고, [교체]를 누르면 그 멤버만 지워진다. 이미 최신이면 확인 없이 안내만 뜬다.
+  2. 그 리스트의 멤버 화면을 열고 맨 위부터 끝까지 천천히 스크롤한 뒤 3초쯤 기다린다. (멤버가 한 화면에 다 보이면 열어 두기만 한다.)
+- **기대 결과 (자동)**: 뺀 멤버가 저장된 목록에서 지워지고(팝업의 멤버 수가 줄어듦), 확장 프로그램 아이콘에 ✔ 가 잠깐 보인다. 다른 멤버, 배지 색, 표시 방식은 그대로다.
+  - 멤버가 많은 리스트(스크롤해야 다 보이는 리스트)에서도 끝까지 내리면 지워지는지, 중간까지만 내리면 지워지지 않는지 확인한다.
+  - 팝업 [+ 추가]로 그 리스트에 직접 더한 멤버는 지워지지 않는다.
+- **절차 (직접)**:
+  1. 멤버 화면을 끝까지 스크롤한다.
+  2. 팝업의 [뺀 멤버 정리]를 누른다.
+- **기대 결과 (직접)**: 지울 멤버가 있으면 확인 상자에 보이고, [교체]를 누르면 그 멤버만 지워진다. 이미 최신이면 확인 없이 안내만 뜬다.
 
 ### [M-12] 백업 내보내기 · 가져오기 (병합 / 덮어쓰기)
 - **절차**:

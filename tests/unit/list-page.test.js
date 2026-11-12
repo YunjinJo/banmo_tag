@@ -330,3 +330,127 @@ describe('수집 결과 서명 (buildScrapeSignature)', () => {
     assertEqual(sig1, sig2);
   });
 });
+
+describe('멤버 목록을 맨 위부터 이어서 봤는지 (trackMemberListProgress)', () => {
+  it('맨 위에서 시작해 겹치는 구간으로 이어지면 true 를 유지', () => {
+    const progress = {};
+    assertEqual(trackMemberListProgress(progress, ['@a', '@b', '@c'], true), true);
+    assertEqual(trackMemberListProgress(progress, ['@C', '@d', '@e'], false), true, '대소문자 무시하고 @c 가 겹침');
+    assertEqual(trackMemberListProgress(progress, ['@e', '@f'], false), true);
+  });
+
+  it('맨 위를 본 적이 없으면 false', () => {
+    const progress = {};
+    assertEqual(trackMemberListProgress(progress, ['@c', '@d'], false), false);
+    assertEqual(trackMemberListProgress(progress, ['@d', '@e'], false), false);
+  });
+
+  it('겹치는 멤버 없이 건너뛰면 false 가 되고, 맨 위로 돌아가면 다시 true', () => {
+    const progress = {};
+    trackMemberListProgress(progress, ['@a', '@b'], true);
+    assertEqual(trackMemberListProgress(progress, ['@x', '@y'], false), false, '사이에 놓친 멤버가 있을 수 있음');
+    assertEqual(trackMemberListProgress(progress, ['@y', '@z'], false), false, '한 번 끊기면 이어 봐도 false');
+    assertEqual(trackMemberListProgress(progress, ['@a', '@b'], true), true);
+    assertEqual(trackMemberListProgress(progress, ['@b', '@c'], false), true);
+  });
+});
+
+describe('그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMemberListWindow, getCellOffsetY, getVisibleBounds)', () => {
+  // 실제 크기를 재야 하므로 숨겨진 #sandbox 대신 화면에 보이는 임시 영역을 씀 (높이 200px 짜리 스크롤 영역)
+  function withHost(html, run) {
+    const host = document.createElement('div');
+    host.style.cssText = 'position: fixed; top: 0; left: 0; width: 300px; height: 200px; overflow-y: auto; background: #fff;';
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    try {
+      run(host);
+    } finally {
+      host.remove();
+    }
+  }
+  const row = (y, inner) => `<div data-testid="cellInnerDiv" style="transform: translateY(${y}px); position: absolute; width: 100%; height: 50px;">${inner}</div>`;
+  const member = handle => `<div data-testid="UserCell"><a href="/${handle}">@${handle}</a></div>`;
+  const virtualList = (minHeight, rows) => `<div data-testid="primaryColumn"><div style="position: relative; min-height: ${minHeight}px;">${rows}</div></div>`;
+  const read = host => readMemberListWindow(host.querySelector('[data-testid="primaryColumn"]'), null);
+
+  it('getCellOffsetY 는 translateY 값을 읽고, 없으면 null', () => {
+    const el = document.createElement('div');
+    assertEqual(getCellOffsetY(el), null);
+    el.style.transform = 'translateY(144.5px)';
+    assertEqual(getCellOffsetY(el), 144.5);
+    assertEqual(getCellOffsetY(null), null);
+  });
+
+  it('getVisibleBounds 는 넘치는 부분을 가리는 부모의 범위로 잘라냄', () => {
+    withHost('<div style="height: 1000px;"><p id="target">x</p></div>', (host) => {
+      const bounds = getVisibleBounds(host.querySelector('#target'));
+      assertEqual(bounds.top, 0);
+      assertEqual(bounds.bottom, 200);
+    });
+  });
+
+  it('가상 스크롤: 첫 줄이 translateY 0 이면 맨 위, 마지막 줄이 전체 높이에 닿으면 끝', () => {
+    // 화면(200px)보다 길게 그려진 구간: 마지막 줄의 아래쪽이 화면 밖
+    withHost(virtualList(1000, [0, 50, 100, 150, 200].map((y, i) => row(y, member('top' + i))).join('')), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: false });
+    });
+    withHost(virtualList(1000, row(400, member('h')) + row(450, member('i'))), (host) => {
+      assertDeepEqual(read(host), { atTop: false, atEnd: false });
+    });
+    withHost(virtualList(1000, row(900, member('y')) + row(950, member('z'))), (host) => {
+      assertDeepEqual(read(host), { atTop: false, atEnd: true });
+    });
+    withHost(virtualList(100, row(0, member('a')) + row(50, member('b'))), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: true }, '짧은 목록은 맨 위이면서 끝');
+    });
+  });
+
+  it('전체 높이(min-height)에 못 미쳐도, 마지막 줄 아래가 화면에 비어 보이면 끝으로 봄 (아래에 줄이 더 있다면 그려졌을 것)', () => {
+    withHost(virtualList(1000, row(0, member('a')) + row(50, member('b'))), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: true });
+    });
+  });
+
+  it('더 불러오는 중(progressbar)이거나 마지막 멤버 뒤에 버튼([다시 시도] 등)이 있으면 끝이 아님', () => {
+    withHost(virtualList(150, row(0, member('a')) + row(50, member('b')) + row(100, '<div role="progressbar"></div>')), (host) => {
+      assertEqual(read(host).atEnd, false);
+    });
+    withHost(virtualList(150, row(0, member('a')) + row(50, member('b')) + row(100, '<button type="button">다시 시도</button>')), (host) => {
+      assertEqual(read(host).atEnd, false);
+    });
+  });
+
+  it('마지막 멤버 뒤의 추천 블록(제목 + 추천 계정)은 끝 판단을 막지 않음', () => {
+    const rows = row(0, member('a')) + row(50, '<h2 role="heading">팔로우 추천</h2>') +
+      row(100, '<button data-testid="UserCell" type="button"><a href="/reco">@reco</a></button>');
+    withHost(virtualList(150, rows), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: true });
+    });
+  });
+
+  it('translateY 를 쓰지 않는 구조: 첫 줄의 위쪽·마지막 줄의 아래쪽이 화면에 보이는지로 판단', () => {
+    const plain = (count) => {
+      let cells = '';
+      for (let i = 0; i < count; i++) cells += `<div data-testid="UserCell" style="height: 50px;"><a href="/user${i}">@user${i}</a></div>`;
+      return `<div data-testid="primaryColumn"><div>${cells}</div></div>`;
+    };
+    withHost(plain(3), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: true }, '목록 전체가 보임');
+    });
+    withHost(plain(10), (host) => {
+      assertDeepEqual(read(host), { atTop: true, atEnd: false }, '아래가 잘려 있음');
+      host.scrollTop = host.scrollHeight;
+      assertDeepEqual(read(host), { atTop: false, atEnd: true }, '끝까지 스크롤');
+    });
+  });
+
+  it('멤버가 없거나 멤버가 여러 목록에 흩어져 있으면 판단하지 않음 (둘 다 false)', () => {
+    withHost('<div data-testid="primaryColumn"><p>비어 있음</p></div>', (host) => {
+      assertDeepEqual(read(host), { atTop: false, atEnd: false });
+    });
+    withHost(`<div data-testid="primaryColumn"><div>${member('a')}</div><div>${member('b')}</div></div>`, (host) => {
+      assertDeepEqual(read(host), { atTop: false, atEnd: false });
+    });
+    assertDeepEqual(readMemberListWindow(null, null), { atTop: false, atEnd: false });
+  });
+});

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 리스트 "멤버" 화면의 가상 스크롤 구조를 본떠 만든 테스트용 페이지 (실제 X 페이지 아님)
+     - 화면 근처의 줄만 그려지고, 각 줄은 translateY 로 배치되며, 줄들의 부모에 불러온 목록 전체 높이(min-height)가 적혀 있음
+     - 처음 상태: 멤버 3명 아래에 "더 불러오는 중" 줄(progressbar)이 있음 = 목록이 아직 끝나지 않음
+     테스트가 줄을 바꿔 넣어 스크롤·다음 쪽 불러오기를 흉내 냅니다 (tests/e2e/content.spec.js 의 showMemberRows) -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="members">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/123/members">
+  <title>리스트 멤버 / X</title>
+  <style>
+    body { margin: 0; }
+    [data-testid="cellInnerDiv"] { height: 72px; }
+    [data-testid="UserCell"] { display: block; width: 100%; height: 72px; }
+  </style>
+</head>
+<body>
+<div id="react-root">
+  <header role="banner">
+    <nav aria-label="기본">
+      <a href="/home" role="link">홈</a>
+      <a href="/explore" role="link">탐색하기</a>
+      <a href="/notifications" role="link">알림</a>
+    </nav>
+  </header>
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar">
+        <h2 dir="ltr" role="heading">리스트 멤버</h2>
+      </div>
+      <section role="region" aria-labelledby="accessible-list-0">
+        <h1 id="accessible-list-0">타임라인: 리스트 멤버</h1>
+        <div aria-label="타임라인: 리스트 멤버" id="member-list">
+          <div id="member-rows" style="position: relative; min-height: 288px;">
+            <div data-testid="cellInnerDiv" style="transform: translateY(0px); position: absolute; width: 100%;">
+              <button data-testid="UserCell" role="button" tabindex="0">
+                <div><a href="/alice" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-alice"></div></a></div>
+                <div>
+                  <div><a href="/alice" role="link"><span>Alice Kim</span></a></div>
+                  <div><a href="/alice" role="link" tabindex="-1"><span>@alice</span></a></div>
+                </div>
+              </button>
+            </div>
+            <div data-testid="cellInnerDiv" style="transform: translateY(72px); position: absolute; width: 100%;">
+              <button data-testid="UserCell" role="button" tabindex="0">
+                <div><a href="/bob" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-bob"></div></a></div>
+                <div>
+                  <div><a href="/bob" role="link"><span>Bob Lee</span></a></div>
+                  <div><a href="/bob" role="link" tabindex="-1"><span>@bob</span></a></div>
+                </div>
+              </button>
+            </div>
+            <div data-testid="cellInnerDiv" style="transform: translateY(144px); position: absolute; width: 100%;">
+              <button data-testid="UserCell" role="button" tabindex="0">
+                <div><a href="/dave_dev" role="link" tabindex="-1"><div data-testid="UserAvatar-Container-dave_dev"></div></a></div>
+                <div>
+                  <div><a href="/dave_dev" role="link"><span>Dave</span></a></div>
+                  <div><a href="/dave_dev" role="link" tabindex="-1"><span>@dave_dev</span></a></div>
+                </div>
+              </button>
+            </div>
+            <!-- 다음 멤버를 불러오는 중 -->
+            <div data-testid="cellInnerDiv" style="transform: translateY(216px); position: absolute; width: 100%;">
+              <div role="progressbar" aria-valuemin="0" aria-valuemax="1"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+    <div data-testid="sidebarColumn">
+      <aside aria-label="팔로우 추천">
+        <button data-testid="UserCell" role="button" tabindex="0">
+          <div><a href="/sidebar_reco" role="link"><span>Sidebar</span></a></div>
+          <div><a href="/sidebar_reco" role="link" tabindex="-1"><span>@sidebar_reco</span></a></div>
+        </button>
+      </aside>
+    </div>
+  </main>
+</div>
+</body>
+</html>

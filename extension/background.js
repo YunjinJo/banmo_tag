@@ -30,7 +30,7 @@ function enqueue(task) {
   return run;
 }
 
-// 새 멤버가 저장되면 확장 프로그램 아이콘에 3초간 ✔ 표시 (팝업을 열어도 지워짐)
+// 새 멤버가 저장되거나 뺀 멤버가 자동으로 정리되면 확장 프로그램 아이콘에 3초간 ✔ 표시 (팝업을 열어도 지워짐)
 // 3초 타이머는 크롬 서비스 워커가 그 전에 종료되면 실행되지 않으므로, chrome.alarms 로 한 번 더 지움.
 // 알람은 크롬에서 30초보다 짧게 정할 수 없어 30초 뒤 예비로만 씁니다.
 const CLEAR_SAVED_BADGE_ALARM = 'banmo_tag-clear-saved-badge';
@@ -76,14 +76,20 @@ async function saveListMembers(rawListName, incomingMembers, listId, followRenam
   return { success: true, listName: outcome.listName, count: outcome.count, added: outcome.added };
 }
 
-// 교체 동기화: 이번에 확인한 멤버로 목록을 바꿈 (X 리스트에서 뺀 멤버 정리)
-async function replaceListMembers(rawListName, seenMembers, listId, followRename) {
+// 뺀 멤버 정리: 이번에 확인한 멤버로 목록을 바꿈 (X 리스트에서 뺀 멤버 삭제)
+// auto: 사용자가 확인하지 않은 자동 정리 (content.js 가 멤버 목록을 끝까지 본 것을 확인했을 때).
+//       저장된 데이터 기준으로 지워도 되는지 한 번 더 확인하고(canAutoRemoveMembers), 안 되면 저장하지 않음
+async function replaceListMembers(rawListName, seenMembers, listId, followRename, auto) {
   const result = await chrome.storage.local.get(['lists']);
   const outcome = applyListReplace(result.lists || {}, rawListName, seenMembers, listId, { followRename });
   if (!outcome.success) {
     return { success: false, message: outcome.message };
   }
+  if (auto && !canAutoRemoveMembers(outcome)) {
+    return { success: true, skipped: true, listName: outcome.listName, count: outcome.previousCount, added: 0, removedCount: 0 };
+  }
   await chrome.storage.local.set({ lists: outcome.lists });
+  if (auto) showSavedBadge();
   return {
     success: true,
     listName: outcome.listName,
@@ -108,10 +114,10 @@ chrome.runtime.onInstalled.addListener(() => {
   }).catch(err => console.error('Storage migration failed:', err));
 });
 
-// content script 요청: action → 처리 함수 (data: { listName, members, listId, nameReliable })
+// content script 요청: action → 처리 함수 (data: { listName, members, listId, nameReliable, auto? })
 const messageHandlers = {
   saveListMembers: data => saveListMembers(data.listName, data.members, data.listId, data.nameReliable === true),
-  replaceListMembers: data => replaceListMembers(data.listName, data.members, data.listId, data.nameReliable === true)
+  replaceListMembers: data => replaceListMembers(data.listName, data.members, data.listId, data.nameReliable === true, data.auto === true)
 };
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

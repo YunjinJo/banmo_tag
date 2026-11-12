@@ -88,3 +88,21 @@ describe('백업 병합 시 listId 기준 매칭 (mergeImportedLists)', () => {
     assertDeepEqual(lists['새 리스트'].members, ['@c']);
   });
 });
+
+describe('백업의 직접 추가한 멤버 표시 (manualMembers)', () => {
+  it('normalizeImportedLists 는 실제 멤버에 있는 핸들만 남김', () => {
+    const lists = normalizeImportedLists({
+      '테크': { color: '#ff0000', mode: 'normal', listId: '42', members: ['@a', '@pick'], manualMembers: ['pick', '@not_member', 7] },
+      '친구': { color: '#ff0000', mode: 'normal', members: ['@b'], manualMembers: 'pick' }
+    });
+    assertDeepEqual(lists['테크'].manualMembers, ['@pick']);
+    assertEqual(lists['친구'].manualMembers, undefined, '배열이 아니면 버림');
+  });
+
+  it('mergeImportedLists 는 기존 리스트의 표시에 합침', () => {
+    const lists = { '테크': { color: '#ff0000', mode: 'normal', listId: '42', members: ['@a', '@mine'], manualMembers: ['@mine'] } };
+    mergeImportedLists(lists, { '테크': { color: '#1d9bf0', mode: 'normal', listId: '42', members: ['@a', '@pick'], manualMembers: ['@pick'] } });
+    assertDeepEqual(lists['테크'].members, ['@a', '@mine', '@pick']);
+    assertDeepEqual(lists['테크'].manualMembers, ['@mine', '@pick']);
+  });
+});

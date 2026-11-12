@@ -287,12 +287,118 @@ test.describe('타임라인 배지', () => {
   });
 });
 
-test.describe('멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리)', () => {
+// 가상 스크롤 흉내: 멤버 목록에 그려진 줄을 handles 로 바꿈.
+// firstIndex: 첫 줄이 목록의 몇 번째 줄인지, total: 불러온 목록의 전체 줄 수, loading: 맨 아래에 "더 불러오는 중" 줄을 둘지
+async function showMemberRows(page, handles, { firstIndex, total, loading = false }) {
+  await page.evaluate(([list, first, count, isLoading]) => {
+    const ROW = 72;
+    const wrapper = document.getElementById('member-rows');
+    const template = wrapper.querySelector('[data-testid="cellInnerDiv"]').cloneNode(true);
+    wrapper.replaceChildren();
+    wrapper.style.minHeight = (count * ROW) + 'px';
+    const place = (row, index) => {
+      row.style.transform = `translateY(${index * ROW}px)`;
+      wrapper.appendChild(row);
+    };
+    list.forEach((handle, i) => {
+      const row = template.cloneNode(true);
+      row.querySelectorAll('a').forEach(a => a.setAttribute('href', '/' + handle));
+      row.querySelectorAll('span').forEach((s) => {
+        s.textContent = s.textContent.startsWith('@') ? '@' + handle : handle;
+      });
+      place(row, first + i);
+    });
+    if (isLoading) {
+      const row = document.createElement('div');
+      row.setAttribute('data-testid', 'cellInnerDiv');
+      row.style.cssText = 'position: absolute; width: 100%;';
+      const spinner = document.createElement('div');
+      spinner.setAttribute('role', 'progressbar');
+      row.appendChild(spinner);
+      place(row, first + list.length);
+    }
+  }, [handles, firstIndex, total, loading]);
+}
+
+test.describe('X 리스트에서 뺀 멤버 자동 정리', () => {
+  const membersOf = async sw => ((await getLists(sw))['Core Members'] || {}).members || [];
+  // 자동 정리는 목록 끝에 닿은 상태가 2.5초 유지된 뒤에 하므로, "지우지 않음"은 그보다 길게 기다린 뒤 확인
+  const WAIT_PAST_SETTLE_MS = 3800;
+
+  test('멤버 목록 전체가 보이면 뺀 멤버를 지움 (색·표시 방식과 직접 추가한 멤버는 유지)', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        'Core Members': {
+          color: '#123456', mode: 'dim', listId: '123',
+          members: ['@alice', '@bob', '@dave_dev', '@gone_user', '@my_pick'], manualMembers: ['@my_pick']
+        }
+      }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+
+    await expect.poll(() => membersOf(serviceWorker), { timeout: 10000 }).toEqual(['@alice', '@bob', '@dave_dev', '@my_pick']);
+    const entry = (await getLists(serviceWorker))['Core Members'];
+    expect(entry.color).toBe('#123456');
+    expect(entry.mode).toBe('dim');
+    expect(entry.manualMembers).toEqual(['@my_pick']);
+    await expect.poll(() => serviceWorker.evaluate(() => chrome.action.getBadgeText({}))).toBe('✔');
+  });
+
+  test('저장된 멤버의 절반 넘게 지워질 상황이면 자동으로는 지우지 않음', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@gone1', '@gone2', '@gone3', '@gone4', '@gone5'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    await expect.poll(() => membersOf(serviceWorker)).toContain('@dave_dev');
+
+    await page.waitForTimeout(WAIT_PAST_SETTLE_MS);
+    expect(await membersOf(serviceWorker)).toEqual(['@alice', '@gone1', '@gone2', '@gone3', '@gone4', '@gone5', '@bob', '@dave_dev']);
+  });
+
+  test('가상 스크롤: 불러오는 중에는 지우지 않고, 맨 위부터 끝까지 이어서 본 뒤에 지움', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@erin', '@frank', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+
+    // 처음 화면: alice, bob, dave_dev + "더 불러오는 중" → 끝이 아니므로 그대로
+    await page.waitForTimeout(WAIT_PAST_SETTLE_MS);
+    expect(await membersOf(serviceWorker)).toContain('@gone_user');
+
+    // 스크롤: 위쪽 줄이 사라지고 다음 멤버가 나타남 (dave_dev 가 겹침), 목록의 끝
+    await showMemberRows(page, ['dave_dev', 'erin', 'frank'], { firstIndex: 2, total: 5 });
+    await expect.poll(() => membersOf(serviceWorker), { timeout: 10000 }).toEqual(['@alice', '@bob', '@dave_dev', '@erin', '@frank']);
+  });
+
+  test('가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음)', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@erin', '@frank', '@gina', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    await page.waitForTimeout(800);
+
+    // alice, bob, dave_dev 다음에 erin 을 건너뛰고 frank, gina(끝)만 보임
+    await showMemberRows(page, ['frank', 'gina'], { firstIndex: 4, total: 6 });
+    await page.waitForTimeout(WAIT_PAST_SETTLE_MS);
+    expect(await membersOf(serviceWorker)).toEqual(['@alice', '@bob', '@dave_dev', '@erin', '@frank', '@gina', '@gone_user']);
+  });
+});
+
+test.describe('팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리)', () => {
   test('이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제', async ({ context, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@gone_user'] } }
     });
-    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    // "더 불러오는 중" 상태의 화면: 자동 정리는 하지 않음
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
     const page = await context.newPage();
     await page.goto(MEMBERS_URL);
     // 자동 수집이 dave_dev 를 추가할 때까지 대기
@@ -300,8 +406,8 @@ test.describe('멤버 목록 교체 동기화 (X 에서 뺀 멤버 정리)', () 
 
     // 가상 스크롤 흉내: alice 셀이 DOM 에서 사라지고 새 멤버 carol_new 가 나타남
     await page.evaluate(() => {
-      const list = document.getElementById('member-list');
-      const aliceCell = list.querySelector('a[href="/alice"]').closest('[data-testid="cellInnerDiv"]');
+      const aliceCell = document.querySelector('#member-list a[href="/alice"]').closest('[data-testid="cellInnerDiv"]');
+      const list = aliceCell.parentElement;
       const carol = aliceCell.cloneNode(true);
       carol.querySelectorAll('a').forEach(a => a.setAttribute('href', '/carol_new'));
       carol.querySelectorAll('span').forEach(s => {

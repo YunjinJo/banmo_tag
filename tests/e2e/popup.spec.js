@@ -671,7 +671,8 @@ test.describe('팝업 ↔ X 탭 연동', () => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@gone_user'] } }
     });
-    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
+    // "더 불러오는 중" 상태의 멤버 화면 (목록 끝을 확인하지 못해 자동으로는 정리하지 않는 상황)
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
     const xPage = await context.newPage();
     await xPage.goto('https://x.com/i/lists/123/members');
     await xPage.waitForTimeout(800);
