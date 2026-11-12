@@ -49,6 +49,25 @@ test.describe('팝업 기본 동작', () => {
     await expect(popup.locator('#sync-status')).toBeVisible();
   });
 
+  test('안내 메시지의 닫기 버튼(마우스·키보드)을 누르면 바로 사라지고, 다음 안내는 다시 보임', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    const status = popup.locator('#sync-status');
+    const closeBtn = popup.getByRole('button', { name: '안내 닫기' });
+    await expect(closeBtn).toBeHidden(); // 안내가 없을 때는 버튼도 없음
+
+    await popup.click('#sync-current-tab-btn');
+    await expect(status).toBeVisible();
+    await closeBtn.click();
+    await expect(status).toBeHidden();
+
+    await popup.click('#sync-current-tab-btn');
+    await expect(status).toHaveText('현재 탭이 X(Twitter) 페이지가 아닙니다.');
+    await closeBtn.focus();
+    await popup.keyboard.press('Enter');
+    await expect(status).toBeHidden();
+    expect(await popup.evaluate(() => document.activeElement.id)).not.toBe('sync-status-close-btn');
+  });
+
   test('기존 리스트에 직접 추가하면 멤버만 추가되고 색상·모드는 유지', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '테크': { color: '#ff0055', mode: 'highlight', members: ['@a'] } } });
     const popup = await openPopup(context, extensionId);

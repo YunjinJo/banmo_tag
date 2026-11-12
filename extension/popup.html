@@ -203,7 +203,12 @@
     </div>
   </div>
 
-  <div id="sync-status" class="sync-status" role="status" style="display:none;"></div>
+  <div id="sync-status" class="sync-status" style="display:none;">
+    <span id="sync-status-text" class="sync-status-text" role="status"></span>
+    <button id="sync-status-close-btn" type="button" class="sync-status-close" aria-label="안내 닫기" title="닫기">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+    </button>
+  </div>
 
   <script src="shared/base.js"></script>
   <script src="shared/list-names.js"></script>
