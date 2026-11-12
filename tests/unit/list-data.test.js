@@ -419,3 +419,87 @@ describe('팝업에서 리스트 이름 바꾸기 (renameList)', () => {
     assertDeepEqual(Object.keys(saved.lists), ['친구']);
   });
 });
+
+describe('직접 추가한 멤버 표시 (manualMembers: applyManualAdd, applyListReplace, removeMemberFromLists)', () => {
+  it('X 리스트(listId 있음)에 직접 더한 새 멤버만 manualMembers 에 적음 (이미 있던 멤버는 적지 않음)', () => {
+    const lists = { '테크': { color: '#ff0055', mode: 'normal', listId: '1', members: ['@a'] } };
+    applyManualAdd(lists, '테크', ['@A', '@pick'], '#1d9bf0', 'normal');
+    assertDeepEqual(lists['테크'].members, ['@a', '@pick']);
+    assertDeepEqual(lists['테크'].manualMembers, ['@pick']);
+    applyManualAdd(lists, '테크', ['@pick', '@second'], '#1d9bf0', 'normal');
+    assertDeepEqual(lists['테크'].manualMembers, ['@pick', '@second']);
+  });
+
+  it('listId 없는 리스트와 새로 만든 리스트에는 적지 않음 (X 리스트와 비교할 일이 없음)', () => {
+    const lists = { '직접': { color: '#ff0055', mode: 'normal', members: ['@a'], manual: true } };
+    applyManualAdd(lists, '직접', ['@b'], '#1d9bf0', 'normal');
+    applyManualAdd(lists, '새 리스트', ['@c'], '#1d9bf0', 'normal');
+    assertEqual(lists['직접'].manualMembers, undefined);
+    assertEqual(lists['새 리스트'].manualMembers, undefined);
+  });
+
+  it('뺀 멤버 정리는 직접 추가한 멤버를 지우지 않고, X 리스트에서 확인된 멤버는 직접 추가 표시를 뗌', () => {
+    const initial = {
+      '테크': { color: '#ff0055', mode: 'normal', listId: '1', members: ['@a', '@gone', '@pick', '@joined'], manualMembers: ['@pick', '@Joined'] }
+    };
+    const res = applyListReplace(initial, '테크', ['@a', '@joined'], '1');
+    assertDeepEqual(res.lists['테크'].members, ['@a', '@pick', '@joined']);
+    assertDeepEqual(res.removed, ['@gone']);
+    assertDeepEqual(res.lists['테크'].manualMembers, ['@pick']);
+
+    const allSeen = applyListReplace(initial, '테크', ['@a', '@joined', '@pick'], '1');
+    assertEqual(allSeen.lists['테크'].manualMembers, undefined, '모두 X 리스트에서 확인되면 표시가 없어짐');
+  });
+
+  it('멤버를 지우면 직접 추가 표시에서도 지움', () => {
+    const lists = { '테크': { color: '#ff0055', mode: 'normal', listId: '1', members: ['@a', '@pick'], manualMembers: ['@Pick'] } };
+    assertEqual(removeMemberFromLists(lists, '테크', '@pick'), true);
+    assertDeepEqual(lists['테크'].members, ['@a']);
+    assertEqual(lists['테크'].manualMembers, undefined);
+  });
+
+  it('리스트를 합칠 때 직접 추가 표시도 합침 (mergeManualMembers, sanitizeListsObject, moveRenamedList)', () => {
+    const target = { members: ['@a'], manualMembers: ['@a'] };
+    mergeManualMembers(target, { manualMembers: ['@A', '@b'] });
+    assertDeepEqual(target.manualMembers, ['@a', '@b']);
+    mergeManualMembers(target, { members: ['@c'] });
+    assertDeepEqual(target.manualMembers, ['@a', '@b'], '표시가 없는 리스트를 합쳐도 그대로');
+
+    const { newLists } = sanitizeListsObject({
+      '친구': { color: '#ff0055', mode: 'normal', listId: '9', members: ['@a'] },
+      '친구 (@me)': { color: '#ff0055', mode: 'normal', listId: '9', members: ['@pick'], manualMembers: ['@pick'] }
+    });
+    assertDeepEqual(newLists['친구'].manualMembers, ['@pick']);
+
+    const lists = {
+      '리스트 (5)': { color: '#ff0055', mode: 'normal', listId: '5', members: ['@x'], manualMembers: ['@x'] },
+      '진짜 이름': { color: '#00ff00', mode: 'dim', members: ['@y'] }
+    };
+    moveRenamedList(lists, '리스트 (5)', '진짜 이름');
+    assertDeepEqual(lists['진짜 이름'].manualMembers, ['@x']);
+  });
+});
+
+describe('뺀 멤버를 자동으로 지워도 되는지 (canAutoRemoveMembers)', () => {
+  const stored = members => ({ '테크': { color: '#ff0055', mode: 'normal', listId: '1', members } });
+
+  it('지울 멤버가 있고 저장된 멤버의 절반 이하면 허용', () => {
+    assertEqual(canAutoRemoveMembers(applyListReplace(stored(['@a', '@b', '@c', '@gone']), '테크', ['@a', '@b', '@c'], '1')), true);
+    assertEqual(canAutoRemoveMembers(applyListReplace(stored(['@a', '@gone']), '테크', ['@a'], '1')), true, '정확히 절반');
+  });
+
+  it('지울 멤버가 없으면 할 일이 없음', () => {
+    assertEqual(canAutoRemoveMembers(applyListReplace(stored(['@a', '@b']), '테크', ['@a', '@b', '@new'], '1')), false);
+  });
+
+  it('절반 넘게 지워지면 자동으로는 지우지 않음 (화면을 잘못 읽었을 수 있음)', () => {
+    assertEqual(canAutoRemoveMembers(applyListReplace(stored(['@a', '@g1', '@g2']), '테크', ['@a'], '1')), false);
+  });
+
+  it('팝업에서 직접 만든 리스트(manual)와 실패한 계획은 자동으로 지우지 않음', () => {
+    const manualList = { '테크': { color: '#ff0055', mode: 'normal', listId: '1', manual: true, members: ['@a', '@b', '@c', '@gone'] } };
+    assertEqual(canAutoRemoveMembers(applyListReplace(manualList, '테크', ['@a', '@b', '@c'], '1')), false);
+    assertEqual(canAutoRemoveMembers(applyListReplace({}, '테크', [], '1')), false);
+    assertEqual(canAutoRemoveMembers(null), false);
+  });
+});

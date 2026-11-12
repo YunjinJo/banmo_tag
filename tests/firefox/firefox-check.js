@@ -201,6 +201,19 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     }));
     record('멤버 자동 수집 → background 저장', !!saved && saved.members.join(',') === '@alice,@bob,@dave_dev', JSON.stringify(saved));
 
+    // 4-1. X 리스트에서 뺀 멤버 자동 정리: 멤버 목록 전체가 보이는 화면이므로, X 리스트에 없는 저장 멤버는 지워져야 함
+    await popup.evaluate(async () => {
+      const { lists } = await chrome.storage.local.get(['lists']);
+      Object.values(lists).find(v => v.listId === '123').members.push('@gone_user');
+      await chrome.storage.local.set({ lists });
+    });
+    const pruned = await poll(() => popup.evaluate(async () => {
+      const { lists } = await chrome.storage.local.get(['lists']);
+      const entry = Object.values(lists || {}).find(v => v.listId === '123');
+      return entry && entry.members.indexOf('@gone_user') === -1 ? entry.members : null;
+    }));
+    record('X 리스트에서 뺀 멤버 자동 정리', Array.isArray(pruned) && pruned.join(',') === '@alice,@bob,@dave_dev', JSON.stringify(pruned));
+
     // 5. 새 탭 화면에서 [가져오기] (열 때 보던 X 탭 대상)
     const tabs = await popup.evaluate(() => chrome.tabs.query({}).then(ts => ts.map(t => ({ id: t.id, url: t.url }))));
     const membersTab = tabs.find(t => (t.url || '').includes('/i/lists/123/members'));

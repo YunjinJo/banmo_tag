@@ -5,6 +5,8 @@
 //   - color: 배지 배경색, mode: normal | highlight | dim, members: ["@handle", …]
 //   - listId: X 리스트 ID (자동 수집한 리스트), manual: 팝업에서 직접 만든 리스트면 true
 //   - customName: 팝업에서 이름을 직접 바꾼 리스트면 true (X 에서 리스트 이름이 바뀌어도 이 이름을 유지)
+//   - manualMembers: X 리스트(listId 있음)에 팝업에서 직접 추가한 멤버 ["@handle", …].
+//     X 리스트에는 없는 멤버이므로, 뺀 멤버를 정리할 때(자동·[뺀 멤버 정리]) 지우지 않음
 //   - style: 이 리스트만의 배지 글자 스타일 { textColor?, fontSize?, fontFamily? } (없는 항목은 공통 설정 사용)
 // ⚠️ shared/ 파일의 최상위에는 function 선언과 var 만 씁니다 (이유는 shared/base.js 머리말).
 
@@ -45,6 +47,7 @@ function sanitizeListsObject(lists) {
     const target = newLists[targetKey];
     if (target) {
       target.members = mergeHandles(target.members, val && val.members);
+      mergeManualMembers(target, val);
       if (!target.listId && listId) target.listId = listId;
     } else {
       newLists[targetKey] = Object.assign({}, val, { members: mergeHandles([], val && val.members) });
@@ -92,10 +95,19 @@ function moveRenamedList(lists, fromKey, toKey) {
   const old = lists[fromKey];
   delete lists[fromKey];
   const target = lists[toKey];
-  lists[toKey] = target
-    ? Object.assign({}, target, { members: mergeHandles(target.members, old.members) })
-    : old;
+  if (target) {
+    lists[toKey] = Object.assign({}, target, { members: mergeHandles(target.members, old.members) });
+    mergeManualMembers(lists[toKey], old);
+  } else {
+    lists[toKey] = old;
+  }
   return true;
+}
+
+// 두 리스트를 합칠 때 "직접 추가한 멤버" 표시도 합침 (target 을 바꿈)
+function mergeManualMembers(target, source) {
+  if (!source || !Array.isArray(source.manualMembers) || source.manualMembers.length === 0) return;
+  target.manualMembers = mergeHandles(target.manualMembers, source.manualMembers);
 }
 
 // 저장·교체에 쓸 리스트 이름과 멤버 검사. 실패하면 { error }, 성공하면 { cleanedName, members }
@@ -155,6 +167,8 @@ function applyListSave(rawLists, rawListName, incomingMembers, listId, options) 
 
 // 교체 동기화: 리스트 멤버를 "이번에 확인한 멤버"로 바꿈 (X 리스트에서 뺀 멤버 정리용)
 // - 확인된 기존 멤버는 기존 표기 유지, 확인되지 않은 멤버는 삭제, 새로 확인된 멤버는 추가
+// - 팝업에서 직접 추가한 멤버(manualMembers)는 X 리스트에 없는 것이 당연하므로 지우지 않음.
+//   이번에 X 리스트에서 확인된 멤버는 직접 추가 표시를 뗌 (이제 X 리스트의 멤버)
 // - 색상/모드/listId 는 유지. 임시 이름("리스트 (ID)")이면 실제 이름으로 승격
 // - 입력을 바꾸지 않고 새 lists 를 반환하므로 미리보기에도 그대로 사용 가능
 // - options.followRename: applyListSave 와 같음
@@ -165,16 +179,22 @@ function applyListReplace(rawLists, rawListName, seenMembers, listId, options) {
 
   const lists = sanitizeListsObject(JSON.parse(JSON.stringify(rawLists || {}))).newLists;
   const { listName } = prepareListEntry(lists, incoming.cleanedName, listId, !!(options && options.followRename));
-  if (listId) lists[listName].listId = listId;
+  const entry = lists[listName];
+  if (listId) entry.listId = listId;
 
-  const seen = new Set(incoming.members.map(m => m.toLowerCase()));
-  const isSeen = handle => seen.has(String(handle).toLowerCase());
-  const existing = lists[listName].members || [];
-  const kept = existing.filter(isSeen);
-  const removed = existing.filter(h => !isSeen(h));
+  const lower = handle => String(handle).toLowerCase();
+  const seen = new Set(incoming.members.map(lower));
+  const manualMembers = (Array.isArray(entry.manualMembers) ? entry.manualMembers : []).filter(h => !seen.has(lower(h)));
+  const manual = new Set(manualMembers.map(lower));
+  const isKept = handle => seen.has(lower(handle)) || manual.has(lower(handle));
+  const existing = entry.members || [];
+  const kept = existing.filter(isKept);
+  const removed = existing.filter(h => !isKept(h));
   const merged = mergeHandles(kept, incoming.members);
 
-  lists[listName].members = merged;
+  entry.members = merged;
+  if (manualMembers.length > 0) entry.manualMembers = manualMembers;
+  else delete entry.manualMembers;
   return {
     success: true,
     lists,
@@ -182,16 +202,33 @@ function applyListReplace(rawLists, rawListName, seenMembers, listId, options) {
     previousCount: existing.length,
     count: merged.length,
     added: merged.length - kept.length,
-    removed
+    removed,
+    manualList: entry.manual === true
   };
+}
+
+// 멤버 화면을 끝까지 확인했을 때, 확인 없이 자동으로 뺀 멤버를 지워도 되는지 (plan: applyListReplace 결과)
+// - 지울 멤버가 없으면 할 일이 없음
+// - 팝업에서 직접 만든 리스트(manual)는 이름이 같은 X 리스트와 합쳐진 것일 수 있어 자동으로는 지우지 않음
+// - 저장된 멤버의 절반 넘게 지워지면 화면을 잘못 읽었을 수 있어 자동으로는 지우지 않음
+//   (이런 경우는 팝업 [뺀 멤버 정리]에서 지울 멤버를 확인한 뒤 진행)
+function canAutoRemoveMembers(plan) {
+  if (!plan || !plan.success || plan.manualList || !Array.isArray(plan.removed)) return false;
+  return plan.removed.length > 0 && plan.removed.length * 2 <= plan.previousCount;
 }
 
 // 팝업 "직접 리스트 추가": 이미 있는 리스트면 멤버만 추가하고 색상/모드는 유지.
 // 새로 만든 리스트에는 manual: true 를 붙여, "X"·"Home" 같은 이름도 정리 과정에서 지워지지 않게 함.
+// X 리스트(listId 있음)에 새로 더한 멤버는 manualMembers 에 적어, 뺀 멤버를 정리할 때 지워지지 않게 함.
 function applyManualAdd(lists, listName, handles, color, mode) {
   const existing = lists[listName];
   if (existing) {
+    const before = new Set((existing.members || []).map(h => String(h).toLowerCase()));
     existing.members = mergeHandles(existing.members, handles);
+    if (existing.listId) {
+      const fresh = existing.members.filter(h => !before.has(h.toLowerCase()));
+      if (fresh.length > 0) existing.manualMembers = mergeHandles(existing.manualMembers, fresh);
+    }
     return { created: false, total: existing.members.length };
   }
   lists[listName] = {
@@ -231,5 +268,9 @@ function removeMemberFromLists(lists, listName, handleToRemove) {
   if (!target) return false;
   const before = list.members.length;
   list.members = list.members.filter(h => String(h).toLowerCase() !== target);
+  if (Array.isArray(list.manualMembers)) {
+    list.manualMembers = list.manualMembers.filter(h => String(h).toLowerCase() !== target);
+    if (list.manualMembers.length === 0) delete list.manualMembers;
+  }
   return list.members.length !== before;
 }

@@ -14,13 +14,14 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       ],
       'list-data.js': [
         sanitizeListsObject, resolveListKey, moveRenamedList, prepareIncomingMembers, prepareListEntry,
-        applyListSave, applyListReplace, applyManualAdd, renameList, removeMemberFromLists
+        mergeManualMembers, applyListSave, applyListReplace, canAutoRemoveMembers, applyManualAdd, renameList,
+        removeMemberFromLists
       ],
       'list-page.js': [
         parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError, getMemberListDialog,
         firstValidCleanName, isRecommendationTitle, getListNameFromPage, isRecoLabel, getPrecedingSectionHeading,
-        getLastHeadingBefore, isExcludedUserCell, getHandleFromUserCell, extractMembersFromContainer,
-        buildScrapeSignature
+        getLastHeadingBefore, isExcludedUserCell, getHandleFromUserCell, getCellOffsetY, getVisibleBounds,
+        readMemberListWindow, trackMemberListProgress, extractMembersFromContainer, buildScrapeSignature
       ],
       'badges.js': [
         buildHandleMap, diffHandleMaps, isTweetAffected, applyBadgeStyle, normalizeListStyle,

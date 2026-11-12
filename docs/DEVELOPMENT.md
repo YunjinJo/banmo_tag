@@ -49,7 +49,7 @@ dist/              빌드 결과 zip, 파이어폭스용 폴더 dist/firefox/ (g
 |---|---|---|
 | `base.js` | 기본값, 핸들·색·모드 확인, 브라우저 구분 | `mergeHandles`, `parseHandles`, `getBrowserKind` |
 | `list-names.js` | 화면에서 읽은 글자를 리스트 이름으로 다듬기, 시스템 단어 걸러내기 | `cleanListName`, `isValidListName` |
-| `list-data.js` | 저장된 리스트 데이터: 정리·저장·교체·직접 추가·멤버 삭제 | `sanitizeListsObject`, `applyListSave`, `applyListReplace` |
+| `list-data.js` | 저장된 리스트 데이터: 정리·저장·교체·직접 추가·멤버 삭제, 뺀 멤버를 자동으로 지워도 되는지 | `sanitizeListsObject`, `applyListSave`, `applyListReplace`, `canAutoRemoveMembers` |
 | `list-page.js` | X 리스트 화면 읽기: 주소, 수집해도 되는 화면인지, 리스트 이름, 멤버 | `parseListUrl`, `getListNameFromPage`, `extractMembersFromContainer` |
 | `badges.js` | 타임라인 배지: 핸들 → 리스트 표, 글자 스타일, 트윗에 그리기 | `buildHandleMap`, `applyBadgeStyle`, `renderTweet` |
 | `backup.js` | 백업 만들기·읽기·합치기 | `buildBackup`, `parseBackup`, `mergeImportedLists` |
@@ -91,6 +91,7 @@ dist/              빌드 결과 zip, 파이어폭스용 폴더 dist/firefox/ (g
 | 배지 위치·모양, 강조·흐리게 | `shared/badges.js`, `styles.css` |
 | 수집하는 시점, 배지를 다시 그리는 시점 | `content.js` |
 | 저장 규칙(합치기, 이름 변경, 교체) | `shared/list-data.js`, `background.js` |
+| 뺀 멤버 자동 정리(목록을 맨 위부터 끝까지 봤는지) | `shared/list-page.js` 의 `readMemberListWindow`·`trackMemberListProgress`, `content.js` 의 `syncRemovedMembers`. 목록 끝에서는 줄이 추가되지 않으므로 `onMemberListScroll`(스크롤)과 줄이 사라지는 변화로도 다시 확인 |
 | 팝업 화면 | `popup/` 의 해당 화면 파일, `popup/popup.css`, `popup.html` |
 | X 가 화면 구조를 바꿈 | `shared/list-page.js`·`shared/badges.js` 의 선택자, `shared/health.js`, `tests/fixtures/` |
 

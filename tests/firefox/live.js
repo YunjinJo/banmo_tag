@@ -11,7 +11,7 @@
 //   badges({ all })          첫 트윗(all: 모든 트윗)의 배지 글자, 배지가 붙을 때까지 잠시 기다림
 //   storage(keys)            확장 프로그램 저장 공간(chrome.storage.local) 읽기
 //   openExtensionPage(p)     확장 프로그램 페이지(popup.html 등)를 새 탭으로 열어 Page 로 돌려줌 (다 쓰면 close() 후 front())
-//   reloadExtension()        extension/ 을 다시 설치 (코드 수정 반영, 저장 데이터는 유지)
+//   reloadExtension()        extension/ 으로 dist/firefox 를 다시 만들어 설치 (코드 수정 반영, 저장 데이터는 유지)
 //   shot(pg, name)           스크린샷 저장 후 파일 경로
 //   sleep(ms), browser, extUrl(p), chromeEval(expr)
 'use strict';
