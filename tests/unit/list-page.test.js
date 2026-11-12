@@ -389,6 +389,31 @@ describe('그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMember
     });
   });
 
+  it('getVisibleBounds 는 html·body 의 overflow 로는 자르지 않음 (X 의 좁은 창처럼 창 전체가 스크롤되는 화면)', () => {
+    const root = document.documentElement;
+    const before = { overflowY: root.style.overflowY, height: root.style.height, scrollY: window.scrollY };
+    const spacer = document.createElement('div');
+    spacer.style.height = (window.innerHeight + 2000) + 'px';
+    const target = document.createElement('p');
+    spacer.appendChild(target);
+    document.body.appendChild(spacer);
+    // X 와 같은 조건: html 은 창 높이만큼이고(height: 100%) 내용이 그 밖으로 넘침
+    root.style.overflowY = 'scroll';
+    root.style.height = '100%';
+    window.scrollTo(0, document.documentElement.scrollHeight);
+    try {
+      assertEqual(window.scrollY > 0, true, '창이 스크롤된 상태');
+      const bounds = getVisibleBounds(target);
+      assertEqual(bounds.top, 0);
+      assertEqual(bounds.bottom, window.innerHeight, '스크롤해도 보이는 범위는 창 전체');
+    } finally {
+      root.style.overflowY = before.overflowY;
+      root.style.height = before.height;
+      spacer.remove();
+      window.scrollTo(0, before.scrollY);
+    }
+  });
+
   it('가상 스크롤: 첫 줄이 translateY 0 이면 맨 위, 마지막 줄이 전체 높이에 닿으면 끝', () => {
     // 화면(200px)보다 길게 그려진 구간: 마지막 줄의 아래쪽이 화면 밖
     withHost(virtualList(1000, [0, 50, 100, 150, 200].map((y, i) => row(y, member('top' + i))).join('')), (host) => {

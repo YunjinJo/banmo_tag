@@ -91,7 +91,7 @@ dist/              빌드 결과 zip, 파이어폭스용 폴더 dist/firefox/ (g
 | 배지 위치·모양, 강조·흐리게 | `shared/badges.js`, `styles.css` |
 | 수집하는 시점, 배지를 다시 그리는 시점 | `content.js` |
 | 저장 규칙(합치기, 이름 변경, 교체) | `shared/list-data.js`, `background.js` |
-| 뺀 멤버 자동 정리(목록을 맨 위부터 끝까지 봤는지) | `shared/list-page.js` 의 `readMemberListWindow`·`trackMemberListProgress`, `content.js` 의 `syncRemovedMembers` |
+| 뺀 멤버 자동 정리(목록을 맨 위부터 끝까지 봤는지) | `shared/list-page.js` 의 `readMemberListWindow`·`trackMemberListProgress`, `content.js` 의 `syncRemovedMembers`. 목록 끝에서는 줄이 추가되지 않으므로 `onMemberListScroll`(스크롤)과 줄이 사라지는 변화로도 다시 확인 |
 | 팝업 화면 | `popup/` 의 해당 화면 파일, `popup/popup.css`, `popup.html` |
 | X 가 화면 구조를 바꿈 | `shared/list-page.js`·`shared/badges.js` 의 선택자, `shared/health.js`, `tests/fixtures/` |
 

@@ -376,6 +376,45 @@ test.describe('X 리스트에서 뺀 멤버 자동 정리', () => {
     await expect.poll(() => membersOf(serviceWorker), { timeout: 10000 }).toEqual(['@alice', '@bob', '@dave_dev', '@erin', '@frank']);
   });
 
+  test('가상 스크롤: 새 줄 없이 "더 불러오는 중" 줄만 사라져도 끝을 다시 확인해 지움', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    await page.waitForTimeout(WAIT_PAST_SETTLE_MS);
+    expect(await membersOf(serviceWorker)).toContain('@gone_user');
+
+    // 마지막 쪽이었음: 불러오는 표시 줄이 사라질 뿐 새 줄은 추가되지 않음 (실제 X 의 목록 끝)
+    await page.evaluate(() => {
+      const wrapper = document.getElementById('member-rows');
+      wrapper.querySelector('[role="progressbar"]').closest('[data-testid="cellInnerDiv"]').remove();
+      wrapper.style.minHeight = '216px';
+    });
+    await expect.poll(() => membersOf(serviceWorker), { timeout: 10000 }).toEqual(['@alice', '@bob', '@dave_dev']);
+  });
+
+  test('가상 스크롤: 화면 구조 변화 없이 끝 상태가 되어도, 스크롤이 멈춘 뒤 다시 확인해 지움', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-loading.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    await page.waitForTimeout(WAIT_PAST_SETTLE_MS);
+    expect(await membersOf(serviceWorker)).toContain('@gone_user');
+
+    // 줄이 추가되거나 사라지지 않고 속성만 바뀜 (MutationObserver 가 보지 않는 변화) → 스크롤 이벤트로 다시 확인
+    await page.evaluate(() => {
+      const wrapper = document.getElementById('member-rows');
+      wrapper.querySelector('[role="progressbar"]').removeAttribute('role');
+      wrapper.style.minHeight = '216px';
+      wrapper.dispatchEvent(new Event('scroll'));
+    });
+    await expect.poll(() => membersOf(serviceWorker), { timeout: 10000 }).toEqual(['@alice', '@bob', '@dave_dev']);
+  });
+
   test('가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음)', async ({ context, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@alice', '@bob', '@dave_dev', '@erin', '@frank', '@gina', '@gone_user'] } }

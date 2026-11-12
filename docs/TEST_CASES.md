@@ -75,7 +75,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 
 이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.
 
-### 단위 테스트 (`tests/unit/`, 41개 묶음 · 163건)
+### 단위 테스트 (`tests/unit/`, 41개 묶음 · 164건)
 
 `tests/test-runner.html` 이 `extension/shared/*.js` 를 그대로 불러와 검사합니다 (테스트 파일은 `shared/` 의 파일마다 하나씩). E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.
 
@@ -107,7 +107,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 | U-24 | `list-page.test.js` | 순수 멤버 유저 추출 (extractMembersFromContainer) | 2 |
 | U-25 | `list-page.test.js` | 수집 결과 서명 (buildScrapeSignature) | 1 |
 | U-26 | `list-page.test.js` | 멤버 목록을 맨 위부터 이어서 봤는지 (trackMemberListProgress) | 3 |
-| U-27 | `list-page.test.js` | 그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMemberListWindow, getCellOffsetY, getVisibleBounds) | 8 |
+| U-27 | `list-page.test.js` | 그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMemberListWindow, getCellOffsetY, getVisibleBounds) | 9 |
 | U-28 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
 | U-29 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
 | U-30 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
@@ -123,11 +123,11 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 | U-40 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
 | U-41 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
 
-### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 59건)
+### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 61건)
 
 x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
 
-#### X 화면 (content script · background) (`content.spec.js`, 24건)
+#### X 화면 (content script · background) (`content.spec.js`, 26건)
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
@@ -149,12 +149,14 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | C-16 | X 리스트에서 뺀 멤버 자동 정리 | 멤버 목록 전체가 보이면 뺀 멤버를 지움 (색·표시 방식과 직접 추가한 멤버는 유지) |
 | C-17 | X 리스트에서 뺀 멤버 자동 정리 | 저장된 멤버의 절반 넘게 지워질 상황이면 자동으로는 지우지 않음 |
 | C-18 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 불러오는 중에는 지우지 않고, 맨 위부터 끝까지 이어서 본 뒤에 지움 |
-| C-19 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음) |
-| C-20 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
-| C-21 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 멤버 화면이 아니면 교체하지 않음 |
-| C-22 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
-| C-23 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
-| C-24 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
+| C-19 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 새 줄 없이 "더 불러오는 중" 줄만 사라져도 끝을 다시 확인해 지움 |
+| C-20 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 화면 구조 변화 없이 끝 상태가 되어도, 스크롤이 멈춘 뒤 다시 확인해 지움 |
+| C-21 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음) |
+| C-22 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
+| C-23 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 멤버 화면이 아니면 교체하지 않음 |
+| C-24 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
+| C-25 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
+| C-26 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
 
 #### 팝업 (`popup.spec.js`, 34건)
 

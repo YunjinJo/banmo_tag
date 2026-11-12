@@ -308,10 +308,14 @@ function getCellOffsetY(cell) {
 
 // el 이 화면에서 실제로 보일 수 있는 세로 범위 { top, bottom } (뷰포트와, 넘치는 부분을 가리는 부모들로 잘라낸 범위)
 function getVisibleBounds(el) {
-  const view = el.ownerDocument.defaultView;
+  const doc = el.ownerDocument;
+  const view = doc.defaultView;
   let top = 0;
   let bottom = view.innerHeight;
   for (let parent = el.parentElement; parent; parent = parent.parentElement) {
+    // html·body 의 overflow 는 창(뷰포트)에 적용됨. 창을 스크롤하면 이 상자들은 화면 밖으로 밀려나므로 자르는 데 쓰지 않음
+    // (X 는 html 에 overflow-y: scroll 을 씀. 좁은 창에서는 멤버 화면이 창 전체로 스크롤됨)
+    if (parent === doc.documentElement || parent === doc.body) continue;
     if (view.getComputedStyle(parent).overflowY === 'visible') continue;
     const rect = parent.getBoundingClientRect();
     top = Math.max(top, rect.top);

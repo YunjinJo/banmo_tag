@@ -42,6 +42,8 @@
   const AUTO_REMOVE_SETTLE_MS = 2500;
   // 스크롤 중 멤버를 읽는 최소 간격. 화면 변화가 멈춘 뒤에만 읽으면 스크롤하는 동안 지나간 멤버를 놓침
   const SCROLL_SAMPLE_MS = 250;
+  // 목록의 끝이 확인되지 않았을 때 다시 확인하기까지 기다리는 시간
+  const END_RECHECK_MS = 1000;
 
   // 저장된 리스트 (정제된 상태)
   let listData = {};
@@ -63,6 +65,7 @@
   // 마지막으로 요청한 자동 정리 (리스트 ID + 지울 멤버) — 같은 요청 반복 방지
   let lastAutoRemoveSignature = '';
   let lastSampleAt = 0;
+  let endRecheckPending = false;
 
   // 화면 구조 점검 상태: storage 의 structureHealth, 그리고 아직 기록하지 않은 최근 결과(area → { ok, message, firstAt })
   let storedHealth = {};
@@ -91,6 +94,7 @@
     isShutDown = true;
     observer.disconnect();
     window.removeEventListener('popstate', checkUrlChange);
+    document.removeEventListener('scroll', onMemberListScroll, true);
     pendingTimers.forEach(clearTimeout);
     pendingTimers.clear();
     window.__agContentLoaded = false;
@@ -238,11 +242,15 @@
   }
 
   // 스크롤하는 동안에도 지나가는 멤버를 누적 목록에 더함 (저장 요청은 화면 변화가 멈춘 뒤 debouncedProcess 에서)
+  function isMembersScreen() {
+    const urlInfo = parseListUrl(location.pathname);
+    return !!(urlInfo && urlInfo.isMembers);
+  }
+
   function sampleMembersWhileScrolling() {
     const now = Date.now();
     if (now - lastSampleAt < SCROLL_SAMPLE_MS) return;
-    const urlInfo = parseListUrl(location.pathname);
-    if (!urlInfo || !urlInfo.isMembers) return;
+    if (!isMembersScreen()) return;
     lastSampleAt = now;
     collectVisibleMembers(false);
   }
@@ -294,7 +302,7 @@
   // 뺀 멤버 자동 정리: 멤버 목록을 맨 위부터 끝까지 빠짐없이 본 것이 확인되면,
   // 이번 방문에서 한 번도 보이지 않은 저장 멤버(= X 리스트에서 뺀 멤버)를 지우도록 background 에 요청.
   // 끝까지 봤는지 알 수 없거나 지울 멤버가 너무 많으면 아무것도 하지 않음 → 팝업 [뺀 멤버 정리]로 확인 후 진행
-  function syncRemovedMembers() {
+  function syncRemovedMembers(isRecheck) {
     if (isShutDown) return;
     const collected = collectVisibleMembers(false);
     if (!collected.success) return;
@@ -303,6 +311,15 @@
     if (!seen) return;
     if (!seen.fromTop || !collected.atEnd) {
       seen.endSince = 0;
+      // 맨 위부터 보고 있는데 끝이 확인되지 않음: 화면 변화 없이 끝 상태가 될 수 있으므로
+      // (불러오는 표시가 숨겨짐, 높이만 바뀜) 잠시 뒤 한 번만 더 확인. 다시 확인한 것은 또 예약하지 않음
+      if (seen.fromTop && isRecheck !== true && !endRecheckPending) {
+        endRecheckPending = true;
+        schedule(() => {
+          endRecheckPending = false;
+          syncRemovedMembers(true);
+        }, END_RECHECK_MS);
+      }
       return;
     }
 
@@ -571,18 +588,37 @@
   const observer = new MutationObserver((mutations) => {
     checkUrlChange();
     let hasRelevantChange = false;
+    let hasRemoval = false;
     for (const mutation of mutations) {
       for (const node of mutation.addedNodes) {
         if (node.nodeType !== 1 || isOwnInjectedNode(node)) continue;
         hasRelevantChange = true;
         collectTweets(node);
       }
+      if (!hasRemoval) {
+        for (const node of mutation.removedNodes) {
+          if (node.nodeType !== 1 || isOwnInjectedNode(node)) continue;
+          hasRemoval = true;
+          break;
+        }
+      }
     }
     if (hasRelevantChange) {
       sampleMembersWhileScrolling();
       debouncedProcess();
+    } else if (hasRemoval && isMembersScreen()) {
+      // 멤버 화면에서는 줄이 사라지기만 해도(위쪽 줄 정리, 불러오는 표시 제거) 목록 끝인지 다시 확인
+      debouncedProcess();
     }
   });
+
+  // 멤버 화면을 스크롤하면 지나가는 멤버를 읽고, 스크롤이 멈춘 뒤 목록 끝인지 확인.
+  // (목록 끝에서는 새 줄이 추가되지 않아 MutationObserver 만으로는 알 수 없음. 스크롤 이벤트는 위로 전달되지 않으므로 capture 로 받음)
+  function onMemberListScroll() {
+    if (isShutDown || !isMembersScreen()) return;
+    sampleMembersWhileScrolling();
+    debouncedProcess();
+  }
 
   function init() {
     // 이전 버전이 남긴 하단 알림·플로팅 버튼 정리
@@ -598,6 +634,7 @@
     schedule(requestFullScan, 3000);
 
     window.addEventListener('popstate', checkUrlChange);
+    document.addEventListener('scroll', onMemberListScroll, { capture: true, passive: true });
     observer.observe(document.body || document.documentElement, { childList: true, subtree: true });
 
     console.log('[banmo_tag] Content Script Initialized.');

@@ -103,6 +103,8 @@ async function runLive(firefox) {
 
   // extension/ 을 다시 설치 (같은 ID 로 덮어써서 저장된 리스트는 유지). 코드 수정 후 사용
   async function reloadExtension() {
+    // dist/firefox 를 다시 만들어야 extension/ 의 수정이 반영됨
+    require('../../scripts/build-firefox').buildFirefox();
     return browser.installExtension(EXT_DIR);
   }
   let page = (await browser.pages())[0] || await browser.newPage();
