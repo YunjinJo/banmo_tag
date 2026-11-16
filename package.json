@@ -27,7 +27,7 @@
     "@playwright/test": "1.65.0",
     "eslint": "10.14.0",
     "globals": "17.14.0",
-    "puppeteer-core": "25.16.0",
+    "puppeteer-core": "25.17.0",
     "web-ext": "10.8.0"
   }
 }
