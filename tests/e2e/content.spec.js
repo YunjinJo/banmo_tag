@@ -488,6 +488,81 @@ test.describe('팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못
   });
 });
 
+test.describe('[끝까지 스캔] 자동 스크롤', () => {
+  // synthetic/list-members-virtual.html: 멤버 45명(@member01~45), 15명씩 불러오는 가상 스크롤 화면
+  const ALL_MEMBERS = Array.from({ length: 45 }, (_, i) => '@member' + String(i + 1).padStart(2, '0'));
+  const statusOf = (sw, tabId) => sendToTab(sw, tabId, { action: 'autoScanStatus' });
+
+  test('맨 위부터 끝까지 자동으로 스크롤하며 모든 멤버를 읽고, 끝난 뒤에도 뺀 멤버는 자동으로 지우지 않음 (팝업 확인을 기다림)', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@member01', '@member02', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    // 목록 중간에서 시작해도 맨 위로 돌아가서 읽음
+    await page.evaluate(() => window.scrollTo(0, 400));
+    await page.waitForTimeout(500);
+
+    const tabId = await findXTabId(serviceWorker);
+    const started = await sendToTab(serviceWorker, tabId, { action: 'autoScanStart' });
+    expect(started.success).toBe(true);
+    expect(started.state).toBe('running');
+
+    await expect.poll(async () => (await statusOf(serviceWorker, tabId)).state, { timeout: 45000, intervals: [500] }).toBe('done');
+    const status = await statusOf(serviceWorker, tabId);
+    expect(status.seenCount).toBe(45);
+    expect(status.listName).toBe('Core Members');
+
+    const preview = await sendToTab(serviceWorker, tabId, { action: 'replacePreview' });
+    expect(preview.success).toBe(true);
+    expect(preview.seenCount).toBe(45);
+    expect(preview.removed).toEqual(['@gone_user']);
+
+    // 끝까지 본 상태가 자동 정리 대기 시간(2.5초)을 넘겨도 지우지 않음. 새 멤버 추가(자동 수집)는 그대로 됨
+    await page.waitForTimeout(3800);
+    const members = (await getLists(serviceWorker))['Core Members'].members;
+    expect(members).toContain('@gone_user');
+    expect(members).toContain('@member45');
+    expect(members.filter(m => m !== '@gone_user').sort()).toEqual(ALL_MEMBERS);
+  });
+
+  test('사용자가 X 화면을 직접 스크롤하면 멈추고, 중지 요청으로도 멈춤', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const page = await context.newPage();
+    await page.goto(MEMBERS_URL);
+    await page.waitForTimeout(500);
+    const tabId = await findXTabId(serviceWorker);
+
+    expect((await sendToTab(serviceWorker, tabId, { action: 'autoScanStart' })).state).toBe('running');
+    await page.waitForTimeout(1500);
+    await page.mouse.move(300, 300);
+    await page.mouse.wheel(0, 200);
+    await expect.poll(async () => (await statusOf(serviceWorker, tabId)).state).toBe('stopped');
+    expect((await statusOf(serviceWorker, tabId)).message).toContain('직접 스크롤');
+
+    expect((await sendToTab(serviceWorker, tabId, { action: 'autoScanStart' })).state).toBe('running');
+    const stopped = await sendToTab(serviceWorker, tabId, { action: 'autoScanStop' });
+    expect(stopped.state).toBe('stopped');
+    // 멈춘 뒤에는 더 스크롤하지 않음
+    const y = await page.evaluate(() => window.scrollY);
+    await page.waitForTimeout(1500);
+    expect(await page.evaluate(() => window.scrollY)).toBe(y);
+  });
+
+  test('멤버 화면이 아니면 시작하지 않음', async ({ context, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123', 'synthetic/list-main.html');
+    const page = await context.newPage();
+    await page.goto('https://x.com/i/lists/123');
+    await page.waitForTimeout(800);
+
+    const tabId = await findXTabId(serviceWorker);
+    const started = await sendToTab(serviceWorker, tabId, { action: 'autoScanStart' });
+    expect(started.success).toBe(false);
+    expect((await statusOf(serviceWorker, tabId)).state).toBe('idle');
+  });
+});
+
 test.describe('X 화면 구조 변화 감지', () => {
   test('멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제', async ({ context, serviceWorker }) => {
     await mockXPage(context, '/i/lists/999/members', 'synthetic/members-changed.html');

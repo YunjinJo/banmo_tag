@@ -44,6 +44,12 @@
   const SCROLL_SAMPLE_MS = 250;
   // 목록의 끝이 확인되지 않았을 때 다시 확인하기까지 기다리는 시간
   const END_RECHECK_MS = 1000;
+  // [끝까지 스캔]: 한 번 스크롤한 뒤 X 가 줄을 그릴 때까지 기다리는 시간, 그 밖의 확인 간격, 맨 위로 돌아간 뒤 기다리는 시간
+  const AUTO_SCAN_STEP_MS = 700;
+  const AUTO_SCAN_WAIT_MS = 500;
+  const AUTO_SCAN_TOP_MS = 1000;
+  // [끝까지 스캔]: 최대 시간 (아주 큰 리스트나 끝나지 않는 화면에 대비)
+  const AUTO_SCAN_MAX_MS = 15 * 60 * 1000;
 
   // 저장된 리스트 (정제된 상태)
   let listData = {};
@@ -66,6 +72,11 @@
   let lastAutoRemoveSignature = '';
   let lastSampleAt = 0;
   let endRecheckPending = false;
+
+  // [끝까지 스캔] 상태 (없으면 null):
+  //   { state: 'running' | 'done' | 'stopped' | 'failed', listId, listName, message, startedAt, scan(nextAutoScanStep 기록) }
+  // 스캔 중이거나 끝까지 스캔한 리스트는 뺀 멤버를 자동으로 지우지 않음 → 팝업이 미리보기 확인 상자를 띄움
+  let autoScan = null;
 
   // 화면 구조 점검 상태: storage 의 structureHealth, 그리고 아직 기록하지 않은 최근 결과(area → { ok, message, firstAt })
   let storedHealth = {};
@@ -95,6 +106,7 @@
     observer.disconnect();
     window.removeEventListener('popstate', checkUrlChange);
     document.removeEventListener('scroll', onMemberListScroll, true);
+    removeAutoScanInputListeners();
     pendingTimers.forEach(clearTimeout);
     pendingTimers.clear();
     window.__agContentLoaded = false;
@@ -309,6 +321,8 @@
     const listId = collected.urlInfo.listId;
     const seen = seenByList.get(listId);
     if (!seen) return;
+    // [끝까지 스캔] 중이거나 끝낸 리스트: 팝업의 미리보기 확인 상자에서 사용자가 정함
+    if (isAutoScanHolding(listId)) return;
     if (!seen.fromTop || !collected.atEnd) {
       seen.endSince = 0;
       // 맨 위부터 보고 있는데 끝이 확인되지 않음: 화면 변화 없이 끝 상태가 될 수 있으므로
@@ -386,6 +400,124 @@
   }
 
   // ==========================================
+  // 3-1. [끝까지 스캔]: 멤버 목록을 자동으로 스크롤하며 맨 위부터 끝까지 읽음
+  //      (다음에 할 일은 shared/list-page.js 의 nextAutoScanStep 이 정함. 끝나면 팝업이 [뺀 멤버 정리] 미리보기를 띄움)
+  // ==========================================
+
+  function isAutoScanHolding(listId) {
+    return !!(autoScan && autoScan.listId === listId && (autoScan.state === 'running' || autoScan.state === 'done'));
+  }
+
+  function getAutoScanStatus() {
+    if (!autoScan) return { success: true, state: 'idle' };
+    const seen = seenByList.get(autoScan.listId);
+    // 화면에서 읽은 이름이 임시 이름("리스트 (ID)")이어도 저장된 리스트 이름으로 보여 줌
+    const listName = resolveListKey(listData, autoScan.listName, autoScan.listId, !!(seen && seen.nameReliable)).key;
+    return {
+      success: true,
+      state: autoScan.state,
+      listName,
+      seenCount: seen ? seen.handles.size : 0,
+      message: autoScan.message || ''
+    };
+  }
+
+  // 사용자가 X 화면을 직접 스크롤하거나 누르면 멈춤 (스캔이 하는 스크롤은 wheel·touch·키·마우스 이벤트를 만들지 않음)
+  function onAutoScanUserInput() {
+    stopAutoScan('stopped', 'X 화면을 직접 스크롤하거나 눌러서 스캔을 멈췄습니다. 지금까지 본 멤버는 그대로 남아 있습니다.');
+  }
+  const AUTO_SCAN_INPUT_EVENTS = ['wheel', 'touchmove', 'keydown', 'mousedown'];
+  function addAutoScanInputListeners() {
+    AUTO_SCAN_INPUT_EVENTS.forEach(type => window.addEventListener(type, onAutoScanUserInput, { capture: true, passive: true }));
+  }
+  function removeAutoScanInputListeners() {
+    AUTO_SCAN_INPUT_EVENTS.forEach(type => window.removeEventListener(type, onAutoScanUserInput, true));
+  }
+
+  function stopAutoScan(state, message) {
+    if (!autoScan || autoScan.state !== 'running') return;
+    autoScan.state = state;
+    autoScan.message = message || '';
+    removeAutoScanInputListeners();
+  }
+
+  // 시작: 멤버 화면(또는 멤버 창)에서만. 맨 위로 올린 뒤 autoScanTick 을 반복
+  function startAutoScan() {
+    if (autoScan && autoScan.state === 'running') return getAutoScanStatus();
+    const collected = collectVisibleMembers(true);
+    if (!collected.success) return collected;
+    const dialog = getMemberListDialog(document);
+    if (!collected.urlInfo.isMembers && !dialog) {
+      return { success: false, message: '끝까지 스캔은 리스트의 "멤버" 화면에서만 할 수 있습니다.' };
+    }
+    const scroller = findMemberListScroller(getMemberContainer(dialog), dialog);
+    if (!scroller) return { success: false, message: '멤버 목록을 찾을 수 없습니다. 멤버 목록이 보이는 상태에서 시도해주세요.' };
+
+    autoScan = {
+      state: 'running',
+      listId: collected.urlInfo.listId,
+      listName: collected.listName,
+      message: '',
+      startedAt: Date.now(),
+      scan: {}
+    };
+    addAutoScanInputListeners();
+    scroller.scrollTop = 0;
+    schedule(autoScanTick, AUTO_SCAN_TOP_MS);
+    return getAutoScanStatus();
+  }
+
+  function autoScanTick() {
+    if (isShutDown || !autoScan || autoScan.state !== 'running') return;
+    const urlInfo = parseListUrl(location.pathname);
+    if (!urlInfo || urlInfo.listId !== autoScan.listId) {
+      stopAutoScan('stopped', '다른 화면으로 이동해서 스캔을 멈췄습니다.');
+      return;
+    }
+    const now = Date.now();
+    if (now - autoScan.startedAt > AUTO_SCAN_MAX_MS) {
+      stopAutoScan('failed', '스캔 시간이 너무 길어 멈췄습니다. 지금까지 본 멤버는 그대로 남아 있습니다.');
+      return;
+    }
+
+    const collected = collectVisibleMembers(true);
+    const dialog = getMemberListDialog(document);
+    const scroller = collected.success && findMemberListScroller(getMemberContainer(dialog), dialog);
+    const seen = seenByList.get(autoScan.listId);
+    if (!collected.success || !scroller || !seen) {
+      stopAutoScan('failed', collected.message || '멤버 목록을 찾을 수 없어 스캔을 멈췄습니다.');
+      return;
+    }
+    autoScan.listName = collected.listName;
+
+    const step = nextAutoScanStep(autoScan.scan, {
+      atEnd: collected.atEnd,
+      fromTop: seen.fromTop,
+      seenCount: seen.handles.size,
+      scrollTop: scroller.scrollTop,
+      scrollHeight: scroller.scrollHeight,
+      clientHeight: scroller.clientHeight
+    }, now);
+
+    if (step === 'scroll') {
+      scroller.scrollTop += getAutoScanStep(scroller.clientHeight);
+      schedule(autoScanTick, AUTO_SCAN_STEP_MS);
+    } else if (step === 'wait') {
+      schedule(autoScanTick, AUTO_SCAN_WAIT_MS);
+    } else if (step === 'restart') {
+      scroller.scrollTop = 0;
+      schedule(autoScanTick, AUTO_SCAN_TOP_MS);
+    } else if (step === 'done') {
+      autoScan.state = 'done';
+      removeAutoScanInputListeners();
+    } else if (step === 'stuck') {
+      stopAutoScan('failed', '목록이 더 불러와지지 않아 스캔을 멈췄습니다. 잠시 뒤 다시 시도해주세요.');
+    } else {
+      stopAutoScan('failed', '목록을 맨 위부터 이어서 읽지 못했습니다. 직접 끝까지 스크롤한 뒤 [뺀 멤버 정리]를 눌러주세요.');
+    }
+  }
+
+  // ==========================================
   // 4. 팝업 메시지 처리
   // ==========================================
 
@@ -396,6 +528,21 @@
       const result = scrapeListMembers(true, saved => sendResponse(saved));
       if (result.pending) return true; // background 저장 결과를 기다린 뒤 응답
       sendResponse(result);
+      return false;
+    },
+
+    // [끝까지 스캔]: 시작 (바로 응답하고 스캔은 이 탭에서 계속), 진행 상황, 중지
+    autoScanStart(sendResponse) {
+      sendResponse(startAutoScan());
+      return false;
+    },
+    autoScanStatus(sendResponse) {
+      sendResponse(getAutoScanStatus());
+      return false;
+    },
+    autoScanStop(sendResponse) {
+      stopAutoScan('stopped', '스캔을 멈췄습니다. 지금까지 본 멤버는 그대로 남아 있습니다.');
+      sendResponse(getAutoScanStatus());
       return false;
     },
 
@@ -577,6 +724,11 @@
     const info = parseListUrl(location.pathname);
     for (const id of Array.from(seenByList.keys())) {
       if (!info || info.listId !== id || !info.isMembers) seenByList.delete(id);
+    }
+    // 멤버 화면을 떠나면 [끝까지 스캔]도 끝냄 (누적 멤버가 비워졌으므로 결과도 버림)
+    if (autoScan && (!info || info.listId !== autoScan.listId || !info.isMembers)) {
+      stopAutoScan('stopped', '다른 화면으로 이동해서 스캔을 멈췄습니다.');
+      autoScan = null;
     }
 
     schedule(requestFullScan, 300);

@@ -697,6 +697,69 @@ test.describe('팝업 ↔ X 탭 연동', () => {
     expect(lists['Core Members'].mode).toBe('dim');
   });
 
+  test('[끝까지 스캔]: 진행 상황을 보여 주고, 끝나면 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@member01', '@gone_user'] } }
+    });
+    // 멤버 45명을 15명씩 불러오는 가상 스크롤 화면
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/i/lists/123/members');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('스캔 중지');
+    await expect(popup.locator('#resync-replace-btn')).toBeDisabled();
+    await expect(popup.locator('#sync-status')).toContainText('확인 중');
+
+    await expect(popup.locator('#confirm-box')).toBeVisible({ timeout: 45000 });
+    await expect(popup.locator('#confirm-text')).toContainText('끝까지 스캔했습니다');
+    await expect(popup.locator('#confirm-text')).toContainText('45명으로 교체');
+    await expect(popup.locator('#confirm-text')).toContainText('삭제 1명: @gone_user');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
+    await popup.click('#confirm-ok-btn');
+    await expect(popup.locator('#sync-status')).toContainText('삭제 1명');
+
+    const members = (await getLists(serviceWorker))['Core Members'].members;
+    expect(members).toHaveLength(45);
+    expect(members).not.toContain('@gone_user');
+  });
+
+  test('[끝까지 스캔] 중 [스캔 중지]를 누르면 멈추고 안내', async ({ context, extensionId, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/i/lists/123/members');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('스캔 중지');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#sync-status')).toContainText('스캔을 멈췄습니다');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
+    await expect(popup.locator('#resync-replace-btn')).toBeEnabled();
+    await expect(popup.locator('#confirm-box')).toBeHidden();
+  });
+
+  test('X 멤버 화면이 아닌 탭에서 [끝까지 스캔]을 누르면 안내만', async ({ context, extensionId, serviceWorker }) => {
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/home');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/home');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#sync-status')).toContainText('리스트 페이지가 아닙니다');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
+  });
+
   test('[뺀 멤버 정리]: 이미 최신이면 확인 없이 안내만', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
       lists: { 'Core Members': { color: '#123456', mode: 'normal', listId: '123', members: ['@alice', '@bob', '@dave_dev'] } }

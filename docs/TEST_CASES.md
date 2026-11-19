@@ -75,7 +75,7 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 
 이 밖에 `npm run lint`(ESLint, 문제 0건)와 `npm run lint:firefox`(파이어폭스용으로 만든 `dist/firefox/` 를 web-ext lint, 오류·경고 0건)를 실행합니다.
 
-### 단위 테스트 (`tests/unit/`, 41개 묶음 · 164건)
+### 단위 테스트 (`tests/unit/`, 42개 묶음 · 172건)
 
 `tests/test-runner.html` 이 `extension/shared/*.js` 를 그대로 불러와 검사합니다 (테스트 파일은 `shared/` 의 파일마다 하나씩). E2E 의 `unit-runner.spec.js` 와 `scripts/build.ps1` 이 실행합니다.
 
@@ -108,26 +108,27 @@ npm run test:report -- --firefox --write    # 결과를 docs/TEST_RESULTS.md 맨
 | U-25 | `list-page.test.js` | 수집 결과 서명 (buildScrapeSignature) | 1 |
 | U-26 | `list-page.test.js` | 멤버 목록을 맨 위부터 이어서 봤는지 (trackMemberListProgress) | 3 |
 | U-27 | `list-page.test.js` | 그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMemberListWindow, getCellOffsetY, getVisibleBounds) | 9 |
-| U-28 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
-| U-29 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
-| U-30 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
-| U-31 | `badges.test.js` | 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
-| U-32 | `badges.test.js` | 배지 부착 위치 (getBadgeAnchor) | 2 |
-| U-33 | `badges.test.js` | 타임라인 배지 묶기 (splitTimelineBadges, "+N") | 3 |
-| U-34 | `badges.test.js` | 트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTweet, resetTweetStyle) | 8 |
-| U-35 | `backup.test.js` | 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
-| U-36 | `backup.test.js` | 가져온 백업 정리 (normalizeImportedLists) | 1 |
-| U-37 | `backup.test.js` | 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 4 |
-| U-38 | `backup.test.js` | 백업의 직접 추가한 멤버 표시 (manualMembers) | 2 |
-| U-39 | `health.test.js` | X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
-| U-40 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
-| U-41 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
+| U-28 | `list-page.test.js` | [끝까지 스캔] 자동 스크롤 (findMemberListScroller · getAutoScanStep · nextAutoScanStep) | 8 |
+| U-29 | `badges.test.js` | 타임라인 뱃지 매핑 (buildHandleMap) | 2 |
+| U-30 | `badges.test.js` | 리스트 변경 시 바뀐 핸들만 다시 그리기 (diffHandleMaps & isTweetAffected) | 3 |
+| U-31 | `badges.test.js` | 배지 커스텀 스타일(!important) 적용 및 자체 노드 필터링 (applyBadgeStyle) | 2 |
+| U-32 | `badges.test.js` | 리스트별 배지 글자 스타일 (normalizeListStyle, getEffectiveBadgeSettings, setListStyle) | 7 |
+| U-33 | `badges.test.js` | 배지 부착 위치 (getBadgeAnchor) | 2 |
+| U-34 | `badges.test.js` | 타임라인 배지 묶기 (splitTimelineBadges, "+N") | 3 |
+| U-35 | `badges.test.js` | 트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTweet, resetTweetStyle) | 8 |
+| U-36 | `backup.test.js` | 백업에 배지 설정 포함 (buildBackup & parseBackup) | 3 |
+| U-37 | `backup.test.js` | 가져온 백업 정리 (normalizeImportedLists) | 1 |
+| U-38 | `backup.test.js` | 백업 병합 시 listId 기준 매칭 (mergeImportedLists) | 4 |
+| U-39 | `backup.test.js` | 백업의 직접 추가한 멤버 표시 (manualMembers) | 2 |
+| U-40 | `health.test.js` | X 화면 구조 변화 감지 (diagnoseStructure & getStructureWarnings) | 5 |
+| U-41 | `ui.test.js` | 팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 선택 색 | 4 |
+| U-42 | `symbols.test.js` | 공통 코드(shared/*.js) 심볼 무결성 검증 | 1 |
 
-### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 61건)
+### E2E 테스트 (`tests/e2e/`, Playwright · 실제 확장 프로그램, 67건)
 
 x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니다. 실제 X 서버나 로그인은 쓰지 않습니다.
 
-#### X 화면 (content script · background) (`content.spec.js`, 26건)
+#### X 화면 (content script · background) (`content.spec.js`, 29건)
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
@@ -154,11 +155,14 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | C-21 | X 리스트에서 뺀 멤버 자동 정리 | 가상 스크롤: 중간을 건너뛰어 끝에 닿으면 지우지 않음 (그 사이 멤버를 못 봤을 수 있음) |
 | C-22 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 이번 방문에서 본 멤버(스크롤로 사라진 멤버 포함)로 교체하고, 한 번도 안 보인 멤버만 삭제 |
 | C-23 | 팝업 [뺀 멤버 정리] 요청 (목록 끝을 확인하지 못한 화면에서 직접 정리) | 멤버 화면이 아니면 교체하지 않음 |
-| C-24 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
-| C-25 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
-| C-26 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
+| C-24 | [끝까지 스캔] 자동 스크롤 | 맨 위부터 끝까지 자동으로 스크롤하며 모든 멤버를 읽고, 끝난 뒤에도 뺀 멤버는 자동으로 지우지 않음 (팝업 확인을 기다림) |
+| C-25 | [끝까지 스캔] 자동 스크롤 | 사용자가 X 화면을 직접 스크롤하면 멈추고, 중지 요청으로도 멈춤 |
+| C-26 | [끝까지 스캔] 자동 스크롤 | 멤버 화면이 아니면 시작하지 않음 |
+| C-27 | X 화면 구조 변화 감지 | 멤버 화면에 UserCell 이 없으면 경고를 기록하고, 정상 화면을 다시 보면 해제 |
+| C-28 | X 화면 구조 변화 감지 | 타임라인에 data-testid="tweet" 이 없으면 경고 기록 |
+| C-29 | X 화면 구조 변화 감지 | 정상 타임라인에서는 아무것도 기록하지 않음 |
 
-#### 팝업 (`popup.spec.js`, 34건)
+#### 팝업 (`popup.spec.js`, 37건)
 
 | 번호 | 묶음 | 확인 내용 |
 |:-:|---|---|
@@ -195,7 +199,10 @@ x.com 요청은 `tests/fixtures/synthetic/` 의 합성 페이지로 응답합니
 | P-31 | X 화면 구조 변화 경고 | 2주가 지난 경고는 표시하지 않음 |
 | P-32 | 팝업 ↔ X 탭 연동 | [가져오기]로 현재 X 탭의 멤버를 즉시 저장 |
 | P-33 | 팝업 ↔ X 탭 연동 | [뺀 멤버 정리]: 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제 |
-| P-34 | 팝업 ↔ X 탭 연동 | [뺀 멤버 정리]: 이미 최신이면 확인 없이 안내만 |
+| P-34 | 팝업 ↔ X 탭 연동 | [끝까지 스캔]: 진행 상황을 보여 주고, 끝나면 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제 |
+| P-35 | 팝업 ↔ X 탭 연동 | [끝까지 스캔] 중 [스캔 중지]를 누르면 멈추고 안내 |
+| P-36 | 팝업 ↔ X 탭 연동 | X 멤버 화면이 아닌 탭에서 [끝까지 스캔]을 누르면 안내만 |
+| P-37 | 팝업 ↔ X 탭 연동 | [뺀 멤버 정리]: 이미 최신이면 확인 없이 안내만 |
 
 #### 단위 테스트 실행 (`unit-runner.spec.js`, 1건)
 

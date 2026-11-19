@@ -1,4 +1,4 @@
-// popup/sync.js — X 탭 연동: x.com 접근 권한 · [현재 탭에서 가져오기] · [뺀 멤버 정리] · X 화면 구조 경고
+// popup/sync.js — X 탭 연동: x.com 접근 권한 · [현재 탭에서 가져오기] · [끝까지 스캔] · [뺀 멤버 정리] · X 화면 구조 경고
 // 팝업 코드는 화면 단위 파일로 나뉘어 있고 최상위 함수·변수를 서로 공유합니다 (파일 목록과 읽는 순서는 popup.js 머리말).
 
 // ==========================================
@@ -118,8 +118,11 @@ async function requestFromActiveTab(message) {
 function setupSyncButtons() {
   const syncBtn = byId('sync-current-tab-btn');
   const resyncBtn = byId('resync-replace-btn');
+  const scanBtn = byId('auto-scan-btn');
   syncBtn?.addEventListener('click', () => withButtonDisabled(syncBtn, syncCurrentTab));
-  resyncBtn?.addEventListener('click', () => withButtonDisabled(resyncBtn, replaceSyncCurrentTab));
+  resyncBtn?.addEventListener('click', () => withButtonDisabled(resyncBtn, () => replaceSyncCurrentTab()));
+  scanBtn?.addEventListener('click', onAutoScanClick);
+  resumeAutoScan();
 }
 
 // [현재 탭에서 가져오기]: 현재 화면의 멤버를 저장
@@ -136,18 +139,97 @@ async function syncCurrentTab() {
   }
 }
 
+// ==========================================
+// [끝까지 스캔]: X 탭이 멤버 목록을 자동으로 스크롤하며 읽고(content.js), 팝업은 진행 상황을 보여 줌.
+// 끝나면 [뺀 멤버 정리]와 같은 미리보기 확인 상자를 띄움. 스캔 중에는 버튼이 [스캔 중지]로 바뀜.
+// 팝업이 닫혀도 스캔은 X 탭에서 계속되고, 다시 열면 진행 상황을 이어서 보여 줌 (resumeAutoScan)
+// ==========================================
+
+const AUTO_SCAN_POLL_MS = 600;
+let autoScanPolling = false;
+
+function setAutoScanUi(running) {
+  const scanBtn = byId('auto-scan-btn');
+  const resyncBtn = byId('resync-replace-btn');
+  if (scanBtn) {
+    scanBtn.textContent = running ? '스캔 중지' : '끝까지 스캔';
+    scanBtn.classList.toggle('scanning', running);
+  }
+  if (resyncBtn) resyncBtn.disabled = running;
+}
+
+async function onAutoScanClick() {
+  const scanBtn = byId('auto-scan-btn');
+  if (autoScanPolling) {
+    await requestFromActiveTab({ action: 'autoScanStop' }); // 결과 안내는 진행 상황 확인(pollAutoScan)에서
+    return;
+  }
+  scanBtn.disabled = true;
+  try {
+    showSyncStatus('멤버 화면을 맨 위부터 스캔합니다...', false, true);
+    const response = await requestFromActiveTab({ action: 'autoScanStart' });
+    if (response.error || !response.success) {
+      showSyncStatus(response.error || response.message || '스캔을 시작하지 못했습니다.', true);
+      return;
+    }
+  } finally {
+    scanBtn.disabled = false;
+  }
+  pollAutoScan();
+}
+
+// 팝업을 열 때 X 탭에서 스캔이 진행 중이면 진행 상황을 이어서 보여 줌 (content script 를 새로 넣지는 않음)
+async function resumeAutoScan() {
+  const tab = await getTargetTab();
+  if (!tab || getSyncTabError(tab)) return;
+  const status = await sendTabMessage(tab.id, { action: 'autoScanStatus' }, 1500);
+  if (status && status.success && status.state === 'running') pollAutoScan();
+}
+
+// 스캔이 끝날 때까지 진행 상황을 확인. 끝까지 읽었으면 미리보기 확인 상자로
+async function pollAutoScan() {
+  if (autoScanPolling) return;
+  autoScanPolling = true;
+  setAutoScanUi(true);
+  let status;
+  try {
+    for (;;) {
+      status = await requestFromActiveTab({ action: 'autoScanStatus' });
+      if (status.error || !status.success || status.state !== 'running') break;
+      showSyncStatus(`'${status.listName}' 멤버 화면을 스크롤하며 확인 중... ${status.seenCount}명`, false, true);
+      await new Promise(resolve => setTimeout(resolve, AUTO_SCAN_POLL_MS));
+    }
+  } finally {
+    autoScanPolling = false;
+    setAutoScanUi(false);
+  }
+
+  if (status.error) {
+    showSyncStatus(status.error, true);
+  } else if (status.state === 'done') {
+    await replaceSyncCurrentTab({ afterScan: true });
+  } else if (status.state === 'idle') {
+    showSyncStatus('스캔이 멈췄습니다. 멤버 화면에서 다시 시도해주세요.', true);
+  } else {
+    showSyncStatus(status.message || '스캔이 멈췄습니다.', status.state === 'failed');
+  }
+}
+
 // [뺀 멤버 정리]: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)
-async function replaceSyncCurrentTab() {
+// afterScan: [끝까지 스캔]이 끝난 뒤 (확인 상자 문구가 달라짐)
+async function replaceSyncCurrentTab({ afterScan = false } = {}) {
   const preview = await requestFromActiveTab({ action: 'replacePreview' });
   if (preview.error || !preview.success) {
     showSyncStatus(preview.error || preview.message || '뺀 멤버 정리를 준비하지 못했습니다.', true);
     return;
   }
   if (preview.removed.length === 0 && preview.added === 0) {
-    showSyncStatus(`'${preview.listName}' 멤버 목록이 이미 최신입니다. (${preview.seenCount}명)`, false);
+    const done = afterScan ? '끝까지 스캔했습니다. ' : '';
+    showSyncStatus(`${done}'${preview.listName}' 멤버 목록이 이미 최신입니다. (${preview.seenCount}명)`, false);
     return;
   }
-  if (!await askConfirm(buildReplaceConfirmText(preview), '교체')) return;
+  if (afterScan) hideSyncStatus();
+  if (!await askConfirm(buildReplaceConfirmText(preview, afterScan), '교체')) return;
 
   const saved = await requestFromActiveTab({ action: 'replaceNow' });
   if (saved.error || !saved.success) {
@@ -158,16 +240,20 @@ async function replaceSyncCurrentTab() {
 }
 
 // 교체 확인 문구 (삭제될 핸들 일부를 보여 주고, 절반 이상 삭제되면 강하게 경고)
-function buildReplaceConfirmText(preview) {
+// afterScan: [끝까지 스캔]으로 맨 위부터 끝까지 읽은 뒤 (스크롤 안내 대신 스캔 결과라고 알림)
+function buildReplaceConfirmText(preview, afterScan = false) {
   const removed = preview.removed || [];
   const shown = removed.slice(0, 5).join(', ') + (removed.length > 5 ? ` 외 ${removed.length - 5}명` : '');
   const lines = [];
   if (preview.previousCount > 0 && removed.length * 2 >= preview.previousCount) {
-    lines.push(`⚠️ 저장된 ${preview.previousCount}명 중 절반 이상이 삭제됩니다. 멤버 화면을 끝까지 스크롤했는지 꼭 확인하세요.`);
+    lines.push(afterScan
+      ? `⚠️ 저장된 ${preview.previousCount}명 중 절반 이상이 삭제됩니다. X 리스트의 멤버 수와 맞는지 확인하세요.`
+      : `⚠️ 저장된 ${preview.previousCount}명 중 절반 이상이 삭제됩니다. 멤버 화면을 끝까지 스크롤했는지 꼭 확인하세요.`);
   }
+  if (afterScan) lines.push('멤버 화면을 맨 위부터 끝까지 스캔했습니다.');
   lines.push(`'${preview.listName}' 멤버를 이번에 멤버 화면에서 확인한 ${preview.seenCount}명으로 교체합니다.`);
   lines.push(`삭제 ${removed.length}명${removed.length ? ': ' + shown : ''} / 추가 ${preview.added}명`);
-  lines.push('화면에 한 번도 나오지 않은 멤버는 삭제되니, 목록을 끝까지 스크롤한 뒤 진행하세요.');
+  if (!afterScan) lines.push('화면에 한 번도 나오지 않은 멤버는 삭제되니, 목록을 끝까지 스크롤한 뒤 진행하세요.');
   return lines.join('\n');
 }
 

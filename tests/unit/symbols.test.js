@@ -21,7 +21,8 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
         parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError, getMemberListDialog,
         firstValidCleanName, isRecommendationTitle, getListNameFromPage, isRecoLabel, getPrecedingSectionHeading,
         getLastHeadingBefore, isExcludedUserCell, getHandleFromUserCell, getCellOffsetY, getVisibleBounds,
-        readMemberListWindow, trackMemberListProgress, extractMembersFromContainer, buildScrapeSignature
+        readMemberListWindow, trackMemberListProgress, findMemberListScroller, getAutoScanStep, nextAutoScanStep,
+        extractMembersFromContainer, buildScrapeSignature
       ],
       'badges.js': [
         buildHandleMap, diffHandleMaps, isTweetAffected, applyBadgeStyle, normalizeListStyle,
@@ -47,7 +48,7 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       AG_DEFAULT_BADGE_SETTINGS, AG_DEFAULT_LIST_COLOR, AG_VALID_MODES, AG_HANDLE_RE, AG_HEX_COLOR_RE,
       AG_PROFILE_HREF_RE, AG_SYSTEM_LIST_NAMES, AG_SYSTEM_NAME_WITH_PUNCT_RE, AG_LIST_NAME_CLEANUP_RULES,
       AG_MEMBER_TAB_NAMES, AG_SUGGESTED_TAB_NAMES, AG_NON_USER_LIST_PATHS, AG_MEMBER_LINK_IGNORE, AG_RECO_LABELS,
-      AG_X_URL_RE, AG_HEADING_SELECTOR, AG_LIST_NAME_SOURCES, AG_FONT_FAMILIES, AG_FONT_LABELS, AG_LIST_STYLE_KEYS,
+      AG_X_URL_RE, AG_HEADING_SELECTOR, AG_LIST_NAME_SOURCES, AG_AUTO_SCAN_DEFAULTS, AG_FONT_FAMILIES, AG_FONT_LABELS, AG_LIST_STYLE_KEYS,
       AG_TWEET_SELECTOR, AG_USER_NAME_SELECTOR, AG_TIMELINE_MAX_BADGES, AG_DIM_TARGET_SELECTOR, AG_BACKUP_APP,
       AG_HEALTH_AREA_LABELS, AG_NAV_PATHS, AG_THEMES, AG_LIST_SORTS, AG_MODE_LABELS, AG_SWATCH_COLORS
     ];

@@ -70,7 +70,8 @@ async function withButtonDisabled(button, task) {
 // ==========================================
 
 // 화면 위에 뜨는 상태 메시지 (5초 뒤 사라짐, 닫기 버튼이나 메시지를 누르면 바로 닫힘)
-function showSyncStatus(message, isError = false) {
+// sticky: 저절로 사라지지 않음 ([끝까지 스캔] 진행 상황처럼 계속 바뀌는 메시지)
+function showSyncStatus(message, isError = false, sticky = false) {
   const statusEl = byId('sync-status');
   const textEl = byId('sync-status-text');
   if (!statusEl || !textEl) return;
@@ -79,7 +80,7 @@ function showSyncStatus(message, isError = false) {
   statusEl.style.display = 'flex';
 
   clearTimeout(statusTimer);
-  statusTimer = setTimeout(hideSyncStatus, 5000);
+  if (!sticky) statusTimer = setTimeout(hideSyncStatus, 5000);
 }
 
 function hideSyncStatus() {

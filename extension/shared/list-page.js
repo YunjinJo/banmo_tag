@@ -382,6 +382,97 @@ function trackMemberListProgress(progress, visibleMembers, atTop) {
   return progress.fromTop === true;
 }
 
+// ==========================================
+// [끝까지 스캔]: 멤버 목록을 자동으로 스크롤하며 끝까지 읽기 (언제 스크롤할지는 content.js, 판단은 여기)
+// ==========================================
+
+// 자동 스캔 기본값
+// - settleMs: 목록 끝에 닿은 상태가 이 시간 동안 그대로여야 끝난 것으로 봄 (X 가 다음 쪽을 불러오기 직전일 수 있음)
+// - stuckMs: 스크롤해도 새 멤버·목록 높이·스크롤 위치가 이 시간 동안 그대로면 멈춤 (불러오기 실패 등)
+// - maxRestarts: 맨 위부터 이어서 읽지 못했을 때 처음부터 다시 읽는 최대 횟수
+var AG_AUTO_SCAN_DEFAULTS = { settleMs: 2500, stuckMs: 15000, maxRestarts: 3 };
+
+// 멤버 목록을 스크롤하는 상자: 첫 멤버 줄에서 위로 올라가며 세로로 넘쳐서 스크롤되는 부모를 찾음 (멤버 창).
+// 없으면 페이지 자체(document.scrollingElement). 멤버 줄이 없으면 null
+function findMemberListScroller(container, dialog) {
+  if (!container) return null;
+  let cell = null;
+  for (const candidate of container.querySelectorAll('[data-testid="UserCell"]')) {
+    if (!isExcludedUserCell(candidate, dialog || null)) {
+      cell = candidate;
+      break;
+    }
+  }
+  if (!cell) return null;
+  const doc = cell.ownerDocument;
+  const view = doc.defaultView;
+  for (let parent = cell.parentElement; parent; parent = parent.parentElement) {
+    if (parent === doc.documentElement || parent === doc.body) break;
+    const overflowY = view.getComputedStyle(parent).overflowY;
+    if ((overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') && parent.scrollHeight > parent.clientHeight + 1) {
+      return parent;
+    }
+  }
+  return doc.scrollingElement || doc.documentElement;
+}
+
+// 한 번에 스크롤할 거리: 보이는 높이의 60%. 앞 구간과 겹쳐야 그 사이 멤버를 건너뛰지 않았다고 볼 수 있음 (trackMemberListProgress)
+function getAutoScanStep(viewHeight) {
+  const height = Number(viewHeight) > 0 ? Number(viewHeight) : 0;
+  return Math.max(120, Math.round(height * 0.6));
+}
+
+// 자동 스캔의 다음 할 일. scan: 스캔마다 처음에는 빈 객체 {} (이 함수가 기록을 채움)
+// view: { atEnd, fromTop, seenCount, scrollTop, scrollHeight, clientHeight } — 지금 화면을 읽은 결과
+//   atEnd: 그려진 구간이 목록 끝인지 (readMemberListWindow), fromTop: 맨 위부터 빠짐없이 이어서 봤는지 (trackMemberListProgress)
+// 반환:
+//   'scroll'     아래로 한 번 더 스크롤
+//   'wait'       그대로 기다림 (불러오는 중, 또는 끝에 닿은 상태가 settleMs 동안 유지되는지 보는 중)
+//   'restart'    맨 위로 돌아가 다시 읽기 (중간을 건너뛰어 이어서 읽지 못함)
+//   'done'       맨 위부터 끝까지 다 읽음
+//   'stuck'      stuckMs 동안 아무 변화가 없음 (불러오기 실패 등)
+//   'incomplete' 다시 읽기를 maxRestarts 번 해도 맨 위부터 이어서 읽지 못함
+function nextAutoScanStep(scan, view, now, options) {
+  const opts = Object.assign({}, AG_AUTO_SCAN_DEFAULTS, options || {});
+  // 기록이 없으면 지금부터 (now 가 0 일 수도 있으므로 숫자인지로 확인)
+  if (typeof scan.idleSince !== 'number') scan.idleSince = now;
+  if (typeof scan.restarts !== 'number') scan.restarts = 0;
+
+  // 화면에 변화가 있으면(새 멤버, 목록 높이, 스크롤 위치) "멈춤" 판단을 처음부터
+  const seenCount = Number(view.seenCount) || 0;
+  const scrollTop = Number(view.scrollTop) || 0;
+  const scrollHeight = Number(view.scrollHeight) || 0;
+  if (seenCount !== scan.lastCount || scrollHeight !== scan.lastHeight || scrollTop !== scan.lastTop) {
+    scan.lastCount = seenCount;
+    scan.lastHeight = scrollHeight;
+    scan.lastTop = scrollTop;
+    scan.idleSince = now;
+  }
+
+  if (!view.fromTop) {
+    scan.endSince = null;
+    if (scan.restarts >= opts.maxRestarts) return 'incomplete';
+    scan.restarts += 1;
+    scan.idleSince = now;
+    return 'restart';
+  }
+
+  if (view.atEnd) {
+    // 끝에 닿은 상태가 settleMs 동안 그대로일 때만 끝 (그 사이 멤버가 더 보이면 처음부터 다시 기다림)
+    if (typeof scan.endSince !== 'number' || scan.endCount !== seenCount) {
+      scan.endSince = now;
+      scan.endCount = seenCount;
+      return 'wait';
+    }
+    return now - scan.endSince >= opts.settleMs ? 'done' : 'wait';
+  }
+  scan.endSince = null;
+
+  if (now - scan.idleSince >= opts.stuckMs) return 'stuck';
+  const canScroll = scrollTop + (Number(view.clientHeight) || 0) < scrollHeight - 1;
+  return canScroll ? 'scroll' : 'wait';
+}
+
 // 컨테이너 안 UserCell 들에서 멤버 핸들 목록 추출 (추천 계정 등은 제외, 중복 제거)
 function extractMembersFromContainer(container, dialog) {
   if (!container) return [];
