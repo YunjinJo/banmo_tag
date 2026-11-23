@@ -142,7 +142,7 @@ async function syncCurrentTab() {
 // ==========================================
 // [끝까지 스캔]: X 탭이 멤버 목록을 자동으로 스크롤하며 읽고(content.js), 팝업은 진행 상황을 보여 줌.
 // 끝나면 [뺀 멤버 정리]와 같은 미리보기 확인 상자를 띄움. 스캔 중에는 버튼이 [스캔 중지]로 바뀜.
-// 팝업이 닫혀도 스캔은 X 탭에서 계속되고, 다시 열면 진행 상황을 이어서 보여 줌 (resumeAutoScan)
+// 팝업이 닫혀도 스캔은 X 탭에서 계속되고, 다시 열면 진행 상황(또는 그 사이에 끝난 결과)을 이어서 보여 줌 (resumeAutoScan)
 // ==========================================
 
 const AUTO_SCAN_POLL_MS = 600;
@@ -178,12 +178,15 @@ async function onAutoScanClick() {
   pollAutoScan();
 }
 
-// 팝업을 열 때 X 탭에서 스캔이 진행 중이면 진행 상황을 이어서 보여 줌 (content script 를 새로 넣지는 않음)
+// 팝업을 열 때 X 탭에서 스캔이 진행 중이면 진행 상황을 이어서 보여 줌 (content script 를 새로 넣지는 않음).
+// 팝업이 닫힌 사이에 스캔이 끝났거나 멈췄으면, 아직 보여 주지 않은 결과를 보여 줌 (끝났으면 미리보기 확인 상자)
 async function resumeAutoScan() {
   const tab = await getTargetTab();
   if (!tab || getSyncTabError(tab)) return;
   const status = await sendTabMessage(tab.id, { action: 'autoScanStatus' }, 1500);
-  if (status && status.success && status.state === 'running') pollAutoScan();
+  if (!status || !status.success) return;
+  if (status.state === 'running') pollAutoScan();
+  else if (status.state !== 'idle' && !status.reported) showAutoScanResult(status);
 }
 
 // 스캔이 끝날 때까지 진행 상황을 확인. 끝까지 읽었으면 미리보기 확인 상자로
@@ -203,16 +206,25 @@ async function pollAutoScan() {
     autoScanPolling = false;
     setAutoScanUi(false);
   }
+  await showAutoScanResult(status);
+}
 
+// 스캔 결과 안내. 끝까지 읽었으면 미리보기 확인 상자.
+// 보여 준 뒤 X 탭에 알려서 다음에 팝업을 열 때 또 보여 주지 않음 (확인 상자에 답하기 전에 팝업이 닫히면 다음에 다시 보여 줌)
+async function showAutoScanResult(status) {
   if (status.error) {
     showSyncStatus(status.error, true);
-  } else if (status.state === 'done') {
+    return;
+  }
+  if (status.state === 'done') {
     await replaceSyncCurrentTab({ afterScan: true });
   } else if (status.state === 'idle') {
     showSyncStatus('스캔이 멈췄습니다. 멤버 화면에서 다시 시도해주세요.', true);
+    return;
   } else {
     showSyncStatus(status.message || '스캔이 멈췄습니다.', status.state === 'failed');
   }
+  await requestFromActiveTab({ action: 'autoScanReported' });
 }
 
 // [뺀 멤버 정리]: 미리보기 → 확인 → 저장 (X 리스트에서 뺀 멤버 정리)

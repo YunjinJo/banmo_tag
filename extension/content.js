@@ -74,7 +74,8 @@
   let endRecheckPending = false;
 
   // [끝까지 스캔] 상태 (없으면 null):
-  //   { state: 'running' | 'done' | 'stopped' | 'failed', listId, listName, message, startedAt, scan(nextAutoScanStep 기록) }
+  //   { state: 'running' | 'done' | 'stopped' | 'failed', listId, listName, message, startedAt, scan(nextAutoScanStep 기록),
+  //     reported(팝업이 결과를 사용자에게 보여 줬는지: 팝업이 닫힌 사이에 끝났으면 다음에 열 때 보여 줌) }
   // 스캔 중이거나 끝까지 스캔한 리스트는 뺀 멤버를 자동으로 지우지 않음 → 팝업이 미리보기 확인 상자를 띄움
   let autoScan = null;
 
@@ -418,7 +419,8 @@
       state: autoScan.state,
       listName,
       seenCount: seen ? seen.handles.size : 0,
-      message: autoScan.message || ''
+      message: autoScan.message || '',
+      reported: autoScan.reported === true
     };
   }
 
@@ -459,7 +461,8 @@
       listName: collected.listName,
       message: '',
       startedAt: Date.now(),
-      scan: {}
+      scan: {},
+      reported: false
     };
     addAutoScanInputListeners();
     scroller.scrollTop = 0;
@@ -531,7 +534,7 @@
       return false;
     },
 
-    // [끝까지 스캔]: 시작 (바로 응답하고 스캔은 이 탭에서 계속), 진행 상황, 중지
+    // [끝까지 스캔]: 시작 (바로 응답하고 스캔은 이 탭에서 계속), 진행 상황, 중지, 결과를 보여 줬음 (다시 열 때 또 보여 주지 않음)
     autoScanStart(sendResponse) {
       sendResponse(startAutoScan());
       return false;
@@ -542,6 +545,11 @@
     },
     autoScanStop(sendResponse) {
       stopAutoScan('stopped', '스캔을 멈췄습니다. 지금까지 본 멤버는 그대로 남아 있습니다.');
+      sendResponse(getAutoScanStatus());
+      return false;
+    },
+    autoScanReported(sendResponse) {
+      if (autoScan && autoScan.state !== 'running') autoScan.reported = true;
       sendResponse(getAutoScanStatus());
       return false;
     },
