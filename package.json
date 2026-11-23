@@ -24,10 +24,10 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
-    "@playwright/test": "1.65.0",
-    "eslint": "10.14.0",
+    "@playwright/test": "1.65.1",
+    "eslint": "10.15.0",
     "globals": "17.14.0",
-    "puppeteer-core": "25.16.0",
+    "puppeteer-core": "25.18.1",
     "web-ext": "10.8.0"
   }
 }
