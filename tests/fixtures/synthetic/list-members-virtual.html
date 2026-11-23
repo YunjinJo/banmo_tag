@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<!-- 합성(synthetic) 스냅샷: X 리스트 "멤버" 화면의 가상 스크롤을 페이지 스크립트로 흉내 낸 테스트용 페이지 (실제 X 페이지 아님)
+     - 멤버 45명(@member01 ~ @member45). 처음에는 15명만 불러와 있고, 목록 끝까지 스크롤하면 "더 불러오는 중" 줄이 보인 뒤 15명씩 더 불러옴
+     - 화면 근처(위아래 300px)의 줄만 그리고, 각 줄은 translateY 로 배치, 줄들의 부모에 불러온 목록 전체 높이(min-height)를 적음
+     [끝까지 스캔](자동 스크롤) 테스트에 씀 (tests/e2e/content.spec.js, popup.spec.js) -->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="ag-fixture-kind" content="members">
+  <meta name="ag-fixture-url" content="https://x.com/i/lists/123/members">
+  <title>리스트 멤버 / X</title>
+  <style>
+    body { margin: 0; }
+    [data-testid="cellInnerDiv"] { height: 72px; }
+    [data-testid="UserCell"] { display: block; width: 100%; height: 72px; }
+  </style>
+</head>
+<body>
+<div id="react-root">
+  <header role="banner">
+    <nav aria-label="기본">
+      <a href="/home" role="link">홈</a>
+      <a href="/explore" role="link">탐색하기</a>
+      <a href="/notifications" role="link">알림</a>
+    </nav>
+  </header>
+  <main role="main">
+    <div data-testid="primaryColumn">
+      <div data-testid="TopNavBar">
+        <h2 dir="ltr" role="heading">리스트 멤버</h2>
+      </div>
+      <section role="region" aria-labelledby="accessible-list-0">
+        <h1 id="accessible-list-0">타임라인: 리스트 멤버</h1>
+        <div aria-label="타임라인: 리스트 멤버" id="member-list">
+          <div id="member-rows" style="position: relative; min-height: 0px;"></div>
+        </div>
+      </section>
+    </div>
+    <div data-testid="sidebarColumn">
+      <aside aria-label="팔로우 추천">
+        <button data-testid="UserCell" role="button" tabindex="0">
+          <div><a href="/sidebar_reco" role="link"><span>Sidebar</span></a></div>
+          <div><a href="/sidebar_reco" role="link" tabindex="-1"><span>@sidebar_reco</span></a></div>
+        </button>
+      </aside>
+    </div>
+  </main>
+</div>
+<script>
+  (() => {
+    const TOTAL = 45;
+    const PAGE = 15;
+    const ROW = 72;
+    const BUFFER = 300;
+    const LOAD_MS = 300;
+    const handles = Array.from({ length: TOTAL }, (_, i) => 'member' + String(i + 1).padStart(2, '0'));
+    const wrapper = document.getElementById('member-rows');
+    let loaded = PAGE;
+    let loading = false;
+    let lastKey = '';
+
+    function memberRow(handle, index) {
+      const row = document.createElement('div');
+      row.setAttribute('data-testid', 'cellInnerDiv');
+      row.style.cssText = `transform: translateY(${index * ROW}px); position: absolute; width: 100%;`;
+      const cell = document.createElement('button');
+      cell.setAttribute('data-testid', 'UserCell');
+      cell.setAttribute('role', 'button');
+      const nameLink = document.createElement('a');
+      nameLink.setAttribute('href', '/' + handle);
+      nameLink.setAttribute('role', 'link');
+      nameLink.textContent = handle;
+      const handleLink = document.createElement('a');
+      handleLink.setAttribute('href', '/' + handle);
+      handleLink.setAttribute('role', 'link');
+      handleLink.textContent = '@' + handle;
+      cell.append(nameLink, handleLink);
+      row.appendChild(cell);
+      return row;
+    }
+
+    function spinnerRow(index) {
+      const row = document.createElement('div');
+      row.setAttribute('data-testid', 'cellInnerDiv');
+      row.style.cssText = `transform: translateY(${index * ROW}px); position: absolute; width: 100%;`;
+      const spinner = document.createElement('div');
+      spinner.setAttribute('role', 'progressbar');
+      row.appendChild(spinner);
+      return row;
+    }
+
+    function render() {
+      const listTop = wrapper.getBoundingClientRect().top + window.scrollY;
+      const viewTop = window.scrollY - listTop;
+      const first = Math.max(0, Math.floor((viewTop - BUFFER) / ROW));
+      const last = Math.min(loaded - 1, Math.ceil((viewTop + window.innerHeight + BUFFER) / ROW));
+      const showSpinner = last === loaded - 1 && loaded < TOTAL;
+      if (showSpinner && !loading) {
+        loading = true;
+        setTimeout(() => {
+          loaded = Math.min(TOTAL, loaded + PAGE);
+          loading = false;
+          render();
+        }, LOAD_MS);
+      }
+      const key = [first, last, loaded, showSpinner].join(':');
+      if (key === lastKey) return;
+      lastKey = key;
+      wrapper.style.minHeight = (loaded * ROW) + 'px';
+      const rows = [];
+      for (let i = first; i <= last; i++) rows.push(memberRow(handles[i], i));
+      if (showSpinner) rows.push(spinnerRow(loaded));
+      wrapper.replaceChildren(...rows);
+    }
+
+    window.addEventListener('scroll', render, { passive: true });
+    setInterval(render, 250);
+    render();
+  })();
+</script>
+</body>
+</html>

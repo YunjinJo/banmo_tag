@@ -2,7 +2,7 @@
 'use strict';
 
 const {
-  test, expect, mockXPage, setStorage, getStorage, getLists, openPopup, findXTabId, pointPopupAtTab
+  test, expect, mockXPage, setStorage, getStorage, getLists, openPopup, findXTabId, pointPopupAtTab, sendToTab
 } = require('./helpers');
 
 // chrome.storage 는 리스트를 이름순으로 돌려주므로, 순서가 아니라 이름으로 카드를 찾음
@@ -695,6 +695,107 @@ test.describe('팝업 ↔ X 탭 연동', () => {
     const lists = await getLists(serviceWorker);
     expect(lists['Core Members'].members).toEqual(['@alice', '@bob', '@dave_dev']);
     expect(lists['Core Members'].mode).toBe('dim');
+  });
+
+  test('[끝까지 스캔]: 진행 상황을 보여 주고, 끝나면 미리보기 확인 상자 → 확인 시 뺀 멤버 삭제', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@member01', '@gone_user'] } }
+    });
+    // 멤버 45명을 15명씩 불러오는 가상 스크롤 화면
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/i/lists/123/members');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('스캔 중지');
+    await expect(popup.locator('#resync-replace-btn')).toBeDisabled();
+    await expect(popup.locator('#sync-status')).toContainText('확인 중');
+
+    await expect(popup.locator('#confirm-box')).toBeVisible({ timeout: 45000 });
+    await expect(popup.locator('#confirm-text')).toContainText('끝까지 스캔했습니다');
+    await expect(popup.locator('#confirm-text')).toContainText('45명으로 교체');
+    await expect(popup.locator('#confirm-text')).toContainText('삭제 1명: @gone_user');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
+    await popup.click('#confirm-ok-btn');
+    await expect(popup.locator('#sync-status')).toContainText('삭제 1명');
+
+    const members = (await getLists(serviceWorker))['Core Members'].members;
+    expect(members).toHaveLength(45);
+    expect(members).not.toContain('@gone_user');
+  });
+
+  test('[끝까지 스캔]: 팝업이 닫힌 사이에 끝났으면 다시 열 때 미리보기 확인 상자를 띄우고, 한 번 답한 뒤에는 다시 띄우지 않음', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: { 'Core Members': { color: '#123456', mode: 'dim', listId: '123', members: ['@member01', '@gone_user'] } }
+    });
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    // 팝업 없이 시작 (팝업에서 시작한 뒤 팝업을 닫은 것과 같음)
+    expect((await sendToTab(serviceWorker, tabId, { action: 'autoScanStart' })).state).toBe('running');
+    await expect.poll(async () => (await sendToTab(serviceWorker, tabId, { action: 'autoScanStatus' })).state,
+      { timeout: 45000, intervals: [500] }).toBe('done');
+
+    // 다시 엶 (탭 화면이 그 X 탭을 보도록: 팝업이 열릴 때 바로 확인하므로 pointPopupAtTab 으로는 늦음)
+    const openTabView = async () => {
+      const page = await context.newPage();
+      await page.goto(`chrome-extension://${extensionId}/popup.html?view=tab&targetTab=${tabId}`);
+      await page.waitForSelector('#list-container');
+      return page;
+    };
+    const popup = await openTabView();
+    await expect(popup.locator('#confirm-box')).toBeVisible();
+    await expect(popup.locator('#confirm-text')).toContainText('끝까지 스캔했습니다');
+    await expect(popup.locator('#confirm-text')).toContainText('삭제 1명: @gone_user');
+    await popup.click('#confirm-cancel-btn');
+    await expect(popup.locator('#confirm-box')).toBeHidden();
+    await expect.poll(async () => (await sendToTab(serviceWorker, tabId, { action: 'autoScanStatus' })).reported).toBe(true);
+    await popup.close();
+
+    // 답한 뒤 다시 열면 확인 상자를 또 띄우지 않음. 취소했으므로 뺀 멤버는 그대로
+    const again = await openTabView();
+    await again.waitForTimeout(1500);
+    await expect(again.locator('#confirm-box')).toBeHidden();
+    expect((await getLists(serviceWorker))['Core Members'].members).toContain('@gone_user');
+  });
+
+  test('[끝까지 스캔] 중 [스캔 중지]를 누르면 멈추고 안내', async ({ context, extensionId, serviceWorker }) => {
+    await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members-virtual.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/i/lists/123/members');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/i/lists/123/members');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('스캔 중지');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#sync-status')).toContainText('스캔을 멈췄습니다');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
+    await expect(popup.locator('#resync-replace-btn')).toBeEnabled();
+    await expect(popup.locator('#confirm-box')).toBeHidden();
+  });
+
+  test('X 멤버 화면이 아닌 탭에서 [끝까지 스캔]을 누르면 안내만', async ({ context, extensionId, serviceWorker }) => {
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const xPage = await context.newPage();
+    await xPage.goto('https://x.com/home');
+    await xPage.waitForTimeout(800);
+    const tabId = await findXTabId(serviceWorker);
+
+    const popup = await openPopup(context, extensionId);
+    await pointPopupAtTab(popup, tabId, 'https://x.com/home');
+    await popup.click('#auto-scan-btn');
+    await expect(popup.locator('#sync-status')).toContainText('리스트 페이지가 아닙니다');
+    await expect(popup.locator('#auto-scan-btn')).toHaveText('끝까지 스캔');
   });
 
   test('[뺀 멤버 정리]: 이미 최신이면 확인 없이 안내만', async ({ context, extensionId, serviceWorker }) => {

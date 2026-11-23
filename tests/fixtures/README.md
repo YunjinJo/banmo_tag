@@ -4,7 +4,7 @@ E2E 테스트(`tests/e2e/`)는 실제 확장 프로그램을 Chromium 에 로드
 
 | 폴더 | 내용 |
 |---|---|
-| `synthetic/` | X 화면 구조를 본떠 **직접 만든** 페이지. 기능별 테스트(멤버 수집, 배지, 뺀 멤버 정리, 구조 변경 경고)에 사용. `list-members.html` 은 멤버 목록 전체가 보이는 화면, `list-members-loading.html` 은 가상 스크롤(줄마다 `translateY`, 아래에 "더 불러오는 중")을 흉내 낸 화면 |
+| `synthetic/` | X 화면 구조를 본떠 **직접 만든** 페이지. 기능별 테스트(멤버 수집, 배지, 뺀 멤버 정리, 구조 변경 경고)에 사용. `list-members.html` 은 멤버 목록 전체가 보이는 화면, `list-members-loading.html` 은 가상 스크롤(줄마다 `translateY`, 아래에 "더 불러오는 중")을 흉내 낸 화면, `list-members-virtual.html` 은 페이지 스크립트가 실제로 스크롤에 맞춰 줄을 그리고 15명씩 더 불러오는 화면([끝까지 스캔] 테스트용) |
 | `real/` | **실제 X 화면**을 `capture-x-page.js`로 저장한 스냅샷. X 가 구조를 바꿨는지 확인하는 데 사용 |
 
 ## 실제 X 스냅샷 추가하기

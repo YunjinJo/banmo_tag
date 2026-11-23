@@ -335,10 +335,14 @@ textarea:focus-visible,
 .btn.small { height: 28px; padding: 0 9px; border-radius: 6px; font-size: 12px; }
 .btn.big { height: 38px; }
 .btn.wait:disabled { cursor: wait; }
+/* [끝까지 스캔] 진행 중: 같은 버튼이 [스캔 중지]가 됨 */
+.btn.scanning { border-color: var(--danger); color: var(--danger); }
 .btn svg { flex-shrink: 0; }
 
-.actions-row { display: flex; gap: 6px; }
+.actions-row { display: flex; flex-wrap: wrap; gap: 6px; }
 .actions-row .primary { flex: 1; min-width: 0; }
+/* [현재 탭에서 가져오기] [끝까지 스캔] 다음 줄에 한 줄을 다 차지 ([뺀 멤버 정리]) */
+.actions-row .row-full { flex: 1 0 100%; }
 
 .field-label {
   font-size: 12px;

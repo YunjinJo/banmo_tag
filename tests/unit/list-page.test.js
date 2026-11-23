@@ -479,3 +479,92 @@ describe('그려진 멤버 구간이 목록의 맨 위/맨 끝인지 (readMember
     assertDeepEqual(readMemberListWindow(null, null), { atTop: false, atEnd: false });
   });
 });
+
+describe('[끝까지 스캔] 자동 스크롤 (findMemberListScroller · getAutoScanStep · nextAutoScanStep)', () => {
+  const member = handle => `<div data-testid="cellInnerDiv"><div data-testid="UserCell" style="height: 60px;"><a href="/${handle}">@${handle}</a></div></div>`;
+  function withSandbox(html, run) {
+    const host = document.createElement('div');
+    host.innerHTML = html;
+    document.body.appendChild(host);
+    try {
+      run(host);
+    } finally {
+      host.remove();
+    }
+  }
+
+  it('findMemberListScroller: 멤버 창처럼 넘쳐서 스크롤되는 부모가 있으면 그 상자, 없으면 페이지', () => {
+    const rows = ['a', 'b', 'c', 'd', 'e'].map(member).join('');
+    withSandbox(`<div role="dialog" id="dlg"><div id="box" style="height: 100px; overflow-y: auto;"><div id="list">${rows}</div></div></div>`, (host) => {
+      const dialog = host.querySelector('#dlg');
+      assertEqual(findMemberListScroller(dialog, dialog), host.querySelector('#box'));
+    });
+    withSandbox(`<div data-testid="primaryColumn"><div style="overflow-y: auto;">${rows}</div></div>`, (host) => {
+      // overflow 가 auto 여도 넘치지 않으면 스크롤 상자가 아님 → 페이지
+      assertEqual(findMemberListScroller(host.querySelector('[data-testid="primaryColumn"]'), null), document.scrollingElement);
+    });
+  });
+
+  it('findMemberListScroller: 사이드바 추천 계정만 있거나 멤버가 없으면 null', () => {
+    withSandbox('<div id="c"><aside><div data-testid="UserCell"><a href="/reco">@reco</a></div></aside></div>', (host) => {
+      assertEqual(findMemberListScroller(host.querySelector('#c'), null), null);
+    });
+    assertEqual(findMemberListScroller(null, null), null);
+  });
+
+  it('getAutoScanStep: 보이는 높이의 60% (최소 120px)', () => {
+    assertEqual(getAutoScanStep(1000), 600);
+    assertEqual(getAutoScanStep(100), 120);
+    assertEqual(getAutoScanStep(undefined), 120);
+  });
+
+  const view = (overrides) => Object.assign(
+    { atEnd: false, fromTop: true, seenCount: 10, scrollTop: 0, scrollHeight: 3000, clientHeight: 700 }, overrides);
+
+  it('nextAutoScanStep: 아래가 남아 있으면 scroll, 맨 아래에서 불러오는 중이면 wait', () => {
+    const scan = {};
+    assertEqual(nextAutoScanStep(scan, view(), 0), 'scroll');
+    assertEqual(nextAutoScanStep(scan, view({ scrollTop: 2300, seenCount: 30 }), 700), 'wait', '스크롤할 곳이 없음 (다음 쪽을 기다림)');
+    assertEqual(nextAutoScanStep(scan, view({ scrollTop: 2300, seenCount: 40, scrollHeight: 4000 }), 1400), 'scroll', '다음 쪽이 불러와짐');
+  });
+
+  it('nextAutoScanStep: 목록 끝에 닿은 상태가 settleMs 동안 그대로면 done, 그 사이 멤버가 늘면 다시 기다림', () => {
+    const scan = {};
+    const opts = { settleMs: 2500 };
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true, seenCount: 50 }), 1000, opts), 'wait');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true, seenCount: 50 }), 3000, opts), 'wait', '아직 2.5초가 지나지 않음');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true, seenCount: 51 }), 3600, opts), 'wait', '멤버가 늘어 처음부터 다시 기다림');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true, seenCount: 51 }), 5000, opts), 'wait');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true, seenCount: 51 }), 6100, opts), 'done');
+  });
+
+  it('nextAutoScanStep: 끝에 닿았다가 다시 불러오기 시작하면 끝 판단을 취소', () => {
+    const scan = {};
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true }), 0), 'wait');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: false, scrollTop: 2300 }), 2000), 'wait');
+    assertEqual(nextAutoScanStep(scan, view({ atEnd: true }), 3000), 'wait', '끝 상태를 다시 처음부터 기다림');
+    assertEqual(scan.endSince, 3000);
+  });
+
+  it('nextAutoScanStep: 이어서 읽지 못하면 restart, maxRestarts 번 넘으면 incomplete', () => {
+    const scan = {};
+    const opts = { maxRestarts: 2 };
+    assertEqual(nextAutoScanStep(scan, view({ fromTop: false }), 0, opts), 'restart');
+    assertEqual(nextAutoScanStep(scan, view({ fromTop: true }), 500, opts), 'scroll', '맨 위로 돌아가 다시 이어 읽음');
+    assertEqual(nextAutoScanStep(scan, view({ fromTop: false }), 1000, opts), 'restart');
+    assertEqual(nextAutoScanStep(scan, view({ fromTop: false }), 1500, opts), 'incomplete');
+  });
+
+  it('nextAutoScanStep: stuckMs 동안 멤버·높이·스크롤 위치가 그대로면 stuck', () => {
+    const scan = {};
+    const opts = { stuckMs: 15000 };
+    const bottom = view({ scrollTop: 2300 });
+    assertEqual(nextAutoScanStep(scan, bottom, 0, opts), 'wait');
+    assertEqual(nextAutoScanStep(scan, bottom, 14000, opts), 'wait');
+    assertEqual(nextAutoScanStep(scan, bottom, 15000, opts), 'stuck');
+    // 스크롤해도 위치가 바뀌지 않는 경우도 같음
+    const scan2 = {};
+    assertEqual(nextAutoScanStep(scan2, view(), 0, opts), 'scroll');
+    assertEqual(nextAutoScanStep(scan2, view(), 15000, opts), 'stuck');
+  });
+});
