@@ -202,25 +202,36 @@
     </div>
   </div>
 
-  <!-- 다른 폰트 직접 입력 (popup/font-dialog.js) -->
+  <!-- 설치된 폰트 고르기 · 다른 폰트 직접 입력 (popup/font-dialog.js) -->
   <div id="font-dialog" class="modal-layer" role="dialog" aria-modal="true" aria-labelledby="font-dialog-title">
     <div class="modal-card">
       <div class="font-dialog-head">
-        <h2 id="font-dialog-title">다른 폰트 쓰기</h2>
+        <h2 id="font-dialog-title">설치된 폰트 고르기</h2>
         <span id="font-dialog-target" class="muted"></span>
       </div>
       <label class="field">
         <span class="field-label">폰트 이름</span>
-        <input type="text" id="font-name-input" class="input" list="local-font-list" maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="font-check">
-        <datalist id="local-font-list"></datalist>
+        <input type="text" id="font-name-input" class="input" role="combobox" aria-autocomplete="list" aria-controls="font-list" aria-expanded="false"
+          maxlength="80" autocomplete="off" spellcheck="false" aria-describedby="font-check">
       </label>
       <p id="font-check" class="font-check" aria-live="polite"></p>
+      <!-- 크롬·엣지: 설치된 폰트 목록 (파이어폭스에서는 감춤) -->
+      <div id="font-list-area" class="font-list-area">
+        <div id="font-list-box" class="font-list-box" hidden>
+          <span id="font-list-count" class="font-list-count"></span>
+          <div id="font-list" class="font-list" role="listbox" aria-label="이 컴퓨터에 설치된 폰트"></div>
+          <p id="font-list-empty" class="font-list-empty" hidden>목록에 없는 이름입니다. 이름이 맞다면 그대로 적용할 수 있습니다.</p>
+        </div>
+        <div id="font-permission" class="font-permission" hidden>
+          <p id="font-permission-text"></p>
+          <button id="font-load-btn" type="button" class="btn primary small">설치된 폰트 목록 보기</button>
+        </div>
+        <p id="font-list-status" class="font-list-status" role="status" hidden></p>
+      </div>
       <div class="font-preview-row">
         <span class="field-label">미리보기</span>
         <span id="font-dialog-preview" class="badge-chip">SAMPLE</span>
       </div>
-      <button id="font-load-btn" type="button" class="btn small" hidden>이 컴퓨터의 폰트 불러오기</button>
-      <p id="font-list-status" class="font-list-status" role="status" hidden></p>
       <p class="hint-line">이 컴퓨터에 설치된 폰트로 배지를 그립니다. 다른 컴퓨터에 그 폰트가 없으면 기본 폰트로 보입니다.</p>
       <p id="font-browser-note" class="hint-line" hidden>이 브라우저는 설치된 폰트 목록을 알려 주지 않아 이름을 직접 적어야 합니다. 이름은 운영체제의 글꼴 설정에서 볼 수 있습니다.</p>
       <div class="modal-actions">

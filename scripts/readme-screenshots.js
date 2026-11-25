@@ -115,10 +115,15 @@ const LISTS = {
   await popup.waitForTimeout(200);
   await popup.screenshot({ path: path.join(out, 'popup-style.png') });
 
-  // 6-1. [다른 폰트 직접 입력…] 창 (이 PC 에 설치된 폰트 이름. Windows 기본 폰트인 Segoe Script 로 차이가 잘 보이게)
+  // 6-1. [설치된 폰트에서 고르기…] 창: 크롬 "글꼴" 권한을 허용해 둔 상태로 이 PC 의 폰트 목록을 보여 주고 "gothic" 으로 검색
+  //      (Playwright 의 grantPermissions 는 chrome-extension 주소를 받지 못해 CDP 로 허용)
+  const cdp = await context.newCDPSession(popup);
+  await cdp.send('Browser.setPermission', { origin: `chrome-extension://${id}`, permission: { name: 'local-fonts' }, setting: 'granted' });
   await popup.locator('#badge-font-family').selectOption('custom:');
-  await popup.fill('#font-name-input', 'Segoe Script');
-  await popup.waitForTimeout(200);
+  await popup.waitForSelector('#font-list .font-option', { timeout: 20000 });
+  await popup.fill('#font-name-input', 'gothic');
+  await popup.keyboard.press('ArrowDown');
+  await popup.waitForTimeout(300);
   await popup.screenshot({ path: path.join(out, 'popup-font.png') });
   await popup.keyboard.press('Escape');
 

@@ -155,11 +155,12 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     record('화면 테마 다크 적용·저장', themeState === 'rgb(15, 15, 17)', String(themeState));
     await popup.click('#theme-system');
 
-    // [다른 폰트 직접 입력…]: 파이어폭스에는 설치 폰트 목록(queryLocalFonts)이 없어 [불러오기] 대신 안내가 보이고, 이름으로 저장
+    // [다른 폰트 직접 입력…]: 파이어폭스에는 설치 폰트 목록(queryLocalFonts)이 없어 목록 대신 안내가 보이고, 이름으로 저장
+    const optionLabel = await popup.evaluate(() => document.querySelector('#badge-font-family option:last-child').textContent);
     await popup.select('#badge-font-family', 'custom:');
     await popup.waitForSelector('#font-name-input', { visible: true });
     const fontDialog = await popup.evaluate(() => ({
-      load: document.getElementById('font-load-btn').hidden,
+      list: document.getElementById('font-list-area').hidden,
       note: document.getElementById('font-browser-note').hidden
     }));
     await popup.type('#font-name-input', 'Banmo Firefox Font');
@@ -168,8 +169,8 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
       const { badgeSettings } = await chrome.storage.local.get(['badgeSettings']);
       return badgeSettings && badgeSettings.fontFamily !== 'system' ? badgeSettings.fontFamily : null;
     }), 5000);
-    record('[다른 폰트 직접 입력…] 목록 버튼 없이 이름으로 저장', fontDialog.load === true && fontDialog.note === false &&
-      customFont === "'Banmo Firefox Font', sans-serif", JSON.stringify({ fontDialog, customFont }));
+    record('[다른 폰트 직접 입력…] 설치 폰트 목록 없이 이름으로 저장', optionLabel === '다른 폰트 직접 입력…' && fontDialog.list === true &&
+      fontDialog.note === false && customFont === "'Banmo Firefox Font', sans-serif", JSON.stringify({ optionLabel, fontDialog, customFont }));
     await popup.evaluate(() => chrome.storage.local.remove('badgeSettings'));
     await popup.click('#tab-lists');
     const granted = await popup.evaluate(() => chrome.permissions.contains({ origins: chrome.runtime.getManifest().host_permissions }));

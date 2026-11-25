@@ -13,7 +13,7 @@ function fillSizeOptions(select, selected) {
   });
 }
 
-// 폰트 선택 목록: 고를 수 있는 폰트 (+ 지금 쓰는 직접 입력 폰트) + 마지막에 [다른 폰트 직접 입력…] (popup/font-dialog.js)
+// 폰트 선택 목록: 고를 수 있는 폰트 (+ 지금 쓰는 직접 입력 폰트) + 마지막에 [설치된 폰트에서 고르기…] (파이어폭스: [다른 폰트 직접 입력…], popup/font-dialog.js)
 function fillFontOptions(select, selected) {
   select.textContent = '';
   const fonts = AG_FONT_FAMILIES.slice();
@@ -24,12 +24,12 @@ function fillFontOptions(select, selected) {
     opt.selected = font === selected;
     select.appendChild(opt);
   });
-  const custom = makeElement('option', null, '다른 폰트 직접 입력…');
+  const custom = makeElement('option', null, getCustomFontOptionLabel());
   custom.value = FONT_CUSTOM_OPTION;
   select.appendChild(custom);
 }
 
-// 폰트 선택 목록이 바뀌었을 때: [다른 폰트 직접 입력…]이면 고르기 전 값으로 되돌리고 입력 창을 엶, 아니면 onPick(값)
+// 폰트 선택 목록이 바뀌었을 때: 마지막 항목([설치된 폰트에서 고르기…])이면 고르기 전 값으로 되돌리고 입력 창을 엶, 아니면 onPick(값)
 function handleFontSelectChange(select, previous, listName, onPick) {
   if (select.value !== FONT_CUSTOM_OPTION) {
     onPick(select.value);
