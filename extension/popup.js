@@ -22,7 +22,7 @@
 
 document.addEventListener('DOMContentLoaded', () => {
   if (!SHARED_LOADED) {
-    document.body.textContent = '공통 코드(shared/)를 불러오지 못했습니다. chrome://extensions 에서 banmo_tag 를 새로고침해주세요.';
+    document.body.textContent = '공통 코드(shared/)를 불러오지 못했습니다. chrome://extensions 에서 banmo tag 를 새로고침해주세요.';
     console.error('[banmo_tag] shared/*.js not loaded');
     return;
   }

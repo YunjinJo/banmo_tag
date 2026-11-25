@@ -66,7 +66,7 @@ function readBackupFile(file) {
       parsed = null;
     }
     if (!parsed) {
-      showSyncStatus('잘못된 파일 형식입니다. banmo_tag 백업 파일(JSON)을 선택해주세요.', true);
+      showSyncStatus('잘못된 파일 형식입니다. banmo tag 백업 파일(JSON)을 선택해주세요.', true);
       return;
     }
     const count = Object.keys(parsed.lists).length;
