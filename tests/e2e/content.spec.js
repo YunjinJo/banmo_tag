@@ -155,7 +155,7 @@ test.describe('타임라인 배지', () => {
     await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName]);
     const more = alice.locator('.ag-badge-more');
     await expect(more).toHaveText('+2');
-    await expect(more).toHaveAttribute('title', `banmo_tag 리스트 4개: A 친구, ${longName}, C 뉴스, D 동료`);
+    await expect(more).toHaveAttribute('title', `banmo tag 리스트 4개: A 친구, ${longName}, C 뉴스, D 동료`);
 
     const long = alice.locator('.ag-list-badge').nth(1);
     await expect(long).toHaveAttribute('title', longName);

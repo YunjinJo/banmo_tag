@@ -228,7 +228,7 @@ function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings) {
     const more = document.createElement('span');
     more.className = isMainAuthor ? 'ag-badge-more' : 'ag-badge-more mini-badge';
     more.textContent = `+${hidden.length}`;
-    more.title = `banmo_tag 리스트 ${all.length}개: ${all.join(', ')}`;
+    more.title = `banmo tag 리스트 ${all.length}개: ${all.join(', ')}`;
     more.setAttribute('aria-label', more.title);
     wrapper.appendChild(more);
   }
