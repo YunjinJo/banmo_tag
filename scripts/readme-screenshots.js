@@ -115,6 +115,13 @@ const LISTS = {
   await popup.waitForTimeout(200);
   await popup.screenshot({ path: path.join(out, 'popup-style.png') });
 
+  // 6-1. [다른 폰트 직접 입력…] 창 (이 PC 에 설치된 폰트 이름. Windows 기본 폰트인 Segoe Script 로 차이가 잘 보이게)
+  await popup.locator('#badge-font-family').selectOption('custom:');
+  await popup.fill('#font-name-input', 'Segoe Script');
+  await popup.waitForTimeout(200);
+  await popup.screenshot({ path: path.join(out, 'popup-font.png') });
+  await popup.keyboard.press('Escape');
+
   // 7. ⋯ 메뉴
   await openPopup('light');
   await popup.click('#menu-btn');

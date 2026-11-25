@@ -152,6 +152,95 @@ describe('리스트별 배지 글자 스타일 (normalizeListStyle, getEffective
   });
 });
 
+describe('직접 입력한 폰트 (normalizeFontName, buildFontFamily, isValidFontFamily …)', () => {
+  it('normalizeFontName: 공백·따옴표를 정리하고, 쓸 수 없는 글자나 너무 긴 이름은 빈 문자열', () => {
+    assertEqual(normalizeFontName('  Nanum   Gothic '), 'Nanum Gothic');
+    assertEqual(normalizeFontName('"맑은 고딕"'), '맑은 고딕');
+    assertEqual(normalizeFontName("'D2Coding'"), 'D2Coding');
+    assertEqual(normalizeFontName('가'.repeat(64)), '가'.repeat(64), '64자까지');
+    assertEqual(normalizeFontName('가'.repeat(65)), '', '65자는 너무 김');
+    ['', '   ', '""', null, undefined, 12].forEach(v => assertEqual(normalizeFontName(v), '', String(v)));
+    ["a'b", 'a"b', 'a\\b', 'Arial, serif', 'x; color: red', 'a{b', 'a}b', '<b>', 'a\u0007b']
+      .forEach(bad => assertEqual(normalizeFontName(bad), '', bad));
+  });
+
+  it('buildFontFamily / getFontNameFromFamily: 이름 ↔ 저장 값. 고를 수 있는 폰트와 이름이 같으면 그 값', () => {
+    assertEqual(buildFontFamily(' 나눔고딕 '), "'나눔고딕', sans-serif");
+    assertEqual(getFontNameFromFamily("'나눔고딕', sans-serif"), '나눔고딕');
+    assertEqual(buildFontFamily('georgia'), "'Georgia', serif", '대소문자 무시');
+    assertEqual(buildFontFamily('ROBOTO'), "'Roboto', sans-serif");
+    assertEqual(buildFontFamily('a;b'), '');
+    ['system', 'monospace', "'a;b', sans-serif", "'', sans-serif", undefined]
+      .forEach(v => assertEqual(getFontNameFromFamily(v), '', String(v)));
+  });
+
+  it('isValidFontFamily / isCustomFontFamily: 고를 수 있는 폰트와 직접 입력 형식만 허용', () => {
+    AG_FONT_FAMILIES.forEach(f => assert(isValidFontFamily(f), f));
+    assert(isValidFontFamily("'나눔고딕', sans-serif"));
+    ['나눔고딕', "'나눔고딕', serif", "'나눔고딕', monospace", "'a', sans-serif; color: red", "'a;b', sans-serif",
+      "'', sans-serif", 'Comic Sans MS', null, undefined, 3]
+      .forEach(bad => assert(!isValidFontFamily(bad), String(bad)));
+    assert(isCustomFontFamily("'나눔고딕', sans-serif"));
+    assert(!isCustomFontFamily("'Roboto', sans-serif"), '고를 수 있는 폰트');
+    assert(!isCustomFontFamily('system'));
+    assert(!isCustomFontFamily('Comic Sans MS'), '잘못된 값');
+  });
+
+  it('getFontLabel: 고를 수 있는 폰트는 표시 이름, 직접 입력한 폰트는 그 이름', () => {
+    assertEqual(getFontLabel('system'), '시스템 기본');
+    assertEqual(getFontLabel("'Georgia', serif"), 'Georgia');
+    assertEqual(getFontLabel("'나눔고딕', sans-serif"), '나눔고딕');
+  });
+
+  it('리스트별 스타일 · 공통 설정 · 백업에 직접 입력한 폰트가 남고, 잘못된 값은 버림', () => {
+    const custom = "'D2Coding', sans-serif";
+    assertDeepEqual(normalizeListStyle({ fontFamily: custom }), { fontFamily: custom });
+    assertEqual(normalizeListStyle({ fontFamily: "x'; color: red" }), null);
+    assertEqual(normalizeBadgeSettings({ fontFamily: custom }).fontFamily, custom);
+    assertEqual(normalizeBadgeSettings({ fontFamily: 'Comic Sans MS' }).fontFamily, 'system');
+    const lists = { '테크': { color: '#1d9bf0', mode: 'normal', members: ['@a'] } };
+    setListStyle(lists, '테크', { fontFamily: custom });
+    assertDeepEqual(lists['테크'].style, { fontFamily: custom });
+    const restored = parseBackup(JSON.parse(JSON.stringify(buildBackup(lists, { textColor: '#ffffff', fontSize: 12, fontFamily: custom }))));
+    assertEqual(restored.badgeSettings.fontFamily, custom);
+    assertDeepEqual(restored.lists['테크'].style, { fontFamily: custom });
+  });
+
+  it('applyBadgeStyle: 직접 입력한 폰트도 !important 로 적용', () => {
+    const badge = document.createElement('span');
+    applyBadgeStyle(badge, '#1d9bf0', { textColor: '#ffffff', fontSize: 12, fontFamily: "'D2Coding', sans-serif" }, true);
+    assert(/D2Coding/.test(badge.style.getPropertyValue('font-family')), badge.style.getPropertyValue('font-family'));
+    assertEqual(badge.style.getPropertyPriority('font-family'), 'important');
+  });
+
+  it('isFontLikelyInstalled: 기본 글꼴만으로 그린 폭과 하나라도 다르면 설치된 폰트', () => {
+    const base = { monospace: 100, serif: 90, 'sans-serif': 80 };
+    // 설치된 폰트는 폭 77, 없는 폰트는 뒤의 기본 글꼴 폭
+    const measureWith = installed => (family) => {
+      const m = family.match(/^'(.+)', (.+)$/);
+      if (!m) return base[family];
+      return installed.indexOf(m[1]) !== -1 ? 77 : base[m[2]];
+    };
+    assert(isFontLikelyInstalled('나눔고딕', measureWith(['나눔고딕'])));
+    assert(!isFontLikelyInstalled('없는폰트', measureWith([])));
+    assert(!isFontLikelyInstalled('a;b', measureWith(['a;b'])), '쓸 수 없는 이름');
+    // sans-serif 기본 글꼴과 폭이 같은 폰트(예: 기본 글꼴이 그 폰트)도 다른 기본 글꼴과 비교해 찾음
+    const sameAsSans = family => (family === "'Arial', sans-serif" ? base['sans-serif'] : measureWith(['Arial'])(family));
+    assert(isFontLikelyInstalled('Arial', sameAsSans));
+    // 실제 canvas: 없는 이름은 찾지 못함
+    const ctx = document.createElement('canvas').getContext('2d');
+    const realMeasure = (family) => { ctx.font = `72px ${family}`; return ctx.measureText('mmmmmmmmmmlli 0123 가나다').width; };
+    assert(!isFontLikelyInstalled('No Such Font banmo 2026', realMeasure));
+  });
+
+  it('getLocalFontFamilies: 굵기별 항목을 하나로 묶고(대소문자 무시) 이름순, 쓸 수 없는 이름은 뺌', () => {
+    const data = [{ family: 'Malgun Gothic', style: 'Bold' }, { family: 'Arial' }, { family: 'malgun gothic', style: 'Regular' },
+      { family: "Bad'Name" }, { family: '' }, null, { family: 'Batang' }];
+    assertDeepEqual(getLocalFontFamilies(data), ['Arial', 'Batang', 'Malgun Gothic']);
+    assertDeepEqual(getLocalFontFamilies(undefined), []);
+  });
+});
+
 describe('배지 부착 위치 (getBadgeAnchor)', () => {
   const sandbox = document.getElementById('sandbox');
 

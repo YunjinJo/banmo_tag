@@ -229,6 +229,16 @@ test.describe('타임라인 배지', () => {
     await expect(bobBadge).toHaveCSS('color', 'rgb(255, 255, 255)');
   });
 
+  test('직접 입력한 폰트(컴퓨터에 설치된 폰트 이름)도 공통 설정과 리스트별 설정으로 배지에 적용', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, { badgeSettings: { textColor: '#ffffff', fontSize: 11, fontFamily: "'Banmo Common Font', sans-serif" } });
+    const page = await openTimeline(context, serviceWorker, {
+      '친구': { color: '#ff0000', mode: 'normal', members: ['@alice'], style: { fontFamily: "'Banmo List Font', sans-serif" } },
+      '동료': { color: '#00aa00', mode: 'normal', members: ['@bob'] }
+    });
+    await expect(page.locator('[data-fixture-id="t-alice"] .ag-list-badge')).toHaveCSS('font-family', /^"Banmo List Font", sans-serif$/);
+    await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveCSS('font-family', /^"Banmo Common Font", sans-serif$/);
+  });
+
   test('한 리스트의 글자 스타일을 바꾸면 그 리스트 멤버의 트윗만 다시 그림', async ({ context, serviceWorker }) => {
     const page = await openTimeline(context, serviceWorker);
     await page.locator('[data-fixture-id="t-bob"] .ag-list-badge').evaluate(el => { el.dataset.marker = 'keep'; });

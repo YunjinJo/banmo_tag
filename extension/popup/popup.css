@@ -697,6 +697,20 @@ body.tab-view .sheet { max-width: 560px; margin: 0 auto; }
 #confirm-text { white-space: pre-line; line-height: 1.5; }
 .modal-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
 
+/* 다른 폰트 쓰기 창: 제목 · 대상 / [폰트 이름] / 상태 / 미리보기 / [이 컴퓨터의 폰트 불러오기] / 안내 */
+.font-dialog-head { display: flex; flex-direction: column; gap: 2px; }
+.font-dialog-head h2 { margin: 0; font-size: 14px; font-weight: 600; }
+.font-dialog-head .muted { font-size: 12px; }
+#font-dialog .modal-card { gap: 10px; }
+#font-dialog .hint-line { line-height: 1.5; }
+#font-load-btn { align-self: flex-start; }
+.font-check, .font-list-status { margin: -4px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.font-check.ok { color: var(--success); }
+.font-check.warn { color: var(--warn-text); }
+.font-check.error, .font-list-status.error { color: var(--danger); }
+.font-list-status { margin: 0; }
+.font-preview-row { display: flex; align-items: center; gap: 10px; min-height: 28px; }
+
 /* ==========================================
    기본 스타일 · 도움말 탭
    ========================================== */

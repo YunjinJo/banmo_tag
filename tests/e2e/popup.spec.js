@@ -523,6 +523,176 @@ test.describe('배지 기본 스타일 (기본 스타일 탭)', () => {
   });
 });
 
+test.describe('다른 폰트 직접 입력 (컴퓨터에 설치된 폰트)', () => {
+  const ONE_LIST = { '친구': { color: '#ff0000', mode: 'normal', members: ['@a'] }, '동료': { color: '#00aa00', mode: 'normal', members: ['@b'] } };
+
+  // 크롬의 설치 폰트 목록(window.queryLocalFonts)과 그 권한 상태를 흉내 냄.
+  // state: 권한 상태, fonts: 돌려줄 목록, tabFonts: 새 탭 화면(?view=tab)에서 돌려줄 목록 (권한 창에서 [허용]을 누른 경우)
+  async function fakeLocalFonts(context, { state, fonts = [], tabFonts = fonts }) {
+    await context.addInitScript(({ state, fonts, tabFonts }) => {
+      const original = navigator.permissions.query.bind(navigator.permissions);
+      navigator.permissions.query = d => (d && d.name === 'local-fonts' ? Promise.resolve({ state }) : original(d));
+      window.queryLocalFonts = async () => (location.search.includes('view=tab') ? tabFonts : fonts);
+    }, { state, fonts, tabFonts });
+  }
+
+  test('공통 설정: [다른 폰트 직접 입력…]으로 이름을 적어 저장하고, 고를 수 있는 폰트로 다시 바꿀 수 있음', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: ONE_LIST });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    const select = popup.locator('#badge-font-family');
+    await expect(select.locator('option').last()).toHaveText('다른 폰트 직접 입력…');
+    await select.selectOption('custom:');
+    await expect(popup.locator('#font-dialog')).toBeVisible();
+    await expect(select).toHaveValue('system', { message: '창을 여는 항목은 고른 값으로 남지 않음' });
+    await expect(popup.locator('#font-dialog-target')).toHaveText('모든 리스트 배지에 쓸 기본 폰트');
+    await expect(popup.locator('#font-name-input')).toBeFocused();
+    await expect(popup.locator('#font-ok-btn')).toBeDisabled();
+
+    // 쓸 수 없는 글자 → 저장 불가
+    await popup.fill('#font-name-input', "Bad'; color: red");
+    await expect(popup.locator('#font-check')).toHaveClass(/error/);
+    await expect(popup.locator('#font-ok-btn')).toBeDisabled();
+
+    // 설치되지 않은 이름: 안내는 하지만 저장은 됨 (다른 컴퓨터에는 있을 수 있음)
+    await popup.fill('#font-name-input', '  No Such Font  Banmo ');
+    await expect(popup.locator('#font-check')).toHaveClass(/warn/);
+    await expect(popup.locator('#font-check')).toContainText('찾지 못했습니다');
+    await expect(popup.locator('#font-dialog-preview')).toHaveCSS('font-family', /No Such Font Banmo/);
+    await popup.click('#font-ok-btn');
+    await expect(popup.locator('#font-dialog')).toBeHidden();
+    await expect(select).toBeFocused();
+    await expect.poll(async () => (await getStorage(serviceWorker, ['badgeSettings'])).badgeSettings)
+      .toEqual({ textColor: '#ffffff', fontSize: 11, fontFamily: "'No Such Font Banmo', sans-serif" });
+    await expect(select).toHaveValue("'No Such Font Banmo', sans-serif");
+    await expect(select.locator('option:checked')).toHaveText('No Such Font Banmo');
+    await expect(popup.locator('#badge-preview')).toHaveCSS('font-family', /No Such Font Banmo/);
+    await popup.click('#tab-lists');
+    await expect(listCard(popup, '친구').locator('.list-name')).toHaveCSS('font-family', /No Such Font Banmo/);
+
+    // 다시 열면 지금 이름이 들어 있고, 고를 수 있는 폰트로 바꾸면 직접 입력 항목은 목록에서 빠짐
+    await popup.click('#tab-style');
+    await select.selectOption('custom:');
+    await expect(popup.locator('#font-name-input')).toHaveValue('No Such Font Banmo');
+    await popup.keyboard.press('Escape');
+    await expect(popup.locator('#font-dialog')).toBeHidden();
+    await select.selectOption('monospace');
+    await expect.poll(async () => (await getStorage(serviceWorker, ['badgeSettings'])).badgeSettings.fontFamily).toBe('monospace');
+    await expect(select.locator('option', { hasText: 'No Such Font Banmo' })).toHaveCount(0);
+  });
+
+  test('리스트 시트: 그 리스트만 직접 입력한 폰트를 쓰고(Enter 로 적용), 취소하면 그대로', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: ONE_LIST });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    await popup.locator('#sheet-font-family').selectOption('custom:');
+    await expect(popup.locator('#font-dialog-target')).toHaveText("'친구' 리스트 배지에 쓸 폰트");
+    await expect(popup.locator('#font-dialog-preview')).toHaveText('친구');
+    await expect(popup.locator('#list-sheet')).toHaveJSProperty('inert', true);
+
+    await popup.fill('#font-name-input', 'Banmo Cancel Font');
+    await popup.click('#font-cancel-btn');
+    await expect(popup.locator('#font-dialog')).toBeHidden();
+    expect((await getLists(serviceWorker))['친구'].style).toBeUndefined();
+
+    await popup.locator('#sheet-font-family').selectOption('custom:');
+    await popup.fill('#font-name-input', 'Banmo List Font');
+    await popup.press('#font-name-input', 'Enter');
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ fontFamily: "'Banmo List Font', sans-serif" });
+    expect((await getLists(serviceWorker))['동료'].style).toBeUndefined();
+    await expect(popup.locator('#sheet-font-family')).toHaveValue("'Banmo List Font', sans-serif");
+    await expect(popup.locator('.list-style-preview')).toHaveCSS('font-family', /Banmo List Font/);
+    await expect(popup.locator('#list-sheet .list-style-state')).toHaveText('이 리스트만 따로 설정됨');
+  });
+
+  test('크롬: 권한이 있으면 [이 컴퓨터의 폰트 불러오기]가 설치된 폰트를 입력란 목록에 채움', async ({ context, extensionId, serviceWorker }) => {
+    await fakeLocalFonts(context, {
+      state: 'granted',
+      fonts: [{ family: 'Banmo Test Sans', style: 'Regular' }, { family: 'Banmo Test Sans', style: 'Bold' }, { family: '반모 고딕' }]
+    });
+    await setStorage(serviceWorker, { lists: ONE_LIST });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    await popup.locator('#badge-font-family').selectOption('custom:');
+    await expect(popup.locator('#font-browser-note')).toBeHidden();
+    await popup.click('#font-load-btn');
+    await expect(popup.locator('#font-list-status')).toContainText('폰트 2개를 불러왔습니다');
+    await expect(popup.locator('#local-font-list option')).toHaveCount(2);
+    await expect(popup.locator('#font-name-input')).toBeFocused();
+
+    // 불러온 목록에 있는 이름이면 (대소문자 무시) 찾았다고 알림
+    await popup.fill('#font-name-input', 'banmo test sans');
+    await expect(popup.locator('#font-check')).toHaveClass(/ok/);
+    await popup.fill('#font-name-input', '반모 고딕');
+    await expect(popup.locator('#font-check')).toHaveText('이 컴퓨터에서 찾았습니다.');
+    await popup.click('#font-ok-btn');
+    await expect.poll(async () => (await getStorage(serviceWorker, ['badgeSettings'])).badgeSettings?.fontFamily).toBe("'반모 고딕', sans-serif");
+  });
+
+  test('크롬 팝업에서 아직 권한을 묻지 않았으면, 같은 창을 새 탭 화면에서 열어 이어서 불러옴', async ({ context, extensionId, serviceWorker }) => {
+    // 실제 크롬 팝업은 권한 창을 띄우지 않고 빈 목록을 돌려줌. 새 탭 화면에서는 권한 창에서 [허용]을 누른 것처럼
+    await fakeLocalFonts(context, { state: 'prompt', fonts: [], tabFonts: [{ family: 'Banmo Tab Font' }] });
+    await setStorage(serviceWorker, { lists: ONE_LIST });
+    const popup = await openPopup(context, extensionId);
+    await openSheet(popup, '친구');
+    await popup.locator('#sheet-font-family').selectOption('custom:');
+    const [tabView] = await Promise.all([context.waitForEvent('page'), popup.click('#font-load-btn')]);
+    await tabView.waitForLoadState();
+    const url = new URL(tabView.url());
+    expect(url.searchParams.get('view')).toBe('tab');
+    expect(url.searchParams.get('font')).toBe('list');
+    expect(url.searchParams.get('list')).toBe('친구');
+
+    // 새 탭 화면: 그 리스트의 시트와 폰트 창이 열려 있고, 다시 누르면 목록을 불러옴
+    await expect(tabView.locator('#sheet-title')).toHaveText('친구');
+    await expect(tabView.locator('#font-dialog')).toBeVisible();
+    await expect(tabView.locator('#font-dialog-target')).toHaveText("'친구' 리스트 배지에 쓸 폰트");
+    await expect(tabView.locator('#font-list-status')).toContainText('새 탭에서 열었습니다');
+    await tabView.click('#font-load-btn');
+    await expect(tabView.locator('#font-list-status')).toContainText('폰트 1개를 불러왔습니다');
+    await tabView.fill('#font-name-input', 'Banmo Tab Font');
+    await tabView.click('#font-ok-btn');
+    await expect.poll(async () => (await getLists(serviceWorker))['친구'].style).toEqual({ fontFamily: "'Banmo Tab Font', sans-serif" });
+  });
+
+  test('크롬: 공통 설정에서 연 창도 새 탭 화면의 [기본 스타일] 탭에서 이어서 열림', async ({ context, extensionId }) => {
+    await fakeLocalFonts(context, { state: 'prompt' });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    await popup.locator('#badge-font-family').selectOption('custom:');
+    const [tabView] = await Promise.all([context.waitForEvent('page'), popup.click('#font-load-btn')]);
+    await tabView.waitForLoadState();
+    expect(new URL(tabView.url()).searchParams.get('font')).toBe('common');
+    await expect(tabView.locator('#tab-style')).toHaveAttribute('aria-selected', 'true');
+    await expect(tabView.locator('#font-dialog-target')).toHaveText('모든 리스트 배지에 쓸 기본 폰트');
+    // 새 탭 화면에서 권한 창을 닫아 버린 경우 (빈 목록)
+    await tabView.click('#font-load-btn');
+    await expect(tabView.locator('#font-list-status')).toContainText('폰트 목록을 받지 못했습니다');
+    await expect(tabView.locator('#font-list-status')).toHaveClass(/error/);
+  });
+
+  test('크롬: 글꼴 권한을 차단했으면 허용 방법을 안내 (새 탭을 열지 않음)', async ({ context, extensionId }) => {
+    await fakeLocalFonts(context, { state: 'denied' });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    await popup.locator('#badge-font-family').selectOption('custom:');
+    let opened = false;
+    context.on('page', () => { opened = true; });
+    await popup.click('#font-load-btn');
+    await expect(popup.locator('#font-list-status')).toContainText('글꼴 권한이 차단되어 있습니다');
+    expect(opened).toBe(false);
+  });
+
+  test('설치 폰트 목록이 없는 브라우저(파이어폭스)에서는 [불러오기] 대신 직접 적으라는 안내', async ({ context, extensionId }) => {
+    await context.addInitScript(() => { window.queryLocalFonts = undefined; });
+    const popup = await openPopup(context, extensionId);
+    await popup.click('#tab-style');
+    await popup.locator('#badge-font-family').selectOption('custom:');
+    await expect(popup.locator('#font-load-btn')).toBeHidden();
+    await expect(popup.locator('#font-browser-note')).toBeVisible();
+  });
+});
+
 test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한', () => {
   test('↗ 새 탭에서 열기: 같은 화면이 탭으로 열리고, 그 탭의 [가져오기]는 원래 보던 X 탭을 대상으로 동작', async ({ context, extensionId, serviceWorker }) => {
     await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');

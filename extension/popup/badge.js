@@ -13,13 +13,30 @@ function fillSizeOptions(select, selected) {
   });
 }
 
+// 폰트 선택 목록: 고를 수 있는 폰트 (+ 지금 쓰는 직접 입력 폰트) + 마지막에 [다른 폰트 직접 입력…] (popup/font-dialog.js)
 function fillFontOptions(select, selected) {
-  AG_FONT_FAMILIES.forEach((font) => {
-    const opt = makeElement('option', null, AG_FONT_LABELS[font] || font);
+  select.textContent = '';
+  const fonts = AG_FONT_FAMILIES.slice();
+  if (isCustomFontFamily(selected)) fonts.push(selected);
+  fonts.forEach((font) => {
+    const opt = makeElement('option', null, getFontLabel(font));
     opt.value = font;
     opt.selected = font === selected;
     select.appendChild(opt);
   });
+  const custom = makeElement('option', null, '다른 폰트 직접 입력…');
+  custom.value = FONT_CUSTOM_OPTION;
+  select.appendChild(custom);
+}
+
+// 폰트 선택 목록이 바뀌었을 때: [다른 폰트 직접 입력…]이면 고르기 전 값으로 되돌리고 입력 창을 엶, 아니면 onPick(값)
+function handleFontSelectChange(select, previous, listName, onPick) {
+  if (select.value !== FONT_CUSTOM_OPTION) {
+    onPick(select.value);
+    return;
+  }
+  select.value = previous;
+  openFontDialog(listName, '', select);
 }
 
 // 공통 설정 영역의 "개별 스타일 N개" 안내
@@ -66,7 +83,8 @@ function applyBadgeSettingsUI() {
   const fontInput = byId('badge-font-family');
   if (colorInput) colorInput.value = badgeSettings.textColor;
   if (sizeInput) sizeInput.value = String(badgeSettings.fontSize);
-  if (fontInput) fontInput.value = badgeSettings.fontFamily;
+  // 직접 입력한 폰트는 목록에 그 항목이 있어야 보이므로 목록을 다시 채움
+  if (fontInput) fillFontOptions(fontInput, badgeSettings.fontFamily);
   updateBadgePreview();
 }
 
@@ -91,7 +109,12 @@ function setupBadgeSettings() {
 
   byId('badge-text-color')?.addEventListener('input', e => updateBadgeSetting('textColor', e.target.value));
   sizeSelect?.addEventListener('change', e => updateBadgeSetting('fontSize', parseInt(e.target.value, 10)));
-  fontSelect?.addEventListener('change', e => updateBadgeSetting('fontFamily', e.target.value));
+  fontSelect?.addEventListener('change', () => {
+    handleFontSelectChange(fontSelect, badgeSettings.fontFamily, null, (font) => {
+      updateBadgeSetting('fontFamily', font);
+      fillFontOptions(fontSelect, font); // 직접 입력 폰트에서 다른 폰트로 바꾸면 그 항목을 뺌
+    });
+  });
 
   byId('badge-reset-btn')?.addEventListener('click', () => {
     badgeSettings = { ...AG_DEFAULT_BADGE_SETTINGS };

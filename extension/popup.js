@@ -15,7 +15,8 @@
 //   popup/manual-add.js    직접 리스트 추가
 //   popup/lists.js         리스트 표
 //   popup/sheet.js         리스트 설정 창(시트)
-//   popup/badge.js         배지 기본 스타일 (모든 리스트 공통)
+//   popup/badge.js         배지 기본 스타일 (모든 리스트 공통) · 글자 크기/폰트 선택 목록
+//   popup/font-dialog.js   [다른 폰트 직접 입력…] 창 (설치된 폰트 이름 입력 · 크롬: 설치된 폰트 목록)
 //   popup.js               시작 (이 파일. 마지막에 읽힘)
 //
 // 화면 모양은 popup/popup.css 에 있습니다.
@@ -38,10 +39,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setupUiSettings();
   setupSheet();
   setupBadgeSettings();
+  setupFontDialog();
   // 카드와 시트가 공통 설정 기준 값을 보여야 하므로, 설정을 먼저 읽고 목록을 그림
   Promise.all([loadBadgeSettings(), loadUiSettings()])
     .then(loadLists)
-    .then(openSheetFromParams);
+    .then(openSheetFromParams)
+    .then(openFontDialogFromParams);
   loadHealthWarning();
   setupSyncButtons();
   setupManualAdd();
@@ -63,10 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Esc: 확인 상자 → 가져오기 선택 → 메뉴 → 시트 순서로 하나씩 닫음
+  // Esc: 확인 상자 → 폰트 입력 창 → 가져오기 선택 → 메뉴 → 시트 순서로 하나씩 닫음
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (resolveConfirm) resolveConfirm(false);
+    else if (isFontDialogOpen()) closeFontDialog();
     else if (pendingImport) closeImportChoice();
     else if (!byId('app-menu').hidden) setMenuOpen(false, true);
     else if (openSheetName) closeSheet();

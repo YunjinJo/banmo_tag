@@ -6,8 +6,8 @@ function isFirefox() {
 }
 
 // 이 화면을 일반 탭에서 열기. [가져오기]·[뺀 멤버 정리]가 지금 보던 탭을 대상으로 하도록 그 탭 id 를 넘김.
-// listName 을 주면 새 탭 화면에서 그 리스트의 설정 시트를 열어 둠
-async function openInTab(listName) {
+// listName 을 주면 새 탭 화면에서 그 리스트의 설정 시트를 열어 둠. extraParams: 주소에 더 붙일 값 (예: { font: 'list' })
+async function openInTab(listName, extraParams) {
   let targetTab;
   try {
     [targetTab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -18,6 +18,7 @@ async function openInTab(listName) {
   url.searchParams.set('view', 'tab');
   if (targetTab && targetTab.id !== undefined) url.searchParams.set('targetTab', String(targetTab.id));
   if (listName) url.searchParams.set('list', listName);
+  Object.keys(extraParams || {}).forEach(key => url.searchParams.set(key, extraParams[key]));
   await chrome.tabs.create({ url: url.href });
   if (!IS_TAB_VIEW) window.close();
 }

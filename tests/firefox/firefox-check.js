@@ -154,6 +154,23 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     }), 5000);
     record('화면 테마 다크 적용·저장', themeState === 'rgb(15, 15, 17)', String(themeState));
     await popup.click('#theme-system');
+
+    // [다른 폰트 직접 입력…]: 파이어폭스에는 설치 폰트 목록(queryLocalFonts)이 없어 [불러오기] 대신 안내가 보이고, 이름으로 저장
+    await popup.select('#badge-font-family', 'custom:');
+    await popup.waitForSelector('#font-name-input', { visible: true });
+    const fontDialog = await popup.evaluate(() => ({
+      load: document.getElementById('font-load-btn').hidden,
+      note: document.getElementById('font-browser-note').hidden
+    }));
+    await popup.type('#font-name-input', 'Banmo Firefox Font');
+    await popup.click('#font-ok-btn');
+    const customFont = await poll(() => popup.evaluate(async () => {
+      const { badgeSettings } = await chrome.storage.local.get(['badgeSettings']);
+      return badgeSettings && badgeSettings.fontFamily !== 'system' ? badgeSettings.fontFamily : null;
+    }), 5000);
+    record('[다른 폰트 직접 입력…] 목록 버튼 없이 이름으로 저장', fontDialog.load === true && fontDialog.note === false &&
+      customFont === "'Banmo Firefox Font', sans-serif", JSON.stringify({ fontDialog, customFont }));
+    await popup.evaluate(() => chrome.storage.local.remove('badgeSettings'));
     await popup.click('#tab-lists');
     const granted = await popup.evaluate(() => chrome.permissions.contains({ origins: chrome.runtime.getManifest().host_permissions }));
     console.log(`INFO  x.com 접근 권한 기본값(임시 설치): ${granted ? '허용됨' : '꺼짐'} / 권한 안내 배너: ${popupState.permissionBanner}`);
@@ -168,7 +185,7 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     await popup.evaluate(() => chrome.storage.local.set({
       lists: {
         '친구': { color: '#ff0000', mode: 'highlight', members: ['@alice'], style: { fontSize: 16 } },
-        '동료': { color: '#00aa00', mode: 'normal', members: ['@bob'] }
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@bob'], style: { fontFamily: "'Banmo Firefox Font', sans-serif" } }
       }
     }));
     const stored = await popup.evaluate(() => chrome.storage.local.get(['lists']));
@@ -183,11 +200,13 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
       if (!b) return null;
       const article = document.querySelector('[data-fixture-id="t-alice"]');
       const mini = document.querySelector('[data-fixture-id="quote-card"] .ag-list-badge.mini-badge');
+      const bob = document.querySelector('[data-fixture-id="t-bob"] .ag-list-badge');
       return { text: b.textContent, size: getComputedStyle(b).fontSize, border: getComputedStyle(article).borderLeftWidth,
-        mini: mini && getComputedStyle(mini).fontSize, bob: (document.querySelector('[data-fixture-id="t-bob"] .ag-list-badge') || {}).textContent };
+        mini: mini && getComputedStyle(mini).fontSize, bob: bob && bob.textContent, bobFont: bob && getComputedStyle(bob).fontFamily };
     }));
     record('타임라인 배지 표시', !!badge && badge.text === '친구' && badge.bob === '동료', JSON.stringify(badge));
     record('리스트별 글자 크기 16px, 인용 미니 배지 14px', !!badge && badge.size === '16px' && badge.mini === '14px');
+    record('직접 입력한 폰트를 리스트 배지에 적용', !!badge && /^"?Banmo Firefox Font"?, sans-serif$/.test(badge.bobFont || ''), String(badge && badge.bobFont));
     record('강조 모드 왼쪽 테두리', !!badge && badge.border === '4px');
 
     // 4. 멤버 자동 수집 → background(이벤트 페이지, shared/*.js 를 scripts 로 로드) 저장

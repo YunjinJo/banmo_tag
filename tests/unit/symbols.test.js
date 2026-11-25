@@ -27,6 +27,8 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       'badges.js': [
         buildHandleMap, diffHandleMaps, isTweetAffected, applyBadgeStyle, normalizeListStyle,
         getEffectiveBadgeSettings, normalizeBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle,
+        normalizeFontName, getFontNameFromFamily, buildFontFamily, isValidFontFamily, isCustomFontFamily, getFontLabel,
+        isFontLikelyInstalled, getLocalFontFamilies,
         getBadgeAnchor, splitTimelineBadges, getHandleFromUserInfo, addBadges, resetTweetStyle, renderTweet,
         isOwnInjectedNode
       ],

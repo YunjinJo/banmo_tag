@@ -12,7 +12,7 @@
 | `list-names.test.js` | `list-names.js` | 리스트 이름 다듬기, 시스템 단어 걸러내기, 직접 입력한 이름 확인 |
 | `list-data.test.js` | `list-data.js` | 저장 데이터 정리, 리스트 찾기 · 이름 변경, 수집 결과 저장 · 교체, 직접 추가, 멤버 삭제 |
 | `list-page.test.js` | `list-page.js` | 리스트 주소 읽기, 화면에서 리스트 이름 · 멤버 읽기, 추천 계정 제외 |
-| `badges.test.js` | `badges.js` | 핸들 → 리스트 표, 배지 모양 설정, 트윗에 배지 그리기 |
+| `badges.test.js` | `badges.js` | 핸들 → 리스트 표, 배지 모양 설정, 직접 입력한 폰트 확인, 트윗에 배지 그리기 |
 | `backup.test.js` | `backup.js` | 백업 만들기 · 읽기 · 합치기 |
 | `health.test.js` | `health.js` | X 화면 구조 점검 |
 | `ui.test.js` | `ui.js` | 팝업 화면 설정, 리스트 정렬, 멤버 요약 |
