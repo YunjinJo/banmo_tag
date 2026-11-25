@@ -42,6 +42,30 @@ test.describe('팝업 기본 동작', () => {
     await expect(popup.locator('#tab-style')).toHaveAttribute('tabindex', '-1');
   });
 
+  test('리스트 탭 맨 아래 크레딧: YURO 는 제작자 X 프로필, GitHub 은 저장소로 새 탭에서 열림 (다른 탭에는 없음)', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    const credit = popup.locator('#panel-lists .credit');
+    await expect(credit).toBeVisible();
+    await expect(credit).toContainText('Made by YURO · GitHub');
+
+    const author = popup.locator('#credit-author');
+    const github = popup.locator('#credit-github');
+    await expect(author).toHaveAttribute('href', 'https://x.com/YunjinJo98');
+    await expect(github).toHaveAttribute('href', 'https://github.com/YunjinJo/banmo_tag');
+    for (const link of [author, github]) {
+      await expect(link).toHaveAttribute('target', '_blank');
+      await expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    }
+
+    // 누르면 팝업은 그대로 두고 새 탭이 열림 (x.com 은 테스트에서 가짜 응답)
+    const [newTab] = await Promise.all([context.waitForEvent('page'), author.click()]);
+    await expect.poll(() => newTab.url()).toBe('https://x.com/YunjinJo98');
+    expect(popup.url()).toContain('popup.html');
+
+    await popup.click('#tab-style');
+    await expect(credit).toBeHidden();
+  });
+
   test('X 가 아닌 탭에서 [현재 탭에서 가져오기]를 누르면 "X 페이지가 아닙니다" 안내', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId);
     await popup.click('#sync-current-tab-btn');
