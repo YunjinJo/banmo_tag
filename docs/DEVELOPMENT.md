@@ -171,7 +171,7 @@ npx playwright install chromium   # E2E 테스트용 Chromium (일반 Chrome 은
 
 **Dependabot**: GitHub Actions 와 개발용 npm 패키지의 새 버전을 매주 월요일 확인해 PR 을 만듭니다. PR 에서도 CI 가 돌기 때문에 통과한 것만 merge 하면 됩니다.
 
-> 무료 플랜의 비공개 저장소는 브랜치 보호 규칙을 쓸 수 없어, 테스트가 실패하는 코드도 `main` 에 push 될 수 있습니다. 릴리스하기 전에 GitHub 의 Actions 탭에서 마지막 실행이 통과했는지 확인하세요.
+> 브랜치 보호 규칙(필수 검사)을 설정하지 않으면 테스트가 실패하는 코드도 `main` 에 push 될 수 있습니다. 저장소가 공개라 무료 플랜에서도 설정할 수 있습니다(Settings → Branches). 설정하지 않았다면 릴리스하기 전에 GitHub 의 Actions 탭에서 마지막 실행이 통과했는지 확인하세요.
 
 ## 릴리스 (수동)
 

@@ -9,6 +9,10 @@
 
 > 아직 릴리스하지 않은 변경 사항입니다. 새 버전을 릴리스할 때 `npm run bump -- X.Y.Z` 를 실행하면 이 항목이 그 버전의 내용이 됩니다.
 
+---
+
+## [v1.9.1] - 2026-11-25
+
 ### 🚀 Added (새로운 기능)
 - **제작자 크레딧 (`popup.html`, `popup/popup.css`)**: 팝업 [리스트] 탭 맨 아래에 작은 글씨로 `Made by YURO · GitHub` 를 넣었습니다. **YURO** 를 누르면 제작자의 X 프로필(x.com/YunjinJo98), **GitHub** 을 누르면 저장소(github.com/YunjinJo/banmo_tag)가 새 탭에서 열립니다. 다른 탭(기본 스타일, 도움말)에는 보이지 않습니다.
   - 테스트: E2E 1건을 추가했습니다.
