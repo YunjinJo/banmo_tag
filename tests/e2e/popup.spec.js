@@ -52,7 +52,7 @@ test.describe('팝업 기본 동작', () => {
     expect(helpLabels.length).toBeGreaterThan(5);
 
     // 팝업에 있는 이름: 버튼·탭 글자, 리스트 설정 창의 버튼, 폰트 목록 마지막 항목, 스캔 중 버튼 글자
-    const buttonTexts = () => popup.locator('button:not([hidden])').evaluateAll(els => els.map(el => el.textContent.trim()));
+    const buttonTexts = () => popup.locator('button').evaluateAll(els => els.map(el => el.textContent.trim()));
     const known = new Set(await buttonTexts());
     await popup.locator('#tab-lists').click();
     await openSheet(popup, '테크');
