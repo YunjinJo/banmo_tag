@@ -42,6 +42,27 @@ test.describe('팝업 기본 동작', () => {
     await expect(popup.locator('#tab-style')).toHaveAttribute('tabindex', '-1');
   });
 
+  test('도움말 탭에 적은 [버튼 이름]이 모두 팝업에 실제로 있는 이름과 같음', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: { '테크': { color: '#0b74c4', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    await popup.locator('#tab-help').click();
+    await expect(popup.locator('#panel-help')).toBeVisible();
+    const helpLabels = await popup.locator('#panel-help strong').evaluateAll(els =>
+      els.map(el => el.textContent.trim()).filter(t => /^\[.+\]$/.test(t)).map(t => t.slice(1, -1)));
+    expect(helpLabels.length).toBeGreaterThan(5);
+
+    // 팝업에 있는 이름: 버튼·탭 글자, 리스트 설정 창의 버튼, 스캔 중 버튼 글자
+    const buttonTexts = () => popup.locator('button').evaluateAll(els => els.map(el => el.textContent.trim()));
+    const known = new Set(await buttonTexts());
+    await popup.locator('#tab-lists').click();
+    await openSheet(popup, '테크');
+    for (const text of await buttonTexts()) known.add(text);
+    known.add('스캔 중지'); // [끝까지 스캔]을 누르면 바뀌는 글자 (popup/sync.js)
+
+    const missing = helpLabels.filter(label => !known.has(label));
+    expect(missing, '도움말에 적었지만 팝업에 없는 버튼 이름').toEqual([]);
+  });
+
   test('리스트 탭 맨 아래 크레딧: YURO 는 제작자 X 프로필, GitHub 은 저장소로 새 탭에서 열림 (다른 탭에는 없음)', async ({ context, extensionId }) => {
     const popup = await openPopup(context, extensionId);
     const credit = popup.locator('#panel-lists .credit');
