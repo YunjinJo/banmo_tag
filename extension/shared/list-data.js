@@ -8,6 +8,7 @@
 //   - manualMembers: X 리스트(listId 있음)에 팝업에서 직접 추가한 멤버 ["@handle", …].
 //     X 리스트에는 없는 멤버이므로, 뺀 멤버를 정리할 때(자동·[뺀 멤버 정리]) 지우지 않음
 //   - style: 이 리스트만의 배지 글자 스타일 { textColor?, fontSize?, fontFamily? } (없는 항목은 공통 설정 사용)
+//   - priority: 팝업 [설정]에서 정한 배지 순서 (1 이 가장 앞). 없으면 순서를 정한 리스트 뒤에 이름순
 // ⚠️ shared/ 파일의 최상위에는 function 선언과 var 만 씁니다 (이유는 shared/base.js 머리말).
 
 // ==========================================
@@ -273,4 +274,57 @@ function removeMemberFromLists(lists, listName, handleToRemove) {
     if (list.manualMembers.length === 0) delete list.manualMembers;
   }
   return list.members.length !== before;
+}
+
+// ==========================================
+// 배지 순서 (우선순위)
+// ==========================================
+
+// 저장된 배지 순서 값으로 쓸 수 있는지 (1 이상의 정수)
+function isValidListPriority(value) {
+  return Number.isInteger(value) && value > 0;
+}
+
+// 배지 순서대로 리스트 이름: priority 가 작은 리스트부터, priority 가 없는 리스트는 그 뒤에 이름순(한국어 정렬: 한글 먼저).
+// 타임라인 배지 순서, 강조 색(앞 리스트 우선), 팝업의 "배지 순서" 정렬이 모두 이 순서를 씀. 멤버 배열이 없는 항목은 뺌
+function sortListsByPriority(lists) {
+  const all = lists || {};
+  const rank = name => (isValidListPriority(all[name].priority) ? all[name].priority : Infinity);
+  // Infinity - Infinity 는 NaN(거짓)이므로 둘 다 순서가 없으면 이름으로 비교
+  return Object.keys(all)
+    .filter(name => all[name] && Array.isArray(all[name].members))
+    .sort((a, b) => (rank(a) - rank(b)) || a.localeCompare(b, 'ko'));
+}
+
+// 리스트 하나를 배지 순서의 toIndex 번째(0 부터)로 옮기고, 모든 리스트에 priority 1, 2, 3 … 을 다시 매김.
+// 범위를 벗어난 toIndex 는 맨 앞/맨 뒤로. 순서가 바뀌었으면 true (없는 리스트이거나 제자리면 false, lists 를 바꾸지 않음)
+function moveListPriority(lists, name, toIndex) {
+  const order = sortListsByPriority(lists);
+  const from = order.indexOf(name);
+  if (from === -1) return false;
+  const to = Math.max(0, Math.min(order.length - 1, Math.trunc(Number(toIndex)) || 0));
+  if (to === from) return false;
+  order.splice(from, 1);
+  order.splice(to, 0, name);
+  order.forEach((listName, i) => {
+    lists[listName].priority = i + 1;
+  });
+  return true;
+}
+
+// 배지 순서를 이름순으로 되돌림 (모든 리스트의 priority 를 지움). 지운 리스트 수
+function clearListPriority(lists) {
+  let cleared = 0;
+  Object.keys(lists || {}).forEach((name) => {
+    if (lists[name] && Object.prototype.hasOwnProperty.call(lists[name], 'priority')) {
+      delete lists[name].priority;
+      cleared++;
+    }
+  });
+  return cleared;
+}
+
+// 배지 순서를 직접 정한 리스트가 하나라도 있는지
+function hasCustomPriority(lists) {
+  return Object.keys(lists || {}).some(name => lists[name] && isValidListPriority(lists[name].priority));
 }

@@ -544,6 +544,174 @@ test.describe('배지 기본 스타일 (기본 스타일 탭)', () => {
   });
 });
 
+test.describe('설정 시트 (배지 순서 · 타임라인 배지 표시)', () => {
+  const LISTS = {
+    '친구': { color: '#c8174d', mode: 'normal', members: ['@a'] },
+    'AI': { color: '#7a3fd1', mode: 'normal', members: ['@a'] },
+    '뉴스': { color: '#0b74c4', mode: 'normal', members: ['@a'] }
+  };
+  const priorityNames = popup => popup.locator('#priority-list .priority-name');
+  const storedPriority = async (sw) => {
+    const lists = await getLists(sw);
+    return Object.fromEntries(Object.entries(lists).map(([name, l]) => [name, l.priority]));
+  };
+
+  async function openSettings(popup) {
+    await popup.click('#settings-btn');
+    await expect(popup.locator('#settings-sheet')).toBeVisible();
+    await expect(popup.locator('#settings-close-btn')).toBeFocused();
+  }
+
+  test('⚙ 버튼으로 열고, Esc·닫기·바깥을 누르면 닫히며 포커스는 ⚙ 버튼으로 돌아감', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: LISTS });
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+    // 처음에는 이름순 (한글 먼저), 이름순으로 되돌리기는 누를 수 없음
+    await expect(priorityNames(popup)).toHaveText(['뉴스', '친구', 'AI']);
+    await expect(popup.locator('#priority-state')).toHaveText('이름순 (아직 정하지 않음)');
+    await expect(popup.locator('#priority-reset-btn')).toBeDisabled();
+    await expect(popup.locator('#priority-up-0')).toBeDisabled();
+    await expect(popup.locator('#priority-down-2')).toBeDisabled();
+    await expect(popup.locator('#app')).toHaveJSProperty('inert', true);
+
+    await popup.keyboard.press('Escape');
+    await expect(popup.locator('#settings-sheet')).toBeHidden();
+    await expect(popup.locator('#settings-btn')).toBeFocused();
+    await expect(popup.locator('#app')).toHaveJSProperty('inert', false);
+
+    await openSettings(popup);
+    await popup.click('#settings-close-btn');
+    await expect(popup.locator('#settings-sheet')).toBeHidden();
+    await openSettings(popup);
+    await popup.mouse.click(5, 5); // 시트 바깥(어두운 배경)
+    await expect(popup.locator('#settings-sheet')).toBeHidden();
+  });
+
+  test('배지 순서: ▲ ▼ 로 옮기면 저장되고, 포커스는 옮긴 줄을 따라감. 리스트 표 "배지 순서" 정렬도 같은 순서', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: LISTS });
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+
+    await popup.click('#priority-up-2'); // AI 를 한 칸 앞으로
+    await expect(priorityNames(popup)).toHaveText(['뉴스', 'AI', '친구']);
+    await expect(popup.locator('#priority-up-1')).toBeFocused();
+    await expect.poll(() => storedPriority(serviceWorker)).toEqual({ '뉴스': 1, 'AI': 2, '친구': 3 });
+    await expect(popup.locator('#priority-state')).toHaveText('직접 정한 순서');
+
+    await popup.keyboard.press('Enter'); // 같은 버튼을 한 번 더 → 맨 앞. ▲ 를 누를 수 없으니 ▼ 로 포커스
+    await expect(priorityNames(popup)).toHaveText(['AI', '뉴스', '친구']);
+    await expect(popup.locator('#priority-down-0')).toBeFocused();
+    await popup.click('#priority-down-1'); // 뉴스를 맨 뒤로
+    await expect(priorityNames(popup)).toHaveText(['AI', '친구', '뉴스']);
+    await expect.poll(() => storedPriority(serviceWorker)).toEqual({ 'AI': 1, '친구': 2, '뉴스': 3 });
+
+    // 미리보기도 배지 순서대로 (보일 배지 수 기본 3개)
+    await expect(popup.locator('#display-preview .preview-author').first().locator('.ag-list-badge')).toHaveText(['AI', '친구', '뉴스']);
+
+    await popup.keyboard.press('Escape');
+    await popup.selectOption('#list-sort', 'priority');
+    await expect(popup.locator('.list-name')).toHaveText(['AI', '친구', '뉴스']);
+    await expect.poll(async () => (await getStorage(serviceWorker, ['uiSettings'])).uiSettings).toEqual({ theme: 'system', listSort: 'priority' });
+  });
+
+  test('배지 순서: 줄을 끌어서 옮길 수 있고, [이름순으로 되돌리기]는 확인 후 순서를 지움', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: LISTS });
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+
+    const row = name => popup.locator('#priority-list .priority-row').filter({ has: popup.locator('.priority-name', { hasText: new RegExp(`^${name}$`) }) });
+    // AI(맨 뒤)를 뉴스(맨 앞) 줄의 위쪽 절반에 놓음 → 맨 앞
+    await row('AI').dragTo(row('뉴스'), { targetPosition: { x: 20, y: 3 } });
+    await expect(priorityNames(popup)).toHaveText(['AI', '뉴스', '친구']);
+    // AI 를 친구(맨 뒤) 줄의 아래쪽 절반에 놓음 → 맨 뒤
+    const box = await row('친구').boundingBox();
+    await row('AI').dragTo(row('친구'), { targetPosition: { x: 20, y: box.height - 3 } });
+    await expect(priorityNames(popup)).toHaveText(['뉴스', '친구', 'AI']);
+    await expect.poll(() => storedPriority(serviceWorker)).toEqual({ '뉴스': 1, '친구': 2, 'AI': 3 });
+
+    await popup.click('#priority-up-2');
+    await expect(priorityNames(popup)).toHaveText(['뉴스', 'AI', '친구']);
+    await popup.click('#priority-reset-btn');
+    await expect(popup.locator('#confirm-text')).toHaveText('배지 순서를 이름순으로 되돌릴까요?');
+    await popup.click('#confirm-cancel-btn');
+    await expect(priorityNames(popup)).toHaveText(['뉴스', 'AI', '친구']);
+    await popup.click('#priority-reset-btn');
+    await popup.click('#confirm-ok-btn');
+    await expect(priorityNames(popup)).toHaveText(['뉴스', '친구', 'AI']);
+    await expect(popup.locator('#priority-reset-btn')).toBeDisabled();
+    await expect.poll(() => storedPriority(serviceWorker)).toEqual({ '뉴스': undefined, '친구': undefined, 'AI': undefined });
+  });
+
+  test('표시 설정: 보일 배지 수 · 긴 이름 줄이기 · 줄일 길이 · 모양 · 인용 배지 · 흐리게 정도를 바꾸면 저장되고 미리보기에 반영', async ({ context, extensionId, serviceWorker }) => {
+    const longName = 'AI 연구자 모음 (국내·해외 연구소와 대학)';
+    await setStorage(serviceWorker, { lists: { ...LISTS, [longName]: { color: '#0f7b3e', mode: 'normal', members: ['@a'] } } });
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+    const stored = async () => (await getStorage(serviceWorker, ['displaySettings'])).displaySettings;
+    const author = popup.locator('#display-preview .preview-author').first();
+    const quote = popup.locator('#display-preview .preview-quote');
+
+    // 기본값: 3개 + "+1", 말줄임 켬(약 10글자), 둥글게, 인용 배지 켬, 흐리게 보통
+    await expect(popup.locator('#display-max-badges')).toHaveValue('3');
+    await expect(popup.locator('#display-ellipsis')).toBeChecked();
+    await expect(popup.locator('#display-name-width')).toHaveValue('10');
+    await expect(popup.locator('#display-shape-round')).toBeChecked();
+    await expect(popup.locator('#display-quote-badges')).toBeChecked();
+    await expect(popup.locator('#display-dim-normal')).toBeChecked();
+    await expect(author.locator('.ag-list-badge')).toHaveCount(3);
+    await expect(author.locator('.ag-badge-more')).toHaveText('+1');
+    await expect(quote.locator('.ag-list-badge.mini-badge')).toHaveCount(3);
+
+    await popup.selectOption('#display-max-badges', '1');
+    await expect(author.locator('.ag-list-badge')).toHaveCount(1);
+    await expect(author.locator('.ag-badge-more')).toHaveText('+3');
+    await popup.selectOption('#display-max-badges', '0'); // 모두
+    await expect(author.locator('.ag-list-badge')).toHaveCount(4);
+    await expect(author.locator('.ag-badge-more')).toHaveCount(0);
+
+    const longBadge = author.locator('.ag-list-badge', { hasText: longName });
+    expect(await longBadge.evaluate(el => el.scrollWidth > el.clientWidth), '말줄임 켬: 긴 이름이 잘림').toBe(true);
+    const width10 = await longBadge.evaluate(el => el.clientWidth);
+    await popup.selectOption('#display-name-width', '6');
+    await expect.poll(() => longBadge.evaluate(el => el.clientWidth), { message: '약 6글자 폭으로 더 짧게' }).toBeLessThan(width10);
+    await popup.locator('#display-ellipsis').uncheck();
+    await expect(popup.locator('#display-name-width')).toBeDisabled();
+    await expect.poll(() => longBadge.evaluate(el => el.scrollWidth <= el.clientWidth), { message: '말줄임 끔: 전체 이름' }).toBe(true);
+
+    await popup.locator('#display-shape-square').check();
+    await expect(author.locator('.ag-list-badge').first()).toHaveCSS('border-top-left-radius', '4px');
+    // 팝업의 다른 배지(리스트 표)도 같은 모양
+    await expect(popup.locator('.list-name').first()).toHaveCSS('border-top-left-radius', '4px');
+
+    await popup.locator('#display-quote-badges').uncheck();
+    await expect(quote.locator('.ag-badges-wrapper')).toHaveCount(0);
+    await popup.locator('#display-dim-strong').check();
+    await expect(popup.locator('#display-preview .tweet-preview.is-dim .tweet-text')).toHaveCSS('opacity', '0.25');
+
+    await expect.poll(stored).toEqual({ maxBadges: 0, ellipsis: false, nameWidth: 6, badgeShape: 'square', quoteBadges: false, dimLevel: 'strong' });
+
+    // 다시 열어도 그대로, [표시 설정 기본값]으로 되돌림
+    const again = await openPopup(context, extensionId);
+    await again.click('#settings-btn');
+    await expect(again.locator('#display-max-badges')).toHaveValue('0');
+    await expect(again.locator('#display-shape-square')).toBeChecked();
+    await expect(again.locator('#display-dim-strong')).toBeChecked();
+    await again.click('#display-reset-btn');
+    await expect(again.locator('#display-max-badges')).toHaveValue('3');
+    await expect.poll(stored).toEqual({ maxBadges: 3, ellipsis: true, nameWidth: 10, badgeShape: 'round', quoteBadges: true, dimLevel: 'normal' });
+    // 열려 있던 다른 창에도 바로 반영
+    await expect(popup.locator('#display-max-badges')).toHaveValue('3');
+    await expect(popup.locator('#display-shape-round')).toBeChecked();
+  });
+
+  test('리스트가 없으면 배지 순서에 안내, 미리보기는 보기 리스트로', async ({ context, extensionId }) => {
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+    await expect(popup.locator('#priority-list')).toHaveText('저장된 리스트가 없습니다.');
+    await expect(popup.locator('#display-preview .preview-author').first().locator('.ag-list-badge')).toHaveCount(3);
+  });
+});
+
 test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com 접근 권한', () => {
   test('↗ 새 탭에서 열기: 같은 화면이 탭으로 열리고, 그 탭의 [가져오기]는 원래 보던 X 탭을 대상으로 동작', async ({ context, extensionId, serviceWorker }) => {
     await mockXPage(context, '/i/lists/123/members', 'synthetic/list-members.html');
@@ -633,10 +801,11 @@ test.describe('새 탭에서 열기 · 파이어폭스 팝업 우회 · x.com �
 });
 
 test.describe('백업', () => {
-  test('내보내기 파일에 리스트와 배지 설정이 함께 들어감', async ({ context, extensionId, serviceWorker }) => {
+  test('내보내기 파일에 리스트(배지 순서 포함)와 배지 글자 스타일 · 표시 설정이 함께 들어감', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, {
-      lists: { '테크': { color: '#ff0055', mode: 'dim', listId: '7', members: ['@a'] } },
-      badgeSettings: { textColor: '#000000', fontSize: 14, fontFamily: 'monospace' }
+      lists: { '테크': { color: '#ff0055', mode: 'dim', listId: '7', members: ['@a'], priority: 1 } },
+      badgeSettings: { textColor: '#000000', fontSize: 14, fontFamily: 'monospace' },
+      displaySettings: { maxBadges: 5, ellipsis: false, nameWidth: 14, badgeShape: 'square', quoteBadges: false, dimLevel: 'light' }
     });
     const popup = await openPopup(context, extensionId);
     await popup.click('#menu-btn');
@@ -647,31 +816,35 @@ test.describe('백업', () => {
     const backup = JSON.parse(text);
 
     expect(backup.app).toBe('banmo_tag');
-    expect(backup.lists['테크']).toEqual({ color: '#ff0055', mode: 'dim', listId: '7', members: ['@a'] });
+    expect(backup.lists['테크']).toEqual({ color: '#ff0055', mode: 'dim', listId: '7', members: ['@a'], priority: 1 });
     expect(backup.badgeSettings).toEqual({ textColor: '#000000', fontSize: 14, fontFamily: 'monospace' });
+    expect(backup.displaySettings).toEqual({ maxBadges: 5, ellipsis: false, nameWidth: 14, badgeShape: 'square', quoteBadges: false, dimLevel: 'light' });
   });
 
-  test('가져오기 → 덮어쓰기는 리스트와 배지 설정을 모두 복원', async ({ context, extensionId, serviceWorker }) => {
+  test('가져오기 → 덮어쓰기는 리스트와 배지 설정(글자 스타일 · 표시 설정)을 모두 복원', async ({ context, extensionId, serviceWorker }) => {
     await setStorage(serviceWorker, { lists: { '옛 리스트': { color: '#1d9bf0', mode: 'normal', members: ['@old'] } } });
     const popup = await openPopup(context, extensionId);
     const backup = {
       app: 'banmo_tag', backupVersion: 2,
       lists: { '새 리스트': { color: '#00ff00', mode: 'highlight', members: ['@new'] } },
-      badgeSettings: { textColor: '#111111', fontSize: 16, fontFamily: 'monospace' }
+      badgeSettings: { textColor: '#111111', fontSize: 16, fontFamily: 'monospace' },
+      displaySettings: { maxBadges: 2, ellipsis: true, nameWidth: 8, badgeShape: 'square', quoteBadges: true, dimLevel: 'strong' }
     };
     await popup.setInputFiles('#import-file', {
       name: 'backup.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(backup))
     });
     await expect(popup.locator('#import-choice')).toBeVisible();
-    await expect(popup.locator('#import-choice-text')).toContainText('배지 스타일 설정 포함');
+    await expect(popup.locator('#import-choice-text')).toContainText('배지 스타일·표시 설정 포함');
     await popup.click('#import-replace-btn');
     await popup.click('#confirm-ok-btn');
     await expect(popup.locator('#sync-status')).toContainText('리스트 + 배지 설정');
 
-    const stored = await getStorage(serviceWorker, ['lists', 'badgeSettings']);
+    const stored = await getStorage(serviceWorker, ['lists', 'badgeSettings', 'displaySettings']);
     expect(Object.keys(stored.lists)).toEqual(['새 리스트']);
     expect(stored.badgeSettings).toEqual({ textColor: '#111111', fontSize: 16, fontFamily: 'monospace' });
+    expect(stored.displaySettings).toEqual({ maxBadges: 2, ellipsis: true, nameWidth: 8, badgeShape: 'square', quoteBadges: true, dimLevel: 'strong' });
     await expect(popup.locator('#badge-font-size')).toHaveValue('16');
+    await expect(popup.locator('#display-max-badges')).toHaveValue('2');
   });
 });
 

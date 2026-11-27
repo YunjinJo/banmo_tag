@@ -24,8 +24,18 @@ var AG_LIST_STYLE_KEYS = ['textColor', 'fontSize', 'fontFamily'];
 var AG_TWEET_SELECTOR = 'article[data-testid="tweet"]';
 var AG_USER_NAME_SELECTOR = '[data-testid="User-Name"]';
 
-// 타임라인 이름 줄에 보여 줄 배지 수. 넘치면 (이 수 - 1)개 + "+N" 묶음 배지
-var AG_TIMELINE_MAX_BADGES = 3;
+// 타임라인 배지 표시 설정 (chrome.storage.local 의 displaySettings, 팝업 [설정] 시트)
+//   maxBadges: 이름 옆에 보일 배지 수 (0 = 모두). 넘치면 배지 순서가 뒤인 리스트를 "+N" 하나로 묶음
+//   ellipsis: 긴 리스트 이름을 nameWidth 글자 폭에서 말줄임(…)할지. 끄면 이름 줄 폭까지 다 보임
+//   nameWidth: 말줄임할 폭 (em, 대략 글자 수)
+//   badgeShape: 배지 모서리 'round'(둥글게) | 'square'(각지게)
+//   quoteBadges: 인용 트윗 작성자에게도 작은 배지를 붙일지
+//   dimLevel: 흐리게 모드 리스트 멤버의 트윗을 얼마나 흐리게 할지 'light' | 'normal' | 'strong'
+var AG_DEFAULT_DISPLAY_SETTINGS = { maxBadges: 3, ellipsis: true, nameWidth: 10, badgeShape: 'round', quoteBadges: true, dimLevel: 'normal' };
+var AG_MAX_BADGES_LIMIT = 10;
+var AG_NAME_WIDTHS = [6, 8, 10, 14, 20];
+var AG_BADGE_RADII = { round: '12px', square: '4px' };
+var AG_DIM_OPACITY = { light: 0.65, normal: 0.45, strong: 0.25 };
 
 // 흐리게 모드에서 흐리게 할 트윗 부분 (프로필 사진·본문·미디어·버튼). 이름과 배지 줄은 또렷하게 둠.
 // styles.css 의 [data-ag-dim="body"] 규칙과 같은 목록이어야 합니다.
@@ -38,12 +48,12 @@ var AG_DIM_TARGET_SELECTOR = [
 // 핸들 → 소속 리스트
 // ==========================================
 
-// 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color, mode }])
+// 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color, mode }]).
+// 배열은 배지 순서(shared/list-data.js sortListsByPriority)대로라, 타임라인 배지와 강조 색이 이 순서를 따름
 function buildHandleMap(listData) {
   const map = {};
-  Object.keys(listData || {}).forEach((listName) => {
+  sortListsByPriority(listData).forEach((listName) => {
     const info = listData[listName];
-    if (!info || !Array.isArray(info.members)) return;
     const style = normalizeListStyle(info.style);
     info.members.forEach((handle) => {
       const lower = String(handle).toLowerCase();
@@ -142,6 +152,28 @@ function setListStyle(lists, listName, patch) {
   return true;
 }
 
+// 타임라인 배지 표시 설정 검증 (잘못되거나 빠진 값은 기본값으로)
+function normalizeDisplaySettings(settings) {
+  const s = settings && typeof settings === 'object' ? settings : {};
+  const d = AG_DEFAULT_DISPLAY_SETTINGS;
+  const has = (table, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key);
+  return {
+    maxBadges: Number.isInteger(s.maxBadges) && s.maxBadges >= 0 && s.maxBadges <= AG_MAX_BADGES_LIMIT ? s.maxBadges : d.maxBadges,
+    ellipsis: typeof s.ellipsis === 'boolean' ? s.ellipsis : d.ellipsis,
+    nameWidth: AG_NAME_WIDTHS.indexOf(s.nameWidth) !== -1 ? s.nameWidth : d.nameWidth,
+    badgeShape: has(AG_BADGE_RADII, s.badgeShape) ? s.badgeShape : d.badgeShape,
+    quoteBadges: typeof s.quoteBadges === 'boolean' ? s.quoteBadges : d.quoteBadges,
+    dimLevel: has(AG_DIM_OPACITY, s.dimLevel) ? s.dimLevel : d.dimLevel
+  };
+}
+
+// 배지 묶음의 말줄임 폭과 모서리를 CSS 변수로 넣음 (styles.css 의 .ag-list-badge 가 씀. 팝업 미리보기도 같은 함수)
+function applyBadgeLayout(wrapper, displaySettings) {
+  const d = normalizeDisplaySettings(displaySettings);
+  wrapper.style.setProperty('--ag-badge-max-w', d.ellipsis ? d.nameWidth + 'em' : '100%');
+  wrapper.style.setProperty('--ag-badge-radius', AG_BADGE_RADII[d.badgeShape]);
+}
+
 // 모든 리스트의 개별 글자 스타일을 지움 (모두 공통 설정을 따르게). 지운 리스트 수 반환
 function clearAllListStyles(lists) {
   let cleared = 0;
@@ -171,18 +203,18 @@ function getBadgeAnchor(userInfoDiv) {
   return userInfoDiv.firstElementChild || userInfoDiv;
 }
 
-// 타임라인 배지 묶기: max 개 이하면 모두 보이고, 넘으면 (max - 1)개만 보이고 나머지는 "+N" 으로.
-// (+1 묶음은 배지 하나와 자리가 같아 의미가 없으므로 max 개까지는 그대로 보여 줌)
+// 타임라인 배지 묶기: 앞에서 max 개만 보이고 나머지는 "+N" 하나로 (max 가 0 이면 모두 보임, 없으면 기본값).
+// lists 는 배지 순서대로 (buildHandleMap). 같은 이름은 한 번만
 function splitTimelineBadges(lists, max) {
-  const limit = Math.max(2, max || AG_TIMELINE_MAX_BADGES);
+  const limit = Number.isInteger(max) && max >= 0 ? max : AG_DEFAULT_DISPLAY_SETTINGS.maxBadges;
   const seen = {};
   const unique = (lists || []).filter((l) => {
     if (!l || seen[l.name]) return false;
     seen[l.name] = true;
     return true;
   });
-  if (unique.length <= limit) return { visible: unique, hidden: [] };
-  return { visible: unique.slice(0, limit - 1), hidden: unique.slice(limit - 1) };
+  if (limit === 0 || unique.length <= limit) return { visible: unique, hidden: [] };
+  return { visible: unique.slice(0, limit), hidden: unique.slice(limit) };
 }
 
 // 트윗 작성자 이름 영역에서 "@handle"(소문자)
@@ -196,10 +228,12 @@ function getHandleFromUserInfo(userInfoDiv) {
   return handle ? '@' + handle.toLowerCase() : null;
 }
 
-// 이름 영역 옆에 리스트 배지들을 붙임 (이미 붙인 배지는 지우고 새로 그림). badgeSettings 는 공통 글자 스타일
-function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings) {
+// 이름 영역 옆에 리스트 배지들을 붙임 (이미 붙인 배지는 지우고 새로 그림).
+// badgeSettings 는 공통 글자 스타일, displaySettings 는 표시 설정(보일 배지 수 · 말줄임 · 모양)
+function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings, displaySettings) {
   const anchor = getBadgeAnchor(userInfoDiv);
   if (!anchor) return;
+  const display = normalizeDisplaySettings(displaySettings);
 
   let wrapper = anchor.querySelector('.ag-badges-wrapper');
   if (!wrapper) {
@@ -208,9 +242,10 @@ function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings) {
     anchor.appendChild(wrapper);
   }
   wrapper.textContent = '';
+  applyBadgeLayout(wrapper, display);
 
   // 배지가 많으면 이름 줄이 여러 줄로 밀리므로, 몇 개만 보이고 나머지는 "+N" 으로 묶음
-  const { visible, hidden } = splitTimelineBadges(lists, AG_TIMELINE_MAX_BADGES);
+  const { visible, hidden } = splitTimelineBadges(lists, display.maxBadges);
   visible.forEach((list) => {
     const badge = document.createElement('span');
     // 원 트윗 작성자는 일반 배지, 인용 트윗 등의 작성자는 미니 배지
@@ -238,16 +273,18 @@ function addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings) {
 function resetTweetStyle(tweet) {
   delete tweet.dataset.agProcessed;
   delete tweet.dataset.agDim;
+  tweet.style.removeProperty('--ag-dim-opacity');
   tweet.style.borderLeft = '';
   tweet.style.opacity = ''; // 이전 버전이 트윗 전체에 넣던 투명도
   tweet.querySelectorAll('.ag-badges-wrapper').forEach(w => w.remove());
 }
 
 // 트윗 하나 처리: 작성자(와 인용된 작성자)마다 배지, 원 작성자의 리스트 모드로 강조/흐리게.
-// handleMap 은 buildHandleMap 의 결과, badgeSettings 는 공통 글자 스타일
-function renderTweet(tweet, handleMap, badgeSettings) {
+// handleMap 은 buildHandleMap 의 결과, badgeSettings 는 공통 글자 스타일, displaySettings 는 표시 설정
+function renderTweet(tweet, handleMap, badgeSettings, displaySettings) {
   const userInfoDivs = tweet.querySelectorAll(AG_USER_NAME_SELECTOR);
   if (userInfoDivs.length === 0) return;
+  const display = normalizeDisplaySettings(displaySettings);
 
   // X 가 가상 스크롤로 트윗 DOM 을 다른 작성자 트윗에 재사용해도, 작성자 핸들 서명이 다르면 초기화 후 다시 그림
   const handles = Array.from(userInfoDivs, getHandleFromUserInfo);
@@ -266,12 +303,13 @@ function renderTweet(tweet, handleMap, badgeSettings) {
     const isMainAuthor = index === 0;
     if (isMainAuthor) {
       lists.forEach((list) => {
-        // 여러 강조 리스트에 속하면 첫 번째 리스트 색상 사용
+        // 여러 강조 리스트에 속하면 배지 순서가 가장 앞인 리스트의 색상 사용
         if (list.mode === 'highlight' && !highlightColor) highlightColor = list.color;
         else if (list.mode === 'dim') shouldDim = true;
       });
     }
-    addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings);
+    // 인용 트윗 작성자 배지는 설정에서 끌 수 있음
+    if (isMainAuthor || display.quoteBadges) addBadges(userInfoDiv, lists, isMainAuthor, badgeSettings, display);
   });
 
   // 강조가 흐리게보다 우선
@@ -281,6 +319,7 @@ function renderTweet(tweet, handleMap, badgeSettings) {
     // 본문·사진·버튼만 흐리게 하고 이름과 배지는 또렷하게 (styles.css).
     // 흐리게 할 부분을 찾지 못하면(X 화면 구조 변경 등) 예전처럼 트윗 전체를 흐리게
     tweet.dataset.agDim = tweet.querySelector(AG_DIM_TARGET_SELECTOR) ? 'body' : 'all';
+    tweet.style.setProperty('--ag-dim-opacity', String(AG_DIM_OPACITY[display.dimLevel]));
   }
 
   tweet.dataset.agProcessed = handlesKey;

@@ -11,6 +11,10 @@ const SHARED_LOADED = typeof sanitizeListsObject === 'function';
 let badgeSettings = SHARED_LOADED ? { ...AG_DEFAULT_BADGE_SETTINGS } : {};
 // 화면 설정 { theme, listSort } (chrome.storage.local 의 uiSettings)
 let uiSettings = SHARED_LOADED ? normalizeUiSettings() : {};
+// 타임라인 배지 표시 설정 { maxBadges, ellipsis, nameWidth, badgeShape, quoteBadges, dimLevel } (displaySettings, [설정] 시트)
+let displaySettings = SHARED_LOADED ? normalizeDisplaySettings() : {};
+// [설정] 시트가 열려 있는지
+let settingsOpen = false;
 // 마지막으로 그린 리스트 데이터 (정렬 변경·시트 다시 그리기·"개별 스타일 N개" 표시용)
 let renderedLists = {};
 // 설정 시트에 열려 있는 리스트 이름 (없으면 null)과 그 시트의 멤버 목록 펼침 여부
@@ -135,8 +139,10 @@ function updateInert() {
   const modalOpen = byId('confirm-box')?.style.display === 'flex' || byId('import-choice')?.style.display === 'flex';
   const app = byId('app');
   const sheet = byId('list-sheet');
-  if (app) app.inert = modalOpen || !!openSheetName;
+  const settings = byId('settings-sheet');
+  if (app) app.inert = modalOpen || !!openSheetName || settingsOpen;
   if (sheet) sheet.inert = modalOpen;
+  if (settings) settings.inert = modalOpen;
 }
 
 // ==========================================

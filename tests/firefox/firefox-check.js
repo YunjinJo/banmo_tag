@@ -190,6 +190,45 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     record('리스트별 글자 크기 16px, 인용 미니 배지 14px', !!badge && badge.size === '16px' && badge.mini === '14px');
     record('강조 모드 왼쪽 테두리', !!badge && badge.border === '4px');
 
+    // 3-1. 팝업 [설정] 창: ▲ 로 배지 순서를 바꾸고 표시 설정(보일 배지 수 1개 · 인용 배지 끔)을 고르면 타임라인에 반영
+    await popup.evaluate(() => chrome.storage.local.set({
+      lists: {
+        '친구': { color: '#ff0000', mode: 'highlight', members: ['@alice'], style: { fontSize: 16 } },
+        '동료': { color: '#00aa00', mode: 'normal', members: ['@bob'] },
+        '가': { color: '#c8174d', mode: 'normal', members: ['@alice'] },
+        '나': { color: '#0b74c4', mode: 'normal', members: ['@alice'] }
+      }
+    }));
+    const priorityRows = () => popup.evaluate(() => [...document.querySelectorAll('#priority-list .priority-name')].map(e => e.textContent).join(','));
+    await poll(() => popup.evaluate(() => document.querySelectorAll('.list-card').length === 4 || null));
+    await popup.click('#settings-btn');
+    let order = await poll(async () => ((await priorityRows()) === '가,나,동료,친구' ? 'ok' : null));
+    // '친구'(이름순 맨 뒤)를 ▲ 세 번으로 맨 앞까지
+    for (const [index, expected] of [[3, '가,나,친구,동료'], [2, '가,친구,나,동료'], [1, '친구,가,나,동료']]) {
+      if (!order) break;
+      await popup.click(`#priority-up-${index}`);
+      order = await poll(async () => ((await priorityRows()) === expected ? expected : null));
+    }
+    const storedOrder = await popup.evaluate(async () => {
+      const { lists } = await chrome.storage.local.get(['lists']);
+      return Object.keys(lists).sort((a, b) => lists[a].priority - lists[b].priority).join(',');
+    });
+    record('설정 창: ▲ 로 배지 순서를 바꾸면 저장됨', order === '친구,가,나,동료' && storedOrder === '친구,가,나,동료', `${order} / 저장: ${storedOrder}`);
+
+    await popup.select('#display-max-badges', '1');
+    await popup.click('#display-quote-badges');
+    const display = await poll(() => timeline.evaluate(() => {
+      const alice = document.querySelector('[data-fixture-id="t-alice"]');
+      const names = [...alice.querySelectorAll('.ag-list-badge')].map(b => b.textContent);
+      const more = alice.querySelector('.ag-badge-more');
+      const quoteBadges = document.querySelectorAll('[data-fixture-id="quote-card"] .ag-badges-wrapper').length;
+      return names.join(',') === '친구' && more && more.textContent === '+2' && quoteBadges === 0
+        ? { names, more: more.textContent, quoteBadges } : null;
+    }));
+    record('타임라인: 배지 순서 · 보일 배지 수(1개 + "+2") · 인용 배지 끔 반영', !!display, JSON.stringify(display));
+    await popup.click('#settings-close-btn');
+    await popup.evaluate(() => chrome.storage.local.remove('displaySettings'));
+
     // 4. 멤버 자동 수집 → background(이벤트 페이지, shared/*.js 를 scripts 로 로드) 저장
     const members = await browser.newPage();
     watch(members, 'x.com/members');

@@ -32,9 +32,9 @@ function downloadJson(filename, data) {
 // 내보내기: 리스트와 배지 스타일 설정을 함께 저장
 function setupExportButton() {
   byId('export-btn')?.addEventListener('click', async () => {
-    const result = await chrome.storage.local.get(['lists', 'badgeSettings']);
+    const result = await chrome.storage.local.get(['lists', 'badgeSettings', 'displaySettings']);
     const date = new Date().toISOString().slice(0, 10);
-    downloadJson(`banmo_tag_backup_${date}.json`, buildBackup(result.lists || {}, result.badgeSettings));
+    downloadJson(`banmo_tag_backup_${date}.json`, buildBackup(result.lists || {}, result.badgeSettings, result.displaySettings));
   });
 }
 
@@ -70,7 +70,7 @@ function readBackupFile(file) {
       return;
     }
     const count = Object.keys(parsed.lists).length;
-    if (count === 0 && !parsed.badgeSettings) {
+    if (count === 0 && !parsed.badgeSettings && !parsed.displaySettings) {
       showSyncStatus('가져올 리스트가 없습니다.', true);
       return;
     }
@@ -84,7 +84,7 @@ function openImportChoice(parsed, count) {
   const choiceText = byId('import-choice-text');
   if (choiceText) {
     choiceText.textContent = `${count}개 리스트를 가져옵니다.` +
-      (parsed.badgeSettings ? ' (배지 스타일 설정 포함: 덮어쓰기 때 적용)' : '') + ' 방식을 선택하세요.';
+      (parsed.badgeSettings || parsed.displaySettings ? ' (배지 스타일·표시 설정 포함: 덮어쓰기 때 적용)' : '') + ' 방식을 선택하세요.';
   }
   const choiceEl = byId('import-choice');
   if (choiceEl) choiceEl.style.display = 'flex';
@@ -111,7 +111,7 @@ async function mergeImport() {
   if (ok) showSyncStatus('기존 데이터와 병합했습니다.', false);
 }
 
-// [덮어쓰기]: 리스트를 파일 내용으로 바꾸고, 파일에 배지 설정이 있으면 그것도 복원
+// [덮어쓰기]: 리스트를 파일 내용으로 바꾸고, 파일에 배지 글자 스타일·표시 설정이 있으면 그것도 복원
 async function replaceImport() {
   const data = pendingImport;
   closeImportChoice();
@@ -124,15 +124,24 @@ async function replaceImport() {
   });
   if (!ok) return;
 
-  if (data.badgeSettings) {
+  const settings = {};
+  if (data.badgeSettings) settings.badgeSettings = data.badgeSettings;
+  if (data.displaySettings) settings.displaySettings = data.displaySettings;
+  if (Object.keys(settings).length > 0) {
     try {
-      await chrome.storage.local.set({ badgeSettings: data.badgeSettings });
-      badgeSettings = { ...data.badgeSettings };
-      applyBadgeSettingsUI();
+      await chrome.storage.local.set(settings);
     } catch {
       showSyncStatus('리스트는 복원했지만 배지 설정 저장에 실패했습니다.', true);
       return;
     }
+    if (data.badgeSettings) {
+      badgeSettings = { ...data.badgeSettings };
+      applyBadgeSettingsUI();
+    }
+    if (data.displaySettings) {
+      displaySettings = normalizeDisplaySettings(data.displaySettings);
+      applyDisplaySettingsUI();
+    }
   }
-  showSyncStatus(data.badgeSettings ? '파일 내용(리스트 + 배지 설정)으로 덮어썼습니다.' : '파일 내용으로 덮어썼습니다.', false);
+  showSyncStatus(Object.keys(settings).length > 0 ? '파일 내용(리스트 + 배지 설정)으로 덮어썼습니다.' : '파일 내용으로 덮어썼습니다.', false);
 }
