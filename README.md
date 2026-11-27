@@ -3,7 +3,7 @@
 banmo_tag는 X(Twitter) 타임라인에서 **내가 정한 리스트의 멤버를 한눈에 알아볼 수 있게** 해 주는 브라우저 확장 프로그램입니다. 리스트 멤버가 쓴 트윗의 이름 옆에 리스트 배지를 붙이고, 리스트마다 트윗을 강조하거나 흐리게 표시합니다.
 
 - 지원 브라우저: 크롬과 크롬 계열(엣지, 웨일 등), 파이어폭스 140 이상
-- 현재 버전: **v1.9.3** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
+- 현재 버전: **v1.9.4** (변경 내역은 [docs/CHANGELOG.md](docs/CHANGELOG.md))
 - 모든 데이터는 브라우저(`chrome.storage.local`)에만 저장되며 외부로 전송되지 않습니다. ([개인정보 처리방침](docs/PRIVACY.md))
 
 <p align="center">
