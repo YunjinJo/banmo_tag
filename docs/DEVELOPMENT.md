@@ -78,7 +78,8 @@ dist/              빌드 결과 zip, 파이어폭스용 폴더 dist/firefox/ (g
 | `manual-add.js` | 직접 리스트 추가 |
 | `lists.js` | 리스트 표 |
 | `sheet.js` | 리스트 설정 창: 이름 바꾸기, 배지 색, 글자 스타일, 타임라인 표시, 미리보기, 멤버, 삭제 |
-| `badge.js` | 배지 기본 스타일(모든 리스트 공통) |
+| `badge.js` | 배지 기본 스타일(모든 리스트 공통), 글자 크기·폰트 선택 목록 |
+| `font-dialog.js` | [설치된 폰트에서 고르기…] 창: 크롬의 설치 폰트 목록(`queryLocalFonts`) 검색·고르기, 이름 직접 입력(파이어폭스는 이것만). 크롬 팝업은 권한 창을 띄우지 않아 처음 한 번은 새 탭 화면에서 허용받고, 허용한 뒤에는 팝업에서 바로 목록을 받음. E2E 에서 실제 권한을 주려면 그 페이지의 CDP 세션으로 `Browser.setPermission`(origin `chrome-extension://<id>`, Playwright `grantPermissions` 는 이 주소를 받지 못함) |
 | `../popup.js` | 시작점. 위 파일의 `setup…` 함수를 연결 (마지막에 읽힘) |
 | `popup.css` | 화면 모양 (`popup.html` 에 `<style>` 을 쓰지 않음) |
 

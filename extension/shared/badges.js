@@ -19,6 +19,10 @@ var AG_FONT_LABELS = {
   "'Georgia', serif": 'Georgia'
 };
 var AG_LIST_STYLE_KEYS = ['textColor', 'fontSize', 'fontFamily'];
+// 직접 입력한 폰트(사용자 컴퓨터에 설치된 폰트)는 "'이름', sans-serif" 로 저장합니다.
+// 이름에는 CSS 문자열을 깨거나 다른 값을 섞을 수 있는 글자(따옴표, \, 쉼표, ;, 괄호 {} <>, 제어 문자)를 쓸 수 없습니다.
+var AG_FONT_NAME_MAX_LENGTH = 64;
+var AG_FONT_NAME_FORBIDDEN = /['"\\,;{}<>]|\p{Cc}/u;
 
 // 트윗과 그 안의 작성자 이름 영역 (X 화면 구조에 의존. 바꾸면 tests/fixtures/ 와 shared/health.js 도 함께 봄)
 var AG_TWEET_SELECTOR = 'article[data-testid="tweet"]';
@@ -121,8 +125,78 @@ function normalizeListStyle(style) {
   if (isHexColor(style.textColor)) out.textColor = style.textColor;
   const size = parseInt(style.fontSize, 10);
   if (size >= 8 && size <= 20) out.fontSize = size;
-  if (AG_FONT_FAMILIES.indexOf(style.fontFamily) !== -1) out.fontFamily = style.fontFamily;
+  if (isValidFontFamily(style.fontFamily)) out.fontFamily = style.fontFamily;
   return Object.keys(out).length > 0 ? out : null;
+}
+
+// ==========================================
+// 폰트 (고를 수 있는 폰트 · 직접 입력한 폰트)
+// ==========================================
+
+// 직접 입력한 폰트 이름 정리: 공백을 하나로 줄이고 앞뒤 공백·따옴표를 뗌.
+// 비었거나, 너무 길거나, 쓸 수 없는 글자(AG_FONT_NAME_FORBIDDEN)가 있으면 ''
+function normalizeFontName(raw) {
+  if (typeof raw !== 'string') return '';
+  let name = raw.replace(/\s+/g, ' ').trim();
+  const quoted = name.match(/^(['"])(.*)\1$/);
+  if (quoted) name = quoted[2].trim();
+  if (!name || name.length > AG_FONT_NAME_MAX_LENGTH || AG_FONT_NAME_FORBIDDEN.test(name)) return '';
+  return name;
+}
+
+// 저장된 font-family 값에서 폰트 이름 ("'Roboto', sans-serif" → 'Roboto'). 이름이 든 값이 아니면('system' 등) ''
+function getFontNameFromFamily(fontFamily) {
+  const m = typeof fontFamily === 'string' ? fontFamily.match(/^'([^']+)', (?:sans-serif|serif)$/) : null;
+  return m && normalizeFontName(m[1]) === m[1] ? m[1] : '';
+}
+
+// 폰트 이름 → 저장할 font-family 값. 고를 수 있는 폰트와 이름이 같으면 그 값(예: 'georgia' → "'Georgia', serif").
+// 쓸 수 없는 이름이면 ''
+function buildFontFamily(name) {
+  const clean = normalizeFontName(name);
+  if (!clean) return '';
+  const preset = AG_FONT_FAMILIES.find(f => getFontNameFromFamily(f).toLowerCase() === clean.toLowerCase());
+  return preset || `'${clean}', sans-serif`;
+}
+
+// 배지에 쓸 수 있는 font-family 값인지 (고를 수 있는 폰트, 또는 buildFontFamily 로 만든 직접 입력 폰트)
+function isValidFontFamily(fontFamily) {
+  if (AG_FONT_FAMILIES.indexOf(fontFamily) !== -1) return true;
+  return typeof fontFamily === 'string' && /, sans-serif$/.test(fontFamily) && getFontNameFromFamily(fontFamily) !== '';
+}
+
+// 고를 수 있는 폰트 목록에 없는, 직접 입력한 폰트인지
+function isCustomFontFamily(fontFamily) {
+  return AG_FONT_FAMILIES.indexOf(fontFamily) === -1 && isValidFontFamily(fontFamily);
+}
+
+// 선택 목록에 보일 폰트 이름 (직접 입력한 폰트는 그 이름)
+function getFontLabel(fontFamily) {
+  return AG_FONT_LABELS[fontFamily] || getFontNameFromFamily(fontFamily) || String(fontFamily || '');
+}
+
+// 이 컴퓨터에 그 폰트가 있어 보이는지. 같은 글자를 기본 글꼴만으로 그린 폭과 "그 폰트, 기본 글꼴"로 그린 폭이
+// 하나라도 다르면 그 폰트로 그려진 것. measureWidth(fontFamily) 는 그 font-family 로 그린 글자 폭 (팝업은 canvas 로 잼).
+// 기본 글꼴과 폭이 똑같은 폰트는 없다고 나올 수 있어, 안내 문구에만 씀
+function isFontLikelyInstalled(name, measureWidth) {
+  const clean = normalizeFontName(name);
+  if (!clean) return false;
+  return ['monospace', 'serif', 'sans-serif'].some(base => measureWidth(`'${clean}', ${base}`) !== measureWidth(base));
+}
+
+// window.queryLocalFonts() 결과(FontData 목록) → 폰트 이름 목록. 굵기별로 나뉜 항목은 하나로 묶고(대소문자 무시),
+// 쓸 수 없는 이름은 빼고, 이름순
+function getLocalFontFamilies(fontDataList) {
+  const seen = {};
+  const names = [];
+  Array.from(fontDataList || []).forEach((font) => {
+    const name = normalizeFontName(font && font.family);
+    const key = name.toLowerCase();
+    if (!name || seen[key]) return;
+    seen[key] = true;
+    names.push(name);
+  });
+  return names.sort((a, b) => a.localeCompare(b, 'ko'));
 }
 
 // 실제로 배지에 쓸 글자 스타일 = 기본값 ← 공통 설정 ← 리스트별 설정 (뒤가 앞을 덮어씀)

@@ -239,7 +239,9 @@ function createTextStyleFields(name, list, effective, updatePreview) {
   fontSelect.id = 'sheet-font-family';
   fontSelect.setAttribute('aria-label', `'${name}' 배지 폰트`);
   fillFontOptions(fontSelect, effective.fontFamily);
-  fontSelect.addEventListener('change', e => saveStyle({ fontFamily: e.target.value }));
+  fontSelect.addEventListener('change', () => {
+    handleFontSelectChange(fontSelect, effective.fontFamily, name, font => saveStyle({ fontFamily: font }));
+  });
 
   const grid = makeElement('div', 'grid-2');
   grid.append(createField('글자 크기', sizeSelect), createField('폰트', fontSelect));

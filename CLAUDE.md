@@ -15,7 +15,7 @@ X(Twitter) 타임라인에서 리스트 멤버에게 배지를 붙이는 브라�
 | 명령 | 내용 |
 |---|---|
 | `npm run check` | 정적 검사 + ESLint + 파이어폭스 호환성(`web-ext lint`) + Playwright E2E(Chromium) + 단위 테스트. **push 전에 실행** |
-| `npm run test:firefox` | 실제 Firefox 에 임시 설치해 24가지 확인 (`FIREFOX_BIN` 또는 `%LOCALAPPDATA%\banmo_tag-test\firefox-*`) |
+| `npm run test:firefox` | 실제 Firefox 에 임시 설치해 26가지 확인 (`FIREFOX_BIN` 또는 `%LOCALAPPDATA%\banmo_tag-test\firefox-*`) |
 | `npm run firefox:live` (백그라운드) → `npm run firefox:run -- <스크립트.js>` | 화면에 보이는 Firefox 로 **로그인한 실제 x.com** 에서 확인. 로그인은 사용자가 `npm run firefox:login` 으로 먼저 (Claude 는 비밀번호를 넣지 않음). Firefox 는 브라우저라 computer use 로 클릭할 수 없으므로 이 도구를 씀. 도우미는 `tests/firefox/live.js` 머리말 |
 | `powershell -ExecutionPolicy Bypass -File scripts\build.ps1` | 버전 확인 → 정적 검사 → 단위 테스트(Windows) → `dist\banmo_tag-v<버전>-chrome.zip`, `-firefox.zip` |
 | `powershell -ExecutionPolicy Bypass -File tests\run-tests.ps1` | `shared/` 단위 테스트(`tests/unit/`)만 (Node.js 없이) |
@@ -31,7 +31,7 @@ extension/        확장 프로그램 (Chrome 에 로드 / Firefox 임시 로드
                   badges(배지 그리기), backup(백업), health(화면 구조 점검), ui(팝업 화면 설정) .js
   content.js      X 페이지: "언제" 수집하고 배지를 그릴지 (읽기·그리기 자체는 shared/list-page.js · shared/badges.js)
   popup.html/js   팝업 (탭 화면 ?view=tab 도 같은 파일). popup.js 는 시작점(마지막에 로드)
-  popup/          팝업 화면별 코드(core, tab-view, nav, ui-settings, sync, backup, manual-add, lists, sheet, badge .js)와 화면 모양(popup.css)
+  popup/          팝업 화면별 코드(core, tab-view, nav, ui-settings, sync, backup, manual-add, lists, sheet, badge, font-dialog .js)와 화면 모양(popup.css)
   background.js   저장 큐 (크롬: 서비스 워커, 파이어폭스: 이벤트 페이지)
 tests/            test-runner.html(단위 테스트 실행기), unit/(단위 테스트, shared/ 파일마다 하나), e2e/(Playwright), firefox/(실제 Firefox), fixtures/(X 화면)
 scripts/          build.ps1, validate.js, bump-version.js

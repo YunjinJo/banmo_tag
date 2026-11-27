@@ -136,7 +136,7 @@ function restoreFocus(el) {
 
 // 확인 상자·시트가 떠 있는 동안 뒤 화면은 키보드·마우스로 건드릴 수 없게 (inert)
 function updateInert() {
-  const modalOpen = byId('confirm-box')?.style.display === 'flex' || byId('import-choice')?.style.display === 'flex';
+  const modalOpen = ['confirm-box', 'import-choice', 'font-dialog'].some(id => byId(id)?.style.display === 'flex');
   const app = byId('app');
   const sheet = byId('list-sheet');
   const settings = byId('settings-sheet');
