@@ -127,6 +127,15 @@ const LISTS = {
   await popup.screenshot({ path: path.join(out, 'popup-font.png') });
   await popup.keyboard.press('Escape');
 
+  // 6-2. [설정] 창 (⚙): 배지 순서 / 타임라인 배지 표시
+  await openPopup('light');
+  await popup.click('#settings-btn');
+  await popup.waitForTimeout(300);
+  await popup.screenshot({ path: path.join(out, 'popup-settings.png') });
+  await popup.locator('#settings-sheet').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  await popup.waitForTimeout(200);
+  await popup.screenshot({ path: path.join(out, 'popup-settings-display.png') });
+
   // 7. ⋯ 메뉴
   await openPopup('light');
   await popup.click('#menu-btn');

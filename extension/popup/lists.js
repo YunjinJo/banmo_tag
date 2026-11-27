@@ -40,6 +40,8 @@ function renderLists(lists) {
     if (lists[openSheetName] && Array.isArray(lists[openSheetName].members)) renderSheet();
     else closeSheet();
   }
+  // [설정] 시트의 배지 순서·미리보기 (popup/settings.js)
+  renderSettings();
 }
 
 function createEmptyState() {

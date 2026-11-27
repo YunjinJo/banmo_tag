@@ -3,7 +3,7 @@
 
 // 팝업 화면 설정 (chrome.storage.local 의 uiSettings). 테마: 시스템 설정 따르기 / 라이트 / 다크
 var AG_THEMES = ['system', 'light', 'dark'];
-var AG_LIST_SORTS = ['name', 'members'];
+var AG_LIST_SORTS = ['name', 'members', 'priority'];
 var AG_MODE_LABELS = { normal: '배지만', highlight: '강조', dim: '흐리게' };
 
 // 리스트 배지 색 빠른 선택 (모두 흰 글자와 대비 4.5:1 이상, WCAG AA)
@@ -20,9 +20,10 @@ function normalizeUiSettings(settings) {
   };
 }
 
-// 팝업 목록 순서: 'name' 이름순, 'members' 멤버 많은 순 (같으면 이름순)
+// 팝업 목록 순서: 'name' 이름순, 'members' 멤버 많은 순 (같으면 이름순), 'priority' 배지 순서 (shared/list-data.js)
 function sortListNames(lists, sortKey) {
   const all = lists || {};
+  if (sortKey === 'priority') return sortListsByPriority(all);
   const names = Object.keys(all).filter(n => all[n] && Array.isArray(all[n].members));
   const byName = (a, b) => a.localeCompare(b, 'ko');
   if (sortKey === 'members') {

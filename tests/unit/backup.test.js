@@ -106,3 +106,33 @@ describe('백업의 직접 추가한 멤버 표시 (manualMembers)', () => {
     assertDeepEqual(lists['테크'].manualMembers, ['@mine', '@pick']);
   });
 });
+
+describe('백업에 배지 순서 · 표시 설정 포함', () => {
+  it('내보낸 파일을 다시 읽으면 배지 순서(priority)와 표시 설정이 복원됨', () => {
+    const display = { maxBadges: 5, ellipsis: false, nameWidth: 14, badgeShape: 'square', quoteBadges: false, dimLevel: 'strong' };
+    const backup = buildBackup({ '테크': { color: '#ff0000', mode: 'normal', members: ['@a'], priority: 2 } }, null, display);
+    const parsed = parseBackup(JSON.parse(JSON.stringify(backup)));
+    assertEqual(parsed.lists['테크'].priority, 2);
+    assertDeepEqual(parsed.displaySettings, display);
+  });
+
+  it('표시 설정이 없는 파일은 displaySettings 가 null, 잘못된 배지 순서 값은 버림', () => {
+    const parsed = parseBackup({ app: 'banmo_tag', lists: { '테크': { members: ['@a'], priority: -1 } }, badgeSettings: null });
+    assertEqual(parsed.displaySettings, null);
+    assertEqual(parsed.lists['테크'].priority, undefined);
+    assertEqual(parseBackup({ '테크': { members: ['@a'] } }).displaySettings, null, '구버전 형식');
+  });
+
+  it('mergeImportedLists: 지금 배지 순서를 정해 두었으면 새 리스트는 맨 뒤로, 아니면 파일의 순서 그대로', () => {
+    const incoming = { '새 리스트': { color: '#111111', mode: 'normal', members: ['@n'], priority: 1 } };
+    const ordered = { '기존': { color: '#222222', mode: 'normal', members: ['@a'], priority: 1 } };
+    mergeImportedLists(ordered, incoming);
+    assertEqual(ordered['새 리스트'].priority, undefined);
+    assertDeepEqual(sortListsByPriority(ordered), ['기존', '새 리스트']);
+
+    const plain = { '기존': { color: '#222222', mode: 'normal', members: ['@a'] } };
+    mergeImportedLists(plain, incoming);
+    assertEqual(plain['새 리스트'].priority, 1);
+    assertDeepEqual(sortListsByPriority(plain), ['새 리스트', '기존']);
+  });
+});

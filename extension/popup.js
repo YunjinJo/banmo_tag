@@ -17,6 +17,7 @@
 //   popup/sheet.js         리스트 설정 창(시트)
 //   popup/badge.js         배지 기본 스타일 (모든 리스트 공통) · 글자 크기/폰트 선택 목록
 //   popup/font-dialog.js   [다른 폰트 직접 입력…] 창 (설치된 폰트 이름 입력 · 크롬: 설치된 폰트 목록)
+//   popup/settings.js      [설정] 시트: 배지 순서 · 타임라인 배지 표시 설정 (보일 배지 수 · 말줄임 · 모양 …)
 //   popup.js               시작 (이 파일. 마지막에 읽힘)
 //
 // 화면 모양은 popup/popup.css 에 있습니다.
@@ -40,8 +41,9 @@ document.addEventListener('DOMContentLoaded', () => {
   setupSheet();
   setupBadgeSettings();
   setupFontDialog();
+  setupSettings();
   // 카드와 시트가 공통 설정 기준 값을 보여야 하므로, 설정을 먼저 읽고 목록을 그림
-  Promise.all([loadBadgeSettings(), loadUiSettings()])
+  Promise.all([loadBadgeSettings(), loadUiSettings(), loadDisplaySettings()])
     .then(loadLists)
     .then(openSheetFromParams)
     .then(openFontDialogFromParams);
@@ -58,6 +60,11 @@ document.addEventListener('DOMContentLoaded', () => {
     // 공통 배지 설정이 바뀌어도 카드·시트(실제 적용 값 표시)를 다시 그림
     if (changes.lists || changes.badgeSettings) debouncedLoad();
     if (changes.structureHealth) renderHealthWarning(changes.structureHealth.newValue);
+    // 다른 창(새 탭 화면 등)에서 표시 설정을 바꾼 경우
+    if (changes.displaySettings) {
+      displaySettings = normalizeDisplaySettings(changes.displaySettings.newValue);
+      applyDisplaySettingsUI();
+    }
     // 다른 창(새 탭 화면 등)에서 테마·정렬을 바꾼 경우
     if (changes.uiSettings) {
       uiSettings = normalizeUiSettings(changes.uiSettings.newValue);
@@ -66,13 +73,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Esc: 확인 상자 → 폰트 입력 창 → 가져오기 선택 → 메뉴 → 시트 순서로 하나씩 닫음
+  // Esc: 확인 상자 → 폰트 입력 창 → 가져오기 선택 → 메뉴 → 설정 시트 · 리스트 시트 순서로 하나씩 닫음
   document.addEventListener('keydown', (e) => {
     if (e.key !== 'Escape') return;
     if (resolveConfirm) resolveConfirm(false);
     else if (isFontDialogOpen()) closeFontDialog();
     else if (pendingImport) closeImportChoice();
     else if (!byId('app-menu').hidden) setMenuOpen(false, true);
+    else if (settingsOpen) closeSettings();
     else if (openSheetName) closeSheet();
     else return;
     e.preventDefault();

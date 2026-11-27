@@ -137,14 +137,15 @@ test.describe('타임라인 배지', () => {
     await expect(carol).toHaveCSS('border-left-width', '0px');
   });
 
-  test('배지가 많으면 2개만 보이고 나머지는 "+N" (툴팁에 모든 리스트 이름), 긴 이름은 말줄임 + 전체 이름 툴팁', async ({ context, serviceWorker }) => {
+  test('배지가 보일 배지 수(기본 3개)를 넘으면 앞 3개만 보이고 나머지는 "+N" (툴팁에 모든 리스트 이름), 긴 이름은 말줄임 + 전체 이름 툴팁', async ({ context, serviceWorker }) => {
     const longName = 'AI 연구자 모음 (국내·해외 연구소와 대학)';
     await setStorage(serviceWorker, {
       lists: {
         'A 친구': { color: '#c8174d', mode: 'normal', members: ['@alice'] },
         [longName]: { color: '#7a3fd1', mode: 'normal', members: ['@alice'] },
         'C 뉴스': { color: '#0b74c4', mode: 'normal', members: ['@alice'] },
-        'D 동료': { color: '#0f7b3e', mode: 'normal', members: ['@alice', '@bob'] }
+        'D 동료': { color: '#0f7b3e', mode: 'normal', members: ['@alice', '@bob'] },
+        'E 게임': { color: '#b45309', mode: 'normal', members: ['@alice'] }
       }
     });
     await mockXPage(context, '/home', 'synthetic/home-timeline.html');
@@ -152,10 +153,10 @@ test.describe('타임라인 배지', () => {
     await page.goto('https://x.com/home');
 
     const alice = page.locator('[data-fixture-id="t-alice"]');
-    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName]);
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName, 'C 뉴스']);
     const more = alice.locator('.ag-badge-more');
     await expect(more).toHaveText('+2');
-    await expect(more).toHaveAttribute('title', `banmo tag 리스트 4개: A 친구, ${longName}, C 뉴스, D 동료`);
+    await expect(more).toHaveAttribute('title', `banmo tag 리스트 5개: A 친구, ${longName}, C 뉴스, D 동료, E 게임`);
 
     const long = alice.locator('.ag-list-badge').nth(1);
     await expect(long).toHaveAttribute('title', longName);
@@ -165,6 +166,78 @@ test.describe('타임라인 배지', () => {
     // 3개 이하면 묶지 않음 (bob 은 1개)
     await expect(page.locator('[data-fixture-id="t-bob"] .ag-list-badge')).toHaveText(['D 동료']);
     await expect(page.locator('[data-fixture-id="t-bob"] .ag-badge-more')).toHaveCount(0);
+  });
+
+  test('배지 순서(priority)대로 붙고, 넘치면 순서가 뒤인 리스트가 "+N", 강조 색은 순서가 앞인 리스트', async ({ context, serviceWorker }) => {
+    await setStorage(serviceWorker, {
+      lists: {
+        '가': { color: '#c8174d', mode: 'highlight', members: ['@alice'], priority: 3 },
+        '나': { color: '#0b74c4', mode: 'highlight', members: ['@alice'], priority: 1 },
+        '다': { color: '#0f7b3e', mode: 'normal', members: ['@alice'], priority: 2 },
+        '라': { color: '#7a3fd1', mode: 'normal', members: ['@alice'] }
+      }
+    });
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const page = await context.newPage();
+    await page.goto('https://x.com/home');
+
+    const alice = page.locator('[data-fixture-id="t-alice"]');
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['나', '다', '가']);
+    await expect(alice.locator('.ag-badge-more')).toHaveText('+1');
+    await expect(alice).toHaveCSS('border-left-color', 'rgb(11, 116, 196)'); // '나'(#0b74c4) 가 강조 리스트 중 가장 앞
+
+    // 팝업에서 순서를 바꾸면(저장) 바로 다시 그림
+    await setStorage(serviceWorker, {
+      lists: {
+        '가': { color: '#c8174d', mode: 'highlight', members: ['@alice'], priority: 1 },
+        '나': { color: '#0b74c4', mode: 'highlight', members: ['@alice'], priority: 2 },
+        '다': { color: '#0f7b3e', mode: 'normal', members: ['@alice'], priority: 3 },
+        '라': { color: '#7a3fd1', mode: 'normal', members: ['@alice'] }
+      }
+    });
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['가', '나', '다']);
+    await expect(alice).toHaveCSS('border-left-color', 'rgb(200, 23, 77)');
+  });
+
+  test('표시 설정: 보일 배지 수 · 말줄임 끄기 · 각진 모양 · 인용 트윗 배지 끄기 · 흐리게 정도가 바로 반영', async ({ context, serviceWorker }) => {
+    const longName = 'AI 연구자 모음 (국내·해외 연구소와 대학)';
+    await setStorage(serviceWorker, {
+      lists: {
+        'A 친구': { color: '#c8174d', mode: 'normal', members: ['@alice'] },
+        [longName]: { color: '#7a3fd1', mode: 'normal', members: ['@alice'] },
+        'C 흐림': { color: '#0b74c4', mode: 'dim', members: ['@bob'] }
+      }
+    });
+    await mockXPage(context, '/home', 'synthetic/home-timeline.html');
+    const page = await context.newPage();
+    await page.goto('https://x.com/home');
+
+    const alice = page.locator('[data-fixture-id="t-alice"]');
+    const bob = page.locator('[data-fixture-id="t-bob"]');
+    const quote = page.locator('[data-fixture-id="quote-card"]');
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName]);
+    await expect(quote.locator('.ag-list-badge.mini-badge')).toHaveCount(2);
+    await expect(bob.locator('[data-testid="tweetText"]')).toHaveCSS('opacity', '0.45');
+    const long = alice.locator('.ag-list-badge').nth(1);
+    expect(await long.evaluate(el => el.scrollWidth > el.clientWidth), '기본은 긴 이름을 말줄임').toBe(true);
+    await expect(long).toHaveCSS('border-top-left-radius', '12px');
+
+    await setStorage(serviceWorker, {
+      displaySettings: { maxBadges: 1, ellipsis: false, nameWidth: 10, badgeShape: 'square', quoteBadges: false, dimLevel: 'strong' }
+    });
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구']);
+    await expect(alice.locator('.ag-badge-more')).toHaveText('+1');
+    await expect(quote.locator('.ag-badges-wrapper')).toHaveCount(0);
+    await expect(bob.locator('[data-testid="tweetText"]')).toHaveCSS('opacity', '0.25');
+    await expect(alice.locator('.ag-list-badge')).toHaveCSS('border-top-left-radius', '4px');
+    await expect(alice.locator('.ag-badge-more')).toHaveCSS('border-top-left-radius', '4px');
+
+    // 모두 보이기 + 말줄임 끄기: 긴 이름이 잘리지 않음
+    await setStorage(serviceWorker, { displaySettings: { maxBadges: 0, ellipsis: false } });
+    await expect(alice.locator('.ag-list-badge')).toHaveText(['A 친구', longName]);
+    await expect(alice.locator('.ag-badge-more')).toHaveCount(0);
+    expect(await alice.locator('.ag-list-badge').nth(1).evaluate(el => el.scrollWidth <= el.clientWidth), '말줄임을 끄면 전체 이름').toBe(true);
+    await expect(quote.locator('.ag-list-badge.mini-badge')).toHaveCount(2);
   });
 
   test('흐리게 모드는 본문만 흐리게 하고 이름·배지는 또렷하게', async ({ context, serviceWorker }) => {
