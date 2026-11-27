@@ -32,8 +32,8 @@ var AG_USER_NAME_SELECTOR = '[data-testid="User-Name"]';
 //   quoteBadges: 인용 트윗 작성자에게도 작은 배지를 붙일지
 //   dimLevel: 흐리게 모드 리스트 멤버의 트윗을 얼마나 흐리게 할지 'light' | 'normal' | 'strong'
 var AG_DEFAULT_DISPLAY_SETTINGS = { maxBadges: 3, ellipsis: true, nameWidth: 10, badgeShape: 'round', quoteBadges: true, dimLevel: 'normal' };
-var AG_MAX_BADGES_LIMIT = 10;
-var AG_NAME_WIDTHS = [6, 8, 10, 14, 20];
+// 숫자로 적는 설정의 범위 (정수. 팝업 입력란의 min/max 도 이 값)
+var AG_DISPLAY_NUMBER_RANGES = { maxBadges: { min: 0, max: 10 }, nameWidth: { min: 4, max: 30 } };
 var AG_BADGE_RADII = { round: '12px', square: '4px' };
 var AG_DIM_OPACITY = { light: 0.65, normal: 0.45, strong: 0.25 };
 
@@ -157,14 +157,29 @@ function normalizeDisplaySettings(settings) {
   const s = settings && typeof settings === 'object' ? settings : {};
   const d = AG_DEFAULT_DISPLAY_SETTINGS;
   const has = (table, key) => typeof key === 'string' && Object.prototype.hasOwnProperty.call(table, key);
+  const inRange = (key) => {
+    const r = AG_DISPLAY_NUMBER_RANGES[key];
+    return Number.isInteger(s[key]) && s[key] >= r.min && s[key] <= r.max ? s[key] : d[key];
+  };
   return {
-    maxBadges: Number.isInteger(s.maxBadges) && s.maxBadges >= 0 && s.maxBadges <= AG_MAX_BADGES_LIMIT ? s.maxBadges : d.maxBadges,
+    maxBadges: inRange('maxBadges'),
     ellipsis: typeof s.ellipsis === 'boolean' ? s.ellipsis : d.ellipsis,
-    nameWidth: AG_NAME_WIDTHS.indexOf(s.nameWidth) !== -1 ? s.nameWidth : d.nameWidth,
+    nameWidth: inRange('nameWidth'),
     badgeShape: has(AG_BADGE_RADII, s.badgeShape) ? s.badgeShape : d.badgeShape,
     quoteBadges: typeof s.quoteBadges === 'boolean' ? s.quoteBadges : d.quoteBadges,
     dimLevel: has(AG_DIM_OPACITY, s.dimLevel) ? s.dimLevel : d.dimLevel
   };
+}
+
+// 팝업 입력란에 적은 글자를 숫자 설정값으로 (key: 'maxBadges' | 'nameWidth').
+// 숫자(0–9)만 받고, 범위를 넘으면 clamp 가 true 일 때 가장 가까운 값으로 맞추고 아니면 null. 읽을 수 없으면 null
+function parseDisplayNumber(key, text, clamp) {
+  const range = Object.prototype.hasOwnProperty.call(AG_DISPLAY_NUMBER_RANGES, key) ? AG_DISPLAY_NUMBER_RANGES[key] : null;
+  const raw = String(text === undefined || text === null ? '' : text).trim();
+  if (!range || !/^\d{1,6}$/.test(raw)) return null;
+  const n = parseInt(raw, 10);
+  if (n >= range.min && n <= range.max) return n;
+  return clamp ? Math.min(range.max, Math.max(range.min, n)) : null;
 }
 
 // 배지 묶음의 말줄임 폭과 모서리를 CSS 변수로 넣음 (styles.css 의 .ag-list-badge 가 씀. 팝업 미리보기도 같은 함수)

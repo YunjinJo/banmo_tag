@@ -367,11 +367,39 @@ describe('타임라인 배지 표시 설정 (normalizeDisplaySettings, applyBadg
     const custom = { maxBadges: 0, ellipsis: false, nameWidth: 14, badgeShape: 'square', quoteBadges: false, dimLevel: 'light' };
     assertDeepEqual(normalizeDisplaySettings(custom), custom);
     const bad = normalizeDisplaySettings({
-      maxBadges: 11, ellipsis: 'no', nameWidth: 7, badgeShape: 'toString', quoteBadges: 1, dimLevel: '__proto__'
+      maxBadges: 11, ellipsis: 'no', nameWidth: 31, badgeShape: 'toString', quoteBadges: 1, dimLevel: '__proto__'
     });
     assertDeepEqual(bad, AG_DEFAULT_DISPLAY_SETTINGS);
     assertEqual(normalizeDisplaySettings({ maxBadges: null }).maxBadges, 3, 'null 은 "모두"(0)가 아님');
     assertEqual(normalizeDisplaySettings({ maxBadges: 2.5 }).maxBadges, 3);
+    assertEqual(normalizeDisplaySettings({ maxBadges: '5' }).maxBadges, 3, '글자로 된 숫자는 받지 않음');
+  });
+
+  it('normalizeDisplaySettings: 숫자 설정은 범위 안의 정수면 모두 받음 (보일 배지 수 0–10, 줄일 길이 4–30)', () => {
+    assertEqual(normalizeDisplaySettings({ maxBadges: 10 }).maxBadges, 10);
+    assertEqual(normalizeDisplaySettings({ maxBadges: 7 }).maxBadges, 7);
+    assertEqual(normalizeDisplaySettings({ maxBadges: -1 }).maxBadges, 3);
+    [4, 7, 12, 30].forEach(w => assertEqual(normalizeDisplaySettings({ nameWidth: w }).nameWidth, w));
+    [3, 31, 12.5, '12', null].forEach(w => assertEqual(normalizeDisplaySettings({ nameWidth: w }).nameWidth, 10, String(w)));
+    // 예전 선택 목록의 값(6 / 8 / 10 / 14 / 20)도 그대로
+    [6, 8, 14, 20].forEach(w => assertEqual(normalizeDisplaySettings({ nameWidth: w }).nameWidth, w));
+    assertDeepEqual(AG_DISPLAY_NUMBER_RANGES, { maxBadges: { min: 0, max: 10 }, nameWidth: { min: 4, max: 30 } });
+  });
+
+  it('parseDisplayNumber: 입력란의 글자 → 숫자 (범위를 넘으면 clamp 일 때만 가장 가까운 값)', () => {
+    assertEqual(parseDisplayNumber('maxBadges', '2', false), 2);
+    assertEqual(parseDisplayNumber('maxBadges', ' 0 ', false), 0, '0 = 모두, 앞뒤 공백 무시');
+    assertEqual(parseDisplayNumber('maxBadges', '05', false), 5);
+    assertEqual(parseDisplayNumber('maxBadges', '50', false), null, '적는 중에는 범위 밖이면 저장하지 않음');
+    assertEqual(parseDisplayNumber('maxBadges', '50', true), 10);
+    assertEqual(parseDisplayNumber('nameWidth', '2', true), 4);
+    assertEqual(parseDisplayNumber('nameWidth', '12', false), 12);
+    assertEqual(parseDisplayNumber('nameWidth', '999999', true), 30);
+    ['', '  ', '-1', '1.5', '1e2', 'abc', '1234567'].forEach(t => assertEqual(parseDisplayNumber('nameWidth', t, true), null, `"${t}"`));
+    assertEqual(parseDisplayNumber('maxBadges', null, true), null);
+    assertEqual(parseDisplayNumber('maxBadges', 3, false), 3, '숫자도 받음');
+    assertEqual(parseDisplayNumber('dimLevel', '1', true), null, '숫자 설정이 아님');
+    assertEqual(parseDisplayNumber('toString', '1', true), null);
   });
 
   it('applyBadgeLayout: 말줄임 폭과 모서리를 CSS 변수로 (말줄임을 끄면 이름 줄 폭까지)', () => {

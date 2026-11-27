@@ -723,7 +723,17 @@ body.tab-view .sheet { max-width: 560px; margin: 0 auto; }
 .sheet-heading { margin: 0; font-size: 15px; font-weight: 700; }
 .setting-row.end { justify-content: flex-end; }
 #settings-sheet .setting-row .select,
-#settings-sheet .setting-row .segmented { width: 176px; }
+#settings-sheet .setting-row .segmented,
+#settings-sheet .setting-row .number-field { width: 176px; }
+
+/* 숫자로 적는 설정 (보일 배지 수 · 줄일 길이): [약] [ 10 ] [글자] */
+.number-field { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.number-input { width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
+.number-unit { font-size: 13px; color: var(--muted); }
+/* 뒤 단위(개 · 글자) 폭을 맞춰 두 칸의 오른쪽 끝을 가지런히 */
+.number-unit:last-child { min-width: 26px; }
+.number-input:disabled,
+.number-field:has(.number-input:disabled) .number-unit { opacity: 0.5; }
 
 /* 배지 순서: [순번] [배지] … [▲] [▼], 줄을 끌어서 옮길 수도 있음 */
 .priority-list {
