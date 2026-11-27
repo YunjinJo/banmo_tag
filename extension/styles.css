@@ -13,16 +13,17 @@
 }
 
 /* 리스트 배지
-   CSS 커스텀 속성(--ag-badge-*)과 인라인 !important(shared/badges.js applyBadgeStyle)를 함께 지원합니다. */
+   CSS 커스텀 속성(--ag-badge-*)과 인라인 !important(shared/badges.js applyBadgeStyle)를 함께 지원합니다.
+   말줄임 폭(--ag-badge-max-w)과 모서리(--ag-badge-radius)는 팝업 [설정]의 값 (shared/badges.js applyBadgeLayout 이 묶음에 넣음) */
 .ag-list-badge {
   display: inline-block !important;
   width: max-content;
-  max-width: 10em !important; /* 긴 리스트 이름은 말줄임 (전체 이름은 title 툴팁) */
+  max-width: var(--ag-badge-max-w, 10em) !important; /* 긴 리스트 이름은 말줄임 (전체 이름은 title 툴팁) */
   overflow: hidden !important;
   text-overflow: ellipsis !important;
   white-space: nowrap !important;
   padding: 2px 7px !important;
-  border-radius: 12px !important;
+  border-radius: var(--ag-badge-radius, 12px) !important;
   font-size: var(--ag-badge-fs, 11px) !important;
   font-weight: 700 !important;
   color: var(--ag-badge-fg, #ffffff) !important;
@@ -39,7 +40,7 @@
   display: inline-block !important;
   white-space: nowrap !important;
   padding: 2px 7px !important;
-  border-radius: 12px !important;
+  border-radius: var(--ag-badge-radius, 12px) !important;
   font-size: 11px !important;
   font-weight: 700 !important;
   line-height: 1.25 !important;
@@ -61,15 +62,16 @@
 }
 
 /* 흐리게 모드: 프로필 사진·본문·미디어·버튼만 흐리게 하고, 이름과 배지는 또렷하게.
-   선택자 목록은 shared/badges.js 의 AG_DIM_TARGET_SELECTOR 와 같아야 합니다. */
+   선택자 목록은 shared/badges.js 의 AG_DIM_TARGET_SELECTOR 와 같아야 합니다.
+   흐리게 정도(--ag-dim-opacity)는 팝업 [설정]의 값 (shared/badges.js renderTweet 이 트윗에 넣음) */
 [data-ag-dim="body"] :is(
   [data-testid="Tweet-User-Avatar"], [data-testid="tweetText"], [data-testid="tweetPhoto"],
   [data-testid="card.wrapper"], [data-testid="videoPlayer"], [data-testid="videoComponent"], [role="group"]
 ) {
-  opacity: 0.45 !important;
+  opacity: var(--ag-dim-opacity, 0.45) !important;
 }
 
 /* 흐리게 할 부분을 찾지 못한 트윗은 예전처럼 전체를 흐리게 */
 [data-ag-dim="all"] {
-  opacity: 0.5 !important;
+  opacity: var(--ag-dim-opacity, 0.5) !important;
 }

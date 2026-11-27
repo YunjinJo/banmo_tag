@@ -15,7 +15,8 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       'list-data.js': [
         sanitizeListsObject, resolveListKey, moveRenamedList, prepareIncomingMembers, prepareListEntry,
         mergeManualMembers, applyListSave, applyListReplace, canAutoRemoveMembers, applyManualAdd, renameList,
-        removeMemberFromLists
+        removeMemberFromLists, isValidListPriority, sortListsByPriority, moveListPriority, clearListPriority,
+        hasCustomPriority
       ],
       'list-page.js': [
         parseListUrl, getActiveTabText, getScrapeBlockReason, getSyncTabError, getMemberListDialog,
@@ -26,7 +27,8 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       ],
       'badges.js': [
         buildHandleMap, diffHandleMaps, isTweetAffected, applyBadgeStyle, normalizeListStyle,
-        getEffectiveBadgeSettings, normalizeBadgeSettings, setListStyle, clearAllListStyles, countListsWithStyle,
+        getEffectiveBadgeSettings, normalizeBadgeSettings, normalizeDisplaySettings, applyBadgeLayout, setListStyle,
+        clearAllListStyles, countListsWithStyle,
         getBadgeAnchor, splitTimelineBadges, getHandleFromUserInfo, addBadges, resetTweetStyle, renderTweet,
         isOwnInjectedNode
       ],
@@ -49,7 +51,8 @@ describe('공통 코드(shared/*.js) 심볼 무결성 검증', () => {
       AG_PROFILE_HREF_RE, AG_SYSTEM_LIST_NAMES, AG_SYSTEM_NAME_WITH_PUNCT_RE, AG_LIST_NAME_CLEANUP_RULES,
       AG_MEMBER_TAB_NAMES, AG_SUGGESTED_TAB_NAMES, AG_NON_USER_LIST_PATHS, AG_MEMBER_LINK_IGNORE, AG_RECO_LABELS,
       AG_X_URL_RE, AG_HEADING_SELECTOR, AG_LIST_NAME_SOURCES, AG_AUTO_SCAN_DEFAULTS, AG_FONT_FAMILIES, AG_FONT_LABELS, AG_LIST_STYLE_KEYS,
-      AG_TWEET_SELECTOR, AG_USER_NAME_SELECTOR, AG_TIMELINE_MAX_BADGES, AG_DIM_TARGET_SELECTOR, AG_BACKUP_APP,
+      AG_TWEET_SELECTOR, AG_USER_NAME_SELECTOR, AG_DEFAULT_DISPLAY_SETTINGS, AG_MAX_BADGES_LIMIT, AG_NAME_WIDTHS,
+      AG_BADGE_RADII, AG_DIM_OPACITY, AG_DIM_TARGET_SELECTOR, AG_BACKUP_APP,
       AG_HEALTH_AREA_LABELS, AG_NAV_PATHS, AG_THEMES, AG_LIST_SORTS, AG_MODE_LABELS, AG_SWATCH_COLORS
     ];
     constants.forEach((value, i) => assert(value !== undefined && value !== null, `${i + 1}번째 상수`));

@@ -56,6 +56,8 @@
   // 핸들(소문자) → 소속 리스트 정보 배열 (예: '@alice': [{ name: '친구', color: '#f00', mode, style? }])
   let handleToListsMap = {};
   let badgeSettings = { ...DEFAULT_BADGE_SETTINGS };
+  // 타임라인 배지 표시 설정 (보일 배지 수 · 말줄임 · 모양 · 인용 배지 · 흐리게 정도). 팝업 [설정]에서 바꿈
+  let displaySettings = normalizeDisplaySettings();
   // 마지막으로 background 에 보낸 (리스트명 + 멤버) 서명 — 같은 데이터 반복 전송 방지
   let lastSentSignature = '';
   let lastUrl = location.href;
@@ -143,10 +145,11 @@
   }
 
   function loadData() {
-    chrome.storage.local.get(['lists', 'badgeSettings', 'structureHealth'], (result) => {
+    chrome.storage.local.get(['lists', 'badgeSettings', 'displaySettings', 'structureHealth'], (result) => {
       if (chrome.runtime.lastError) return;
       applyLists(result.lists);
       badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(result.badgeSettings || {}) };
+      displaySettings = normalizeDisplaySettings(result.displaySettings);
       storedHealth = result.structureHealth || {};
       // 데이터가 오기 전에 빈 데이터로 처리된 트윗이 있을 수 있으므로 초기화 후 다시 처리
       clearProcessedStyles();
@@ -173,9 +176,10 @@
       changedHandles = diffHandleMaps(oldMap, handleToListsMap);
     }
 
-    if (changes.badgeSettings) {
-      // 배지 모양은 모든 배지에 영향을 주므로 전체 다시 그리기
-      badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(changes.badgeSettings.newValue || {}) };
+    if (changes.badgeSettings || changes.displaySettings) {
+      // 배지 글자 스타일과 표시 설정은 모든 배지에 영향을 주므로 전체 다시 그리기
+      if (changes.badgeSettings) badgeSettings = { ...DEFAULT_BADGE_SETTINGS, ...(changes.badgeSettings.newValue || {}) };
+      if (changes.displaySettings) displaySettings = normalizeDisplaySettings(changes.displaySettings.newValue);
       clearProcessedStyles();
       processTimeline();
     } else if (changedHandles && changedHandles.length > 0) {
@@ -633,7 +637,7 @@
     if (isShutDown) return;
     // 저장된 리스트가 없으면 DOM 을 훑을 필요가 없음
     if (Object.keys(handleToListsMap).length === 0) return;
-    (tweets || document.querySelectorAll(AG_TWEET_SELECTOR)).forEach(tweet => renderTweet(tweet, handleToListsMap, badgeSettings));
+    (tweets || document.querySelectorAll(AG_TWEET_SELECTOR)).forEach(tweet => renderTweet(tweet, handleToListsMap, badgeSettings, displaySettings));
   }
 
   // ==========================================

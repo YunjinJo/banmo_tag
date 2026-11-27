@@ -503,3 +503,79 @@ describe('뺀 멤버를 자동으로 지워도 되는지 (canAutoRemoveMembers)'
     assertEqual(canAutoRemoveMembers(null), false);
   });
 });
+
+describe('배지 순서 (sortListsByPriority, moveListPriority, clearListPriority, hasCustomPriority)', () => {
+  const make = () => ({
+    '친구': { color: '#111111', mode: 'normal', members: ['@a'] },
+    'AI': { color: '#222222', mode: 'normal', members: ['@a'] },
+    '가족': { color: '#333333', mode: 'normal', members: ['@a'] },
+    '깨짐': { members: 'x' }
+  });
+
+  it('isValidListPriority: 1 이상의 정수만', () => {
+    assertEqual(isValidListPriority(1), true);
+    assertEqual(isValidListPriority(0), false);
+    assertEqual(isValidListPriority(1.5), false);
+    assertEqual(isValidListPriority('1'), false);
+    assertEqual(isValidListPriority(undefined), false);
+  });
+
+  it('sortListsByPriority: 정하지 않으면 이름순(한글 먼저), 정한 리스트가 앞, 멤버 배열이 없는 항목 제외', () => {
+    const lists = make();
+    assertDeepEqual(sortListsByPriority(lists), ['가족', '친구', 'AI']);
+    lists['AI'].priority = 1;
+    assertDeepEqual(sortListsByPriority(lists), ['AI', '가족', '친구']);
+    lists['친구'].priority = 'x'; // 잘못된 값은 정하지 않은 것과 같음
+    assertDeepEqual(sortListsByPriority(lists), ['AI', '가족', '친구']);
+    assertDeepEqual(sortListsByPriority(undefined), []);
+  });
+
+  it('moveListPriority: 옮긴 뒤 모든 리스트에 1, 2, 3 … 을 매기고, 범위 밖은 맨 앞/뒤로', () => {
+    const lists = make();
+    assertEqual(moveListPriority(lists, 'AI', 0), true);
+    assertDeepEqual(sortListsByPriority(lists), ['AI', '가족', '친구']);
+    assertDeepEqual([lists['AI'].priority, lists['가족'].priority, lists['친구'].priority], [1, 2, 3]);
+    assertEqual(lists['깨짐'].priority, undefined, '멤버 배열이 없는 항목은 건드리지 않음');
+
+    assertEqual(moveListPriority(lists, 'AI', 99), true);
+    assertDeepEqual(sortListsByPriority(lists), ['가족', '친구', 'AI']);
+    assertEqual(moveListPriority(lists, '친구', -5), true);
+    assertDeepEqual(sortListsByPriority(lists), ['친구', '가족', 'AI']);
+  });
+
+  it('moveListPriority: 제자리이거나 없는 리스트면 false 이고 아무것도 바꾸지 않음', () => {
+    const lists = make();
+    assertEqual(moveListPriority(lists, '가족', 0), false);
+    assertEqual(moveListPriority(lists, '없음', 1), false);
+    assertEqual(hasCustomPriority(lists), false);
+  });
+
+  it('새로 생긴 리스트(순서 없음)는 순서를 정한 리스트 뒤에 붙음', () => {
+    const lists = make();
+    moveListPriority(lists, 'AI', 0);
+    lists['나중'] = { color: '#444444', mode: 'normal', members: ['@b'] };
+    assertDeepEqual(sortListsByPriority(lists), ['AI', '가족', '친구', '나중']);
+  });
+
+  it('clearListPriority · hasCustomPriority: 이름순으로 되돌림', () => {
+    const lists = make();
+    moveListPriority(lists, 'AI', 0);
+    assertEqual(hasCustomPriority(lists), true);
+    assertEqual(clearListPriority(lists), 3);
+    assertEqual(hasCustomPriority(lists), false);
+    assertDeepEqual(sortListsByPriority(lists), ['가족', '친구', 'AI']);
+    assertEqual(clearListPriority(lists), 0);
+  });
+
+  it('이름 바꾸기 · 교체 동기화 · 자동 수집 저장 뒤에도 배지 순서가 남음', () => {
+    const lists = make();
+    moveListPriority(lists, 'AI', 0);
+    renameList(lists, 'AI', '인공지능');
+    assertEqual(lists['인공지능'].priority, 1);
+    lists['인공지능'].listId = '77';
+    const replaced = applyListReplace(lists, '인공지능', ['@a', '@b'], '77');
+    assertEqual(replaced.lists['인공지능'].priority, 1);
+    const saved = applyListSave(lists, '인공지능', ['@c'], '77');
+    assertEqual(saved.lists['인공지능'].priority, 1);
+  });
+});

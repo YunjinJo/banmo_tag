@@ -13,15 +13,25 @@ describe('타임라인 뱃지 매핑 (buildHandleMap)', () => {
     assertEqual(map['@sama'][0].color, '#7928ca');
   });
 
-  it('여러 리스트에 중복 소속된 유저의 다중 뱃지 매핑 확인', () => {
+  it('여러 리스트에 중복 소속된 유저의 다중 뱃지 매핑 확인 (배지 순서를 정하지 않으면 이름순)', () => {
     const lists = {
       '테크': { color: '#1d9bf0', mode: 'normal', members: ['@elonmusk'] },
       '우주': { color: '#f4212e', mode: 'highlight', members: ['@elonmusk'] }
     };
     const map = buildHandleMap(lists);
     assertEqual(map['@elonmusk'].length, 2);
-    assertEqual(map['@elonmusk'][0].name, '테크');
-    assertEqual(map['@elonmusk'][1].name, '우주');
+    assertEqual(map['@elonmusk'][0].name, '우주');
+    assertEqual(map['@elonmusk'][1].name, '테크');
+  });
+
+  it('배지 순서(priority)를 정하면 그 순서대로, 정하지 않은 리스트는 그 뒤에 이름순', () => {
+    const lists = {
+      'A': { color: '#111111', mode: 'normal', members: ['@x'] },
+      'B': { color: '#222222', mode: 'normal', members: ['@x'], priority: 2 },
+      'C': { color: '#333333', mode: 'normal', members: ['@x'], priority: 1 },
+      '가': { color: '#444444', mode: 'normal', members: ['@x'] }
+    };
+    assertDeepEqual(buildHandleMap(lists)['@x'].map(l => l.name), ['C', 'B', '가', 'A']);
   });
 });
 
@@ -169,15 +179,25 @@ describe('배지 부착 위치 (getBadgeAnchor)', () => {
 });
 
 describe('타임라인 배지 묶기 (splitTimelineBadges, "+N")', () => {
-  it('splitTimelineBadges: 3개까지는 모두, 넘으면 2개 + 나머지(+N)', () => {
-    const mk = n => Array.from({ length: n }, (_, i) => ({ name: 'L' + i }));
+  const mk = n => Array.from({ length: n }, (_, i) => ({ name: 'L' + i }));
+
+  it('splitTimelineBadges: 기본은 3개까지 모두, 넘으면 앞 3개 + 나머지(+N)', () => {
     assertDeepEqual(splitTimelineBadges(mk(3)).visible.map(l => l.name), ['L0', 'L1', 'L2']);
     assertEqual(splitTimelineBadges(mk(3)).hidden.length, 0);
     const five = splitTimelineBadges(mk(5));
-    assertDeepEqual(five.visible.map(l => l.name), ['L0', 'L1']);
-    assertDeepEqual(five.hidden.map(l => l.name), ['L2', 'L3', 'L4']);
-    assertDeepEqual(splitTimelineBadges(mk(4), 4).hidden, []);
+    assertDeepEqual(five.visible.map(l => l.name), ['L0', 'L1', 'L2']);
+    assertDeepEqual(five.hidden.map(l => l.name), ['L3', 'L4']);
     assertDeepEqual(splitTimelineBadges([]), { visible: [], hidden: [] });
+  });
+
+  it('splitTimelineBadges: 보일 배지 수를 정하면 그 수만큼, 0 이면 모두, 잘못된 값은 기본값(3)', () => {
+    const one = splitTimelineBadges(mk(4), 1);
+    assertDeepEqual(one.visible.map(l => l.name), ['L0']);
+    assertEqual(one.hidden.length, 3);
+    assertDeepEqual(splitTimelineBadges(mk(4), 4).hidden, []);
+    assertEqual(splitTimelineBadges(mk(12), 0).visible.length, 12);
+    assertEqual(splitTimelineBadges(mk(5), -1).visible.length, 3);
+    assertEqual(splitTimelineBadges(mk(5), '2').visible.length, 3);
   });
 
   it('splitTimelineBadges: 같은 이름 리스트는 한 번만', () => {
@@ -226,13 +246,13 @@ describe('트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTw
     assertEqual(tweet.querySelectorAll('.mini-badge').length, 0, '원 작성자는 일반 배지');
   });
 
-  it('addBadges: 리스트가 3개를 넘으면 2개만 보이고 나머지는 "+N" (툴팁에 전체 이름)', () => {
+  it('addBadges: 리스트가 보일 배지 수(기본 3개)를 넘으면 앞 3개만 보이고 나머지는 "+N" (툴팁에 전체 이름)', () => {
     const tweet = makeTweet(['alice']);
     const lists = ['가', '나', '다', '라'].map(name => ({ name, color: '#1d9bf0', mode: 'normal' }));
     addBadges(tweet.querySelector(AG_USER_NAME_SELECTOR), lists, true, settings);
-    assertDeepEqual(badgeTexts(tweet), ['가', '나']);
+    assertDeepEqual(badgeTexts(tweet), ['가', '나', '다']);
     const more = tweet.querySelector('.ag-badge-more');
-    assertEqual(more.textContent, '+2');
+    assertEqual(more.textContent, '+1');
     assert(more.title.includes('가, 나, 다, 라'), more.title);
     assertEqual(more.getAttribute('aria-label'), more.title);
   });
@@ -310,15 +330,59 @@ describe('트윗에 배지 그리기 (getHandleFromUserInfo, addBadges, renderTw
     assertEqual(tweet.dataset.agProcessed, '@bob');
   });
 
-  it('resetTweetStyle: 배지 · 테두리 · 흐리게 · 처리 표시를 모두 지움', () => {
+  it('resetTweetStyle: 배지 · 테두리 · 흐리게(정도 포함) · 처리 표시를 모두 지움', () => {
     const map = buildHandleMap({ '흐림': { color: '#1d9bf0', mode: 'dim', members: ['@alice'] } });
     const tweet = makeTweet(['alice']);
     renderTweet(tweet, map, settings);
+    assertEqual(tweet.style.getPropertyValue('--ag-dim-opacity'), '0.45', '흐리게 정도 기본값(보통)');
     tweet.style.borderLeft = '4px solid red';
     resetTweetStyle(tweet);
     assertEqual(tweet.querySelectorAll('.ag-badges-wrapper').length, 0);
     assertEqual(tweet.style.borderLeftStyle, '');
     assertEqual(tweet.dataset.agDim, undefined);
+    assertEqual(tweet.style.getPropertyValue('--ag-dim-opacity'), '');
     assertEqual(tweet.dataset.agProcessed, undefined);
+  });
+
+  it('renderTweet 표시 설정: 보일 배지 수 · 인용 트윗 배지 끄기 · 흐리게 정도', () => {
+    const map = buildHandleMap({
+      '가': { color: '#111111', mode: 'dim', members: ['@alice', '@quoted'] },
+      '나': { color: '#222222', mode: 'normal', members: ['@alice', '@quoted'] }
+    });
+    const tweet = makeTweet(['alice', 'quoted']);
+    renderTweet(tweet, map, settings, { maxBadges: 1, quoteBadges: false, dimLevel: 'strong' });
+    const [mainInfo, quotedInfo] = tweet.querySelectorAll(AG_USER_NAME_SELECTOR);
+    assertDeepEqual(badgeTexts(mainInfo), ['가']);
+    assertEqual(mainInfo.querySelector('.ag-badge-more').textContent, '+1');
+    assertEqual(quotedInfo.querySelectorAll('.ag-badges-wrapper').length, 0, '인용된 작성자 배지는 붙이지 않음');
+    assertEqual(tweet.dataset.agDim, 'body');
+    assertEqual(tweet.style.getPropertyValue('--ag-dim-opacity'), '0.25');
+  });
+});
+
+describe('타임라인 배지 표시 설정 (normalizeDisplaySettings, applyBadgeLayout)', () => {
+  it('normalizeDisplaySettings: 빠지거나 잘못된 값은 기본값, 올바른 값은 그대로', () => {
+    assertDeepEqual(normalizeDisplaySettings(undefined), AG_DEFAULT_DISPLAY_SETTINGS);
+    assertDeepEqual(normalizeDisplaySettings('x'), AG_DEFAULT_DISPLAY_SETTINGS);
+    const custom = { maxBadges: 0, ellipsis: false, nameWidth: 14, badgeShape: 'square', quoteBadges: false, dimLevel: 'light' };
+    assertDeepEqual(normalizeDisplaySettings(custom), custom);
+    const bad = normalizeDisplaySettings({
+      maxBadges: 11, ellipsis: 'no', nameWidth: 7, badgeShape: 'toString', quoteBadges: 1, dimLevel: '__proto__'
+    });
+    assertDeepEqual(bad, AG_DEFAULT_DISPLAY_SETTINGS);
+    assertEqual(normalizeDisplaySettings({ maxBadges: null }).maxBadges, 3, 'null 은 "모두"(0)가 아님');
+    assertEqual(normalizeDisplaySettings({ maxBadges: 2.5 }).maxBadges, 3);
+  });
+
+  it('applyBadgeLayout: 말줄임 폭과 모서리를 CSS 변수로 (말줄임을 끄면 이름 줄 폭까지)', () => {
+    const wrap = document.createElement('span');
+    applyBadgeLayout(wrap, null);
+    assertEqual(wrap.style.getPropertyValue('--ag-badge-max-w'), '10em');
+    assertEqual(wrap.style.getPropertyValue('--ag-badge-radius'), '12px');
+    applyBadgeLayout(wrap, { ellipsis: true, nameWidth: 6, badgeShape: 'square' });
+    assertEqual(wrap.style.getPropertyValue('--ag-badge-max-w'), '6em');
+    assertEqual(wrap.style.getPropertyValue('--ag-badge-radius'), '4px');
+    applyBadgeLayout(wrap, { ellipsis: false, nameWidth: 6 });
+    assertEqual(wrap.style.getPropertyValue('--ag-badge-max-w'), '100%');
   });
 });

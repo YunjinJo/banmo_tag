@@ -5,6 +5,7 @@ describe('팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 �
   it('normalizeUiSettings: 잘못된 값은 기본값(시스템 테마, 이름순)', () => {
     assertDeepEqual(normalizeUiSettings(undefined), { theme: 'system', listSort: 'name' });
     assertDeepEqual(normalizeUiSettings({ theme: 'dark', listSort: 'members' }), { theme: 'dark', listSort: 'members' });
+    assertDeepEqual(normalizeUiSettings({ theme: 'light', listSort: 'priority' }), { theme: 'light', listSort: 'priority' });
     assertDeepEqual(normalizeUiSettings({ theme: 'blue', listSort: 1, extra: true }), { theme: 'system', listSort: 'name' });
     assertDeepEqual(normalizeUiSettings('dark'), { theme: 'system', listSort: 'name' });
   });
@@ -20,6 +21,15 @@ describe('팝업 화면 설정 · 리스트 정렬 · 멤버 요약 · 빠른 �
     assertDeepEqual(sortListNames(lists, 'members'), ['가족', '친구', 'AI']);
     assertDeepEqual(sortListNames(lists, 'unknown'), ['가족', '친구', 'AI']);
     assertDeepEqual(sortListNames(undefined, 'name'), []);
+  });
+
+  it('sortListNames: 배지 순서(priority)대로, 정하지 않은 리스트는 그 뒤에 이름순', () => {
+    const lists = {
+      '친구': { members: ['@a'] },
+      'AI': { members: ['@a'], priority: 1 },
+      '가족': { members: ['@a'] }
+    };
+    assertDeepEqual(sortListNames(lists, 'priority'), ['AI', '가족', '친구']);
   });
 
   it('summarizeMembers: 멤버 일부 + "외 N명", 없으면 "멤버 없음"', () => {
