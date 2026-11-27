@@ -118,6 +118,18 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     }
     throw new Error('확장 프로그램 페이지를 찾지 못함: ' + url);
   }
+  // 이미 연 moz-extension:// 탭을 앞으로 (Puppeteer 의 bringToFront 는 확장 프로그램 탭을 지원하지 않음)
+  async function selectExtensionTab(url) {
+    const conn = browser.connection;
+    const tree = await conn.send('browsingContext.getTree', { 'moz:scope': 'chrome' });
+    const result = await conn.send('script.evaluate', {
+      expression: `(() => { const tab = gBrowser.tabs.find(t => t.linkedBrowser.currentURI.spec === ${JSON.stringify(url)}); if (tab) gBrowser.selectedTab = tab; return !!tab; })()`,
+      target: { context: tree.result.contexts[0].context },
+      awaitPromise: false
+    });
+    await sleep(300);
+    return result.result.result.value === true;
+  }
   const errors = [];
   const watch = (page, label) => {
     page.on('pageerror', e => errors.push(`${label}: ${e.message}`));
@@ -235,7 +247,29 @@ async function poll(fn, timeoutMs = 10000, interval = 300) {
     });
     record('설정 창: ▲ 로 배지 순서를 바꾸면 저장됨', order === '친구,가,나,동료' && storedOrder === '친구,가,나,동료', `${order} / 저장: ${storedOrder}`);
 
-    await popup.select('#display-max-badges', '1');
+    // 숫자 칸(보일 배지 수): 키보드로 적음. 범위를 넘는 값(50)은 칸을 벗어날 때 10 으로 맞춤
+    const typeNumber = async (selector, text) => {
+      await popup.focus(selector);
+      await popup.keyboard.down('Control');
+      await popup.keyboard.press('KeyA');
+      await popup.keyboard.up('Control');
+      await popup.keyboard.type(text);
+    };
+    // 팝업 탭을 앞으로: 뒤에 있는 탭에서는 포커스가 옮겨도 Firefox 가 blur · change 를 보내지 않음 (타임라인 탭이 앞에 있음)
+    await selectExtensionTab(`${BASE}/popup.html`);
+    await typeNumber('#display-max-badges', '50');
+    await popup.keyboard.press('Tab');
+    const numberState = () => popup.evaluate(async () => {
+      const { displaySettings } = await chrome.storage.local.get(['displaySettings']);
+      return { value: document.getElementById('display-max-badges').value, saved: displaySettings ? displaySettings.maxBadges : null, focus: document.activeElement && document.activeElement.id };
+    });
+    const clamped = await poll(async () => {
+      const state = await numberState();
+      return state.saved === 10 && state.value === '10' ? state : null;
+    });
+    record('설정 창: 숫자 칸에 범위를 넘는 값(50)을 적고 벗어나면 10 으로 맞춰 저장', !!clamped, JSON.stringify(clamped || await numberState()));
+
+    await typeNumber('#display-max-badges', '1');
     await popup.click('#display-quote-badges');
     const display = await poll(() => timeline.evaluate(() => {
       const alice = document.querySelector('[data-fixture-id="t-alice"]');

@@ -132,7 +132,11 @@ const LISTS = {
   await popup.click('#settings-btn');
   await popup.waitForTimeout(300);
   await popup.screenshot({ path: path.join(out, 'popup-settings.png') });
-  await popup.locator('#settings-sheet').evaluate(el => { el.scrollTop = el.scrollHeight; });
+  // 타임라인 배지 표시 묶음이 맨 위에 오게 (숫자 칸 · 모양 · 미리보기가 보이도록)
+  await popup.locator('#settings-sheet').evaluate((el) => {
+    const card = el.querySelector('#display-max-badges').closest('.card');
+    el.scrollTop += card.getBoundingClientRect().top - el.getBoundingClientRect().top - 12;
+  });
   await popup.waitForTimeout(200);
   await popup.screenshot({ path: path.join(out, 'popup-settings-display.png') });
 
