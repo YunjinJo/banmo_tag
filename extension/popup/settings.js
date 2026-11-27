@@ -188,19 +188,24 @@ async function resetPriority() {
 // 타임라인 배지 표시 설정
 // ==========================================
 
-function fillDisplayOptions() {
-  const option = (value, label) => {
-    const opt = makeElement('option', null, label);
-    opt.value = value;
-    return opt;
-  };
-  const max = byId('display-max-badges');
-  if (max) {
-    for (let n = 1; n <= AG_MAX_BADGES_LIMIT; n++) max.appendChild(option(String(n), `${n}개`));
-    max.appendChild(option('0', '모두'));
-  }
-  const width = byId('display-name-width');
-  if (width) AG_NAME_WIDTHS.forEach(w => width.appendChild(option(String(w), `약 ${w}글자`)));
+// 숫자로 적는 설정 (보일 배지 수 · 줄일 길이). 범위는 shared/badges.js 의 AG_DISPLAY_NUMBER_RANGES
+//   적는 동안: 범위 안의 숫자가 되면 바로 저장 (X 탭 배지와 미리보기가 따라 바뀜)
+//   칸을 벗어나거나 Enter: 범위를 넘으면 가장 가까운 값으로 맞추고, 비웠거나 읽을 수 없으면 원래 값으로 되돌림
+function setupDisplayNumberField(id, key) {
+  const input = byId(id);
+  if (!input) return;
+  const range = AG_DISPLAY_NUMBER_RANGES[key];
+  input.min = String(range.min);
+  input.max = String(range.max);
+  input.addEventListener('input', () => {
+    const value = parseDisplayNumber(key, input.value, false);
+    if (value !== null && value !== displaySettings[key]) saveDisplaySettings({ [key]: value });
+  });
+  input.addEventListener('change', () => {
+    const value = parseDisplayNumber(key, input.value, true);
+    if (value !== null && value !== displaySettings[key]) saveDisplaySettings({ [key]: value });
+    input.value = String(displaySettings[key]);
+  });
 }
 
 async function loadDisplaySettings() {
@@ -212,17 +217,20 @@ async function loadDisplaySettings() {
 // 현재 설정값을 입력란·미리보기에 반영. 팝업의 배지(리스트 줄·시트)도 같은 모서리·흐리게 정도로 보여 줌
 function applyDisplaySettingsUI() {
   const d = displaySettings;
-  const setValue = (id, value) => {
-    const el = byId(id);
-    if (el) el.value = value;
-  };
   const setChecked = (id, checked) => {
     const el = byId(id);
     if (el) el.checked = checked;
   };
-  setValue('display-max-badges', String(d.maxBadges));
+  // 숫자 칸: 지금 적고 있는 칸(포커스)은 고쳐 쓰지 않음. 앞 글자("1")를 저장했다는 알림(storage.onChanged)이
+  // 다음 글자("0")를 적은 뒤에 와도 적던 "10" 이 "1" 로 되돌아가지 않게. 칸을 벗어나거나 Enter 를 누르면
+  // setupDisplayNumberField 의 change 처리가 맞춘 값으로 고쳐 씀
+  const setNumber = (id, value) => {
+    const el = byId(id);
+    if (el && document.activeElement !== el) el.value = String(value);
+  };
+  setNumber('display-max-badges', d.maxBadges);
   setChecked('display-ellipsis', d.ellipsis);
-  setValue('display-name-width', String(d.nameWidth));
+  setNumber('display-name-width', d.nameWidth);
   const width = byId('display-name-width');
   if (width) width.disabled = !d.ellipsis;
   setChecked('display-shape-' + d.badgeShape, true);
@@ -289,15 +297,14 @@ function createPreviewAuthor(name, handle) {
 }
 
 function setupSettings() {
-  fillDisplayOptions();
   byId('settings-btn')?.addEventListener('click', openSettings);
   byId('settings-close-btn')?.addEventListener('click', closeSettings);
   byId('sheet-backdrop')?.addEventListener('click', closeSettings);
   byId('priority-reset-btn')?.addEventListener('click', resetPriority);
 
-  byId('display-max-badges')?.addEventListener('change', e => saveDisplaySettings({ maxBadges: parseInt(e.target.value, 10) }));
+  setupDisplayNumberField('display-max-badges', 'maxBadges');
   byId('display-ellipsis')?.addEventListener('change', e => saveDisplaySettings({ ellipsis: e.target.checked }));
-  byId('display-name-width')?.addEventListener('change', e => saveDisplaySettings({ nameWidth: parseInt(e.target.value, 10) }));
+  setupDisplayNumberField('display-name-width', 'nameWidth');
   byId('display-quote-badges')?.addEventListener('change', e => saveDisplaySettings({ quoteBadges: e.target.checked }));
   [['display-shape', 'badgeShape'], ['display-dim', 'dimLevel']].forEach(([group, key]) => {
     document.querySelectorAll(`input[name="${group}"]`).forEach((input) => {

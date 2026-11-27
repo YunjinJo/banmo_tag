@@ -662,17 +662,17 @@ test.describe('설정 시트 (배지 순서 · 타임라인 배지 표시)', () 
     await expect(author.locator('.ag-badge-more')).toHaveText('+1');
     await expect(quote.locator('.ag-list-badge.mini-badge')).toHaveCount(3);
 
-    await popup.selectOption('#display-max-badges', '1');
+    await popup.fill('#display-max-badges', '1');
     await expect(author.locator('.ag-list-badge')).toHaveCount(1);
     await expect(author.locator('.ag-badge-more')).toHaveText('+3');
-    await popup.selectOption('#display-max-badges', '0'); // 모두
+    await popup.fill('#display-max-badges', '0'); // 0 = 모두
     await expect(author.locator('.ag-list-badge')).toHaveCount(4);
     await expect(author.locator('.ag-badge-more')).toHaveCount(0);
 
     const longBadge = author.locator('.ag-list-badge', { hasText: longName });
     expect(await longBadge.evaluate(el => el.scrollWidth > el.clientWidth), '말줄임 켬: 긴 이름이 잘림').toBe(true);
     const width10 = await longBadge.evaluate(el => el.clientWidth);
-    await popup.selectOption('#display-name-width', '6');
+    await popup.fill('#display-name-width', '6');
     await expect.poll(() => longBadge.evaluate(el => el.clientWidth), { message: '약 6글자 폭으로 더 짧게' }).toBeLessThan(width10);
     await popup.locator('#display-ellipsis').uncheck();
     await expect(popup.locator('#display-name-width')).toBeDisabled();
@@ -702,6 +702,69 @@ test.describe('설정 시트 (배지 순서 · 타임라인 배지 표시)', () 
     // 열려 있던 다른 창에도 바로 반영
     await expect(popup.locator('#display-max-badges')).toHaveValue('3');
     await expect(popup.locator('#display-shape-round')).toBeChecked();
+  });
+
+  test('숫자 칸(보일 배지 수 · 줄일 길이): 적는 동안 바로 저장, 범위를 넘거나 비우면 칸을 벗어날 때 맞춤', async ({ context, extensionId, serviceWorker }) => {
+    await setStorage(serviceWorker, { lists: LISTS });
+    const popup = await openPopup(context, extensionId);
+    await openSettings(popup);
+    const stored = async () => (await getStorage(serviceWorker, ['displaySettings'])).displaySettings;
+    const max = popup.getByLabel('보일 배지 수');
+    const width = popup.getByLabel('줄일 길이');
+    const author = popup.locator('#display-preview .preview-author').first();
+    await expect(max).toHaveAttribute('type', 'number');
+    await expect(max).toHaveAttribute('min', '0');
+    await expect(max).toHaveAttribute('max', '10');
+    await expect(width).toHaveAttribute('min', '4');
+    await expect(width).toHaveAttribute('max', '30');
+
+    // 키보드로 적으면 칸을 벗어나지 않아도 바로 저장되고 미리보기가 바뀜
+    await max.click();
+    await max.press('Control+A');
+    await max.pressSequentially('2');
+    await expect.poll(async () => (await stored())?.maxBadges).toBe(2);
+    await expect(author.locator('.ag-list-badge')).toHaveCount(2);
+    await expect(author.locator('.ag-badge-more')).toHaveText('+1');
+    await expect(max).toBeFocused();
+
+    // 범위를 넘는 값은 적는 동안 저장하지 않고, 칸을 벗어나면 가장 가까운 값(10)으로
+    await max.fill('50');
+    await expect(author.locator('.ag-list-badge')).toHaveCount(2);
+    expect((await stored()).maxBadges).toBe(2);
+    await max.press('Tab');
+    await expect(max).toHaveValue('10');
+    await expect.poll(async () => (await stored()).maxBadges).toBe(10);
+    await expect(author.locator('.ag-list-badge')).toHaveCount(3);
+
+    // 비우면 원래 값으로, "05" 는 5 로 저장되고 칸을 벗어나면 "5"
+    await max.fill('');
+    await max.press('Enter');
+    await expect(max).toHaveValue('10');
+    await max.fill('05');
+    await expect.poll(async () => (await stored()).maxBadges).toBe(5);
+    await expect(max).toHaveValue('05');
+    await max.press('Tab');
+    await expect(max).toHaveValue('5');
+
+    // 두 자리를 한 글자씩 적어도 앞 글자("1")를 저장한 알림이 적던 "10" 을 되돌리지 않음
+    await max.click();
+    await max.press('Control+A');
+    await max.pressSequentially('10', { delay: 30 });
+    await expect.poll(async () => (await stored()).maxBadges).toBe(10);
+    await popup.waitForTimeout(300);
+    await expect(max).toHaveValue('10');
+    await max.press('Enter');
+    await expect(max).toHaveValue('10');
+
+    // 줄일 길이: 최솟값보다 작으면 4, 범위 안의 아무 숫자(12)나 그대로
+    await width.fill('2');
+    await width.press('Tab');
+    await expect(width).toHaveValue('4');
+    await expect.poll(async () => (await stored()).nameWidth).toBe(4);
+    await width.fill('12');
+    await expect.poll(async () => (await stored()).nameWidth).toBe(12);
+    await expect(author.locator('.ag-badges-wrapper')).toHaveCSS('--ag-badge-max-w', '12em');
+    expect(await stored()).toEqual({ maxBadges: 10, ellipsis: true, nameWidth: 12, badgeShape: 'round', quoteBadges: true, dimLevel: 'normal' });
   });
 
   test('리스트가 없으면 배지 순서에 안내, 미리보기는 보기 리스트로', async ({ context, extensionId }) => {
